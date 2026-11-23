@@ -176,7 +176,7 @@ function registerRoutes(app, deps) {
     if (inlineType) {
       res.type(inlineType);
       res.set('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.original_name)}`);
-      return res.sendFile(stored);
+      return res.sendFile(path.basename(stored), { root: path.dirname(stored) });
     }
     return res.download(stored, file.original_name);
   }));

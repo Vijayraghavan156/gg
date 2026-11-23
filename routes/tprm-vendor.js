@@ -96,6 +96,13 @@ function logError(req, err) {
   console.error('[request_error]', { method: req.method, path: `${prefix}[token]`, error: err && err.stack ? err.stack : String(err) });
 }
 
+function uploadedFile(firmId, stored) {
+  const dir = path.resolve(UPLOADS_ROOT, `firm_${Number(firmId)}`);
+  const name = path.basename(String(stored || ''));
+  const full = path.resolve(dir, name);
+  return name && path.dirname(full) === dir ? full : null;
+}
+
 function removeFiles(files) {
   for (const file of files || []) {
     try { if (file && file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path); } catch (_) {}
@@ -395,7 +402,7 @@ function registerRoutes(app, { db }) {
     if (!result) { removeFiles(staged); return invalidPage(res); }
     removeFiles(result.staged);
     for (const stored of result.removedPaths) {
-      removeFiles([{ path: path.join(UPLOADS_ROOT, `firm_${ctx.firmId}`, path.basename(stored)) }]);
+      removeFiles([{ path: uploadedFile(ctx.firmId, stored) }]);
     }
     if (req.body.intent === 'review') {
       const fresh = await vendorAnswers.linkContext(db, req.vkey);
@@ -458,7 +465,7 @@ function registerRoutes(app, { db }) {
     if (!result) { removeFiles(staged); return invalidPage(res); }
     removeFiles(result.staged);
     for (const stored of result.removedPaths) {
-      removeFiles([{ path: path.join(UPLOADS_ROOT, `firm_${ctx.firmId}`, path.basename(stored)) }]);
+      removeFiles([{ path: uploadedFile(ctx.firmId, stored) }]);
     }
     const notice = result.outcome === 'added' ? 'report_added' : result.outcome === 'removed' ? 'report_removed' : 'report_updated';
     return res.redirect(303, `${req.vbase}?notice=${notice}#reports`);
@@ -504,7 +511,7 @@ function registerRoutes(app, { db }) {
       throw err;
     }
     if (!result) return invalidPage(res);
-    if (result.path) removeFiles([{ path: path.join(UPLOADS_ROOT, `firm_${pre.ctx.firmId}`, path.basename(result.path)) }]);
+    if (result.path) removeFiles([{ path: uploadedFile(pre.ctx.firmId, result.path) }]);
     const docNotice = result.deleted ? 'document_deleted' : 'document_saved';
     if (req.vsession && req.body.back === 'files') return res.redirect(303, `${PORTAL}files?notice=${docNotice}#review-${pre.ctx.assessmentId}`);
     return res.redirect(303, `${req.vbase}?view=documents&notice=${docNotice}`);

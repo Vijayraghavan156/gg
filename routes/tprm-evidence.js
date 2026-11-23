@@ -126,7 +126,7 @@ function registerRoutes(app, deps) {
     if (inlineType) {
       res.type(inlineType);
       res.set('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.original_name)}`);
-      return res.sendFile(target);
+      return res.sendFile(path.basename(target), { root: path.dirname(target) });
     }
     return res.download(target, file.original_name);
   }));
@@ -146,7 +146,7 @@ function registerRoutes(app, deps) {
         ? 'This file is missing from storage. Contact your administrator.'
         : 'The text of this file could not be read. Download it to read it.');
     }
-    return res.send(read.text.length > TEXT_MAX ? `${read.text.slice(0, TEXT_MAX)}\n\n[Shortened: download the file for the rest.]` : read.text);
+    return res.end(Buffer.from(read.text.length > TEXT_MAX ? `${read.text.slice(0, TEXT_MAX)}\n\n[Shortened: download the file for the rest.]` : read.text, 'utf8'));
   }));
 
   app.post(`${BASE}/evidence/:eid/release`, requireAuth, handler(async (req, res, actor) => {
