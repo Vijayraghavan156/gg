@@ -1,0 +1,90 @@
+<%- include('partials/header', { title: (finding ? 'Edit finding' : 'Add finding') + ' · ' + thirdParty.name + ' · ' + tpClient.name, user, active }) %>
+<%
+  const v = values || {};
+  const val = k => v[k] == null ? '' : v[k];
+  const linked = new Set([].concat(v.evidence || []).map(String));
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const back = '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id + '/assessments/' + assessment.id;
+%>
+<%- include('tprm_client_nav', { tpClient, section: 'register', canManage, canSettings }) %>
+
+<div class="tpu-mb-10"><a class="text-xs tpu-back" href="<%= back %>?step=evidence#findings">← <%= at.TYPE_LABELS[assessment.type] %> · <%= thirdParty.name %></a></div>
+
+<div class="panel tpu-narrow tpu-mb-14" data-tprm-finding-form>
+  <div class="panel-head"><h2><%= finding ? 'Edit finding' : 'Add finding' %></h2></div>
+  <% const fromAi = typeof fromSuggestion !== 'undefined' && fromSuggestion; %>
+  <form method="POST" action="<%= fromAi ? back + '/ai-suggestions/' + fromSuggestion.id + '/accept-edited' : back + '/findings' + (finding ? '/' + finding.id : '') %>" class="panel-pad tprm-aw-finding-grid" data-tp-unsaved>
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <% if (finding) { %><input type="hidden" name="row_version" value="<%= v.row_version != null ? v.row_version : finding.row_version %>"><% } %>
+    <% if (fromAi) { %>
+      <div class="callout tpu-span-all" role="status" data-tprm-finding-from-suggestion="<%= fromSuggestion.id %>">
+        <div class="callout-title">AI suggestion - not reviewed</div>
+        Filled in from an AI suggestion<% if (fromSuggestion.question_id) { %> on <strong><%= fromSuggestion.question_id %></strong><% } %>. Check every field and the linked files: saving adds the finding and records the suggestion as edited and accepted by you.
+      </div>
+    <% } %>
+    <% if (typeof fromDataLocation !== 'undefined' && fromDataLocation) { %><div class="callout tpu-span-all" role="status" data-tprm-finding-from-data-location="<%= fromDataLocation.kind %>">Raised from a data-location flag: the client's rulebooks require its data to stay in <strong><%= fromDataLocation.country_name %></strong>. Check every field before you add the finding.</div><% } %>
+    <% if (typeof fromAnswer !== 'undefined' && fromAnswer) { %>
+      <div class="callout tpu-span-all" role="status" data-tprm-finding-from-answer="<%= fromAnswer.question_id %>">
+        Raised from the third party's answer to <strong><%= fromAnswer.question_id %></strong>. The control, severity (from the tier), title (from the question's theme), description and the third party's files are filled in: check them before you add the finding.
+      </div>
+    <% } %>
+    <% if (errors && errors.length) { %>
+      <div class="callout tprm-callout-error tpu-span-all" role="alert" data-tprm-form-errors>
+        <div class="callout-title">Nothing was saved</div>
+        <ul class="tpu-list"><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+      </div>
+    <% } %>
+    <div><label class="label" for="finding-control">ISO 27001 control</label>
+      <input class="input" id="finding-control" name="control_ref" value="<%= val('control_ref') %>" maxlength="<%= fd.LIMITS.controlRef %>" placeholder="e.g. A.5.20"></div>
+    <div><label class="label" for="finding-severity">Severity</label>
+      <select class="select" id="finding-severity" name="severity" required>
+        <option value="">Choose</option>
+        <% fd.SEVERITIES.forEach(k => { %><option value="<%= k %>" <%= v.severity === k ? 'selected' : '' %>><%= fd.SEVERITY_LABELS[k] %></option><% }) %>
+      </select></div>
+    <div><label class="label" for="finding-title">Title</label>
+      <input class="input" id="finding-title" name="title" value="<%= val('title') %>" maxlength="<%= fd.LIMITS.title %>" required></div>
+    <div class="tpu-span-all"><label class="label" for="finding-description">Description</label>
+      <textarea class="input" id="finding-description" name="description" rows="5" maxlength="<%= fd.LIMITS.description %>" aria-describedby="finding-printed"><%= val('description') %></textarea></div>
+    <div class="tpu-span-all"><label class="label" for="finding-impact">Why it matters <span class="meta text-xs">(optional)</span></label>
+      <textarea class="input" id="finding-impact" name="impact" rows="3" maxlength="<%= fd.LIMITS.impact %>" aria-describedby="finding-printed" placeholder="What this gap means for the client, for example the data or service it puts at risk" data-tprm-finding-impact><%= val('impact') %></textarea>
+      <div class="meta text-xs tpu-mt-4" id="finding-printed" data-tprm-finding-printed>The description and why it matters are printed in the client's report.</div></div>
+    <% if (finding) { %>
+    <fieldset class="tpu-fieldset tpu-span-all">
+      <legend class="label">Status</legend>
+      <% fd.STATUSES.forEach(k => { %>
+        <label class="tprm-aw-inline-option"><input type="radio" name="status" value="<%= k %>" <%= v.status === k ? 'checked' : '' %>> <%= fd.STATUS_LABELS[k] %></label>
+      <% }) %>
+    </fieldset>
+    <% } %>
+    <fieldset class="tpu-fieldset tpu-span-all" data-tprm-finding-evidence>
+      <legend class="label">Evidence this finding cites</legend>
+      <% if (!evidenceList.length) { %>
+        <div class="meta">No files are uploaded on this assessment yet. You can link files later.</div>
+      <% } else { %>
+        <% evidenceList.forEach(e => { %>
+          <label class="tpu-row tpu-my-4">
+            <input type="checkbox" name="evidence" value="<%= e.id %>" <%= linked.has(String(e.id)) ? 'checked' : '' %>>
+            <span><%= e.original_name %></span><% if (e.source === 'vendor') { %> <span class="meta text-xs">from the third party</span><% } %><% if (e.released_to_client) { %> <span class="meta text-xs">released</span><% } %>
+          </label>
+        <% }) %>
+      <% } %>
+    </fieldset>
+    <div class="tpu-span-all tprm-aw-actions-end">
+      <a class="btn btn-secondary" href="<%= back %><%= fromAi ? '?step=review#ai-review' : '?step=evidence#findings' %>">Cancel</a>
+      <button class="btn btn-primary" type="submit" data-tprm-save-finding><%= finding ? 'Save finding' : fromAi ? 'Accept as finding' : 'Add finding' %></button>
+    </div>
+  </form>
+</div>
+
+<% if (finding) { %>
+<details class="panel panel-pad tpu-narrow" data-tprm-remove-finding>
+  <summary class="meta tpu-pointer">Remove this finding</summary>
+  <form method="POST" action="<%= back %>/findings/<%= finding.id %>/remove" class="tprm-aw-between tpu-mt-10">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input type="hidden" name="row_version" value="<%= finding.row_version %>">
+    <span class="meta">The finding is removed from the assessment; its history stays in the assessment's record.</span>
+    <button class="btn btn-secondary" type="submit">Remove finding</button>
+  </form>
+</details>
+<% } %>
+<%- include('partials/footer') %>

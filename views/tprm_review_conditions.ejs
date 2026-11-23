@@ -1,0 +1,28 @@
+<% const pq = conditionProofQueue; const CL = conditionLabels;
+   const L = locals.lq || { rows: l => l || [], th: (k, t) => '<th>' + t + '</th>', row: () => '' };
+   const txt = r => [r.third_party_name, r.client_name, r.description, r.pending_by_name].filter(Boolean).join(' '); %>
+<div class="panel tpu-mt-14" data-tprm-review-proofs>
+  <div class="panel-head"><h2>Proof to verify</h2><span class="meta"><%= pq.length %></span></div>
+  <% if (!pq.length) { %>
+    <div class="empty-state" data-tprm-review-proofs-empty>
+      <div class="text-lg tpu-label-strong">No proof is waiting for you</div>
+      <div class="meta">Proof submitted for a condition appears here until someone verifies it or asks for changes. Proof you uploaded yourself is not listed: someone else verifies it.</div>
+    </div>
+  <% } else { %>
+    <div class="table-scroll"><table class="t" data-tp-list>
+      <thead><tr><%- L.th('third_party', 'Third party') %><%- L.th('client', 'Client') %><th>Condition</th><th>Owner</th><%- L.th('due', 'Due') %><th>Submitted</th></tr></thead>
+      <tbody>
+      <% L.rows(pq, txt).forEach(r => { %>
+        <tr <%- L.row(r, txt) %> data-tprm-review-proof="<%= r.id %>">
+          <td><a href="/tprm/clients/<%= r.workspace_id %>/third-parties/<%= r.third_party_id %>/assessments/<%= r.assessment_id %>?step=decision#conditions"><strong><%= r.third_party_name %></strong></a></td>
+          <td><%= r.client_name %></td>
+          <td>Condition <%= r.position %> <span class="meta text-xs"><%= String(r.description).slice(0, 120) %></span></td>
+          <td><%= CL.OWNER_LABELS[r.owner] %></td>
+          <td><%= tpf.day(r.due_date) %><% if (r.state.overdue) { %> <%- include('partials/tprm_status', { text: 'Overdue', tone: 'problem' }) %><% } %></td>
+          <td><%= CL.KIND_LABELS[r.pending_kind] %> · <%= r.pending_by_name || '-' %> <span class="meta text-xs"><%= tpf.day(r.pending_since) %></span></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+</div>

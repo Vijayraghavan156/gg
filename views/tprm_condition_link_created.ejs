@@ -1,0 +1,19 @@
+<%- include('partials/header', { title: 'Conditions link · Third-party risk', user, active }) %>
+<div class="page-head" data-tprm-condition-link-created>
+  <div>
+    <a class="text-xs tpu-back" href="<%= back %>">← Back to the assessment</a>
+    <h1 class="page-title tpu-mt-6">Conditions link for the third party</h1>
+  </div>
+</div>
+<div class="callout tpu-mb-14" role="status" data-tprm-new-condition-link>
+  <div class="callout-title">Copy this link now: it is shown only once</div>
+  <div class="meta tpu-mb-8">For <%= newLink.recipientName %> (<%= newLink.recipientEmail %>), valid until <%= tpf.day(newLink.expiresAt) %>. It opens the <%= newLink.conditions %> condition<%= newLink.conditions === 1 ? '' : 's' %> the third party owns that <%= newLink.conditions === 1 ? 'is' : 'are' %> not met yet, and nothing else. It is not stored anywhere: if it is lost, issue a new link.<% if (newLink.replaced) { %> The previous link no longer works.<% } %></div>
+  <div class="tprm-copy-row">
+    <input class="input mono" type="text" readonly value="<%= newLink.url %>" data-tprm-condition-link-url onclick="this.select();">
+    <button class="btn btn-secondary" type="button" onclick="var i=this.parentNode.querySelector('input');i.select();if(navigator.clipboard){navigator.clipboard.writeText(i.value);}this.textContent='Copied';">Copy</button>
+  </div>
+  <% if (newLink.emailed) { %><div class="meta text-xs tpu-mt-8" data-tprm-condition-link-emailed="<%= newLink.emailed.ok ? 'sent' : 'failed' %>"><%= newLink.emailed.ok ? 'Emailed to ' + newLink.recipientEmail + ' with the conditions and their due dates.' : 'The email could not be sent (' + newLink.emailed.error + '). Copy the link and send it yourself.' %></div><% } %>
+  <div class="meta text-xs tpu-mt-8"><%= newLink.emailed && newLink.emailed.ok ? 'Keep it only if you need to send it again.' : 'Send it to the third party yourself.' %> It stops working when it expires, when you revoke it or issue a new one, and once every condition the third party owns is verified or waived.</div>
+</div>
+<a class="btn btn-primary" href="<%= back %>">Back to the assessment</a>
+<%- include('partials/footer') %>

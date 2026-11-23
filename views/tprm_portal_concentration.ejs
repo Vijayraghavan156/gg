@@ -1,0 +1,61 @@
+<%- include('partials/header', { title: 'Concentration · Third-party risk', user, ws, active, portalView }) %>
+<%
+  const s = summary;
+  const base = '/workspaces/' + ws.id + '/client-portal/third-party-risk';
+  const pct = x => Math.round(x * 100);
+%>
+<div class="page-head cp-page-head" data-tprm-portal-concentration>
+  <div>
+    <a class="text-xs tpu-back" href="<%= base %>">← Third-party risk</a>
+    <div class="eyebrow tpu-mt-6">Client engagement</div>
+    <h1>Concentration of services</h1>
+    <div class="page-subtitle">Where your organisation depends on the third parties it uses, from the register your consultants keep for you.</div>
+  </div>
+</div>
+<div class="panel tpu-mb-14" data-tprm-concentration-headlines>
+  <div class="panel-head"><h2>Concentration</h2><span class="meta"><%= s.total %> service<%= s.total === 1 ? '' : 's' %> · <%= s.thirdParties %> third part<%= s.thirdParties === 1 ? 'y' : 'ies' %> in use</span></div>
+  <div class="panel-pad meta tpu-rule-bottom">
+    <details class="tprm-how"><summary>How this works</summary>Counts the services of third parties in use. Category and tier are the third party's; hosting countries and sole source are the service's. A service hosted in more than one country counts once in each.</details>
+    <% if (s.withoutServices) { %><span data-tprm-concentration-without="<%= s.withoutServices %>"><%= s.withoutServices %> third part<%= s.withoutServices === 1 ? 'y' : 'ies' %> in use <%= s.withoutServices === 1 ? 'has' : 'have' %> no service recorded and <%= s.withoutServices === 1 ? 'is' : 'are' %> not counted.</span><% } %>
+  </div>
+  <% if (!s.total) { %>
+    <div class="cp-empty-state" data-tprm-concentration-empty>
+      <strong>No services to count yet</strong>
+      <p>Once your consultants record the services of the third parties you use, this page shows where you depend on them.</p>
+    </div>
+  <% } else { %>
+    <ul class="panel-pad tprm-portal-headlines">
+      <% s.headlines.forEach(h => { %><li data-tprm-headline="<%= h.key %>" class="tpu-my-4<%= h.accent ? ' tpu-medium' : '' %>"><%= h.text %></li><% }) %>
+    </ul>
+  <% } %>
+</div>
+<% if (s.total) { %>
+<% C.DIMENSIONS.forEach(d => { const shown = s.groups[d].filter(g => g.count > 1); const singles = s.groups[d].length - shown.length; %>
+<div class="panel tpu-mb-14" data-tprm-concentration-group="<%= d %>">
+  <div class="panel-head"><h2><%= C.DIMENSION_LABELS[d] %></h2><span class="meta"><%= shown.length ? shown.length + ' with more than one service' : 'No concentration' %></span></div>
+  <% if (shown.length) { %>
+  <div class="table-scroll">
+  <table class="t">
+    <thead><tr><th>Group</th><th class="num tpu-w-90">Services</th><th class="num tpu-w-90">Share</th><th class="num tpu-w-110">Third parties</th></tr></thead>
+    <tbody>
+    <% shown.forEach(g => { %>
+      <tr data-tprm-group-row="<%= d %>:<%= g.key %>" data-tprm-group-count="<%= g.count %>">
+        <td><details><summary class="tpu-pointer"><%= g.label %></summary>
+          <ul class="text-sm tpu-list-6">
+            <% g.services.forEach(sv => { %><li><%= sv.third_party_name %>: <%= sv.description %></li><% }) %>
+          </ul></details></td>
+        <td class="num"><%= g.count %></td>
+        <td class="num"><%= pct(g.share) %>%</td>
+        <td class="num"><%= g.thirdParties %></td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table>
+  </div>
+  <% } %>
+  <% if (singles) { %><p class="panel-pad meta" data-tprm-concentration-singles="<%= d %>"><%= shown.length ? 'And ' : '' %><%= singles %> group<%= singles === 1 ? '' : 's' %> with one service each.</p><% } %>
+</div>
+<% }) %>
+<% } %>
+<% if (summary.fourth) { %><%- include('tprm_fourth_parties', { fourth: summary.fourth, mode: 'portal' }) %><% } %>
+<%- include('partials/footer') %>

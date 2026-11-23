@@ -1,0 +1,24 @@
+<%- include('partials/header', { title: 'Edit subprocessor · ' + thirdParty.name, user, active }) %>
+<%- include('tprm_client_nav', { tpClient, section: 'register', canManage, canSettings }) %>
+<div class="panel tprm-wide" data-tprm-subprocessor-edit>
+  <div class="panel-head"><h2>Edit subprocessor of <%= thirdParty.name %></h2></div>
+  <div class="panel-pad tprm-sp-split">
+    <form method="POST" action="/tprm/clients/<%= tpClient.id %>/third-parties/<%= thirdParty.id %>/subprocessors/<%= subprocessor.id %>" class="tprm-sp-form">
+      <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+      <input type="hidden" name="row_version" value="<%= values.row_version != null ? values.row_version : subprocessor.row_version %>">
+      <% if (errors && errors.length) { %>
+        <div class="callout tpu-problem-edge" role="alert" data-tprm-form-errors>
+          <div class="callout-title tpu-problem-text">Nothing was saved</div>
+          <ul class="tpu-list"><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+        </div>
+      <% } %>
+      <%- include('tprm_subprocessor_fields', { v: values, helper, LIMITS: SP.LIMITS }) %>
+      <div class="tprm-form-end">
+        <a class="btn btn-ghost" href="/tprm/clients/<%= tpClient.id %>/third-parties/<%= thirdParty.id %>#subprocessors">Cancel</a>
+        <button class="btn btn-primary" type="submit">Save subprocessor</button>
+      </div>
+    </form>
+    <%- include('tprm_subprocessor_helper', { helper }) %>
+  </div>
+</div>
+<%- include('partials/footer') %>

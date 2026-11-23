@@ -1,0 +1,15 @@
+<div data-tprm-subprocessor-helper>
+  <div class="label">What the third party told us</div>
+  <% if (!helper.answers.length) { %>
+    <div class="meta text-xs" data-tprm-subprocessor-helper-empty><%= helper.submittedAt ? 'Its latest submitted questionnaire has no answer about subcontractors.' : 'No questionnaire submitted by this third party yet.' %></div>
+  <% } else { %>
+    <div class="meta text-xs tpu-mb-6">From its questionnaire submitted on <%= tpf.day(helper.submittedAt) %>.</div>
+    <% helper.answers.forEach(a => { %>
+      <div class="tprm-sp-answer" data-tprm-subprocessor-answer="<%= a.question_id %>">
+        <div class="text-xs"><strong><%= a.question_id %></strong><%= a.theme ? ' · ' + a.theme : '' %> · <%= ({ yes: 'Yes', partial: 'Partially', no: 'No', na: 'Not applicable' })[a.response] || '-' %></div>
+        <% if (a.question) { %><div class="meta text-xs"><%= a.question %></div><% } %>
+        <div class="text-sm tpu-pre tpu-mt-4"><%= a.detail || '(no detail)' %></div>
+      </div>
+    <% }) %>
+  <% } %>
+</div>

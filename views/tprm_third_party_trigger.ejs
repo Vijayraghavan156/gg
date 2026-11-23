@@ -1,0 +1,37 @@
+<%
+  if (typeof actionLabels !== 'undefined' && actionLabels) Object.assign(actionLabels, { 'third_party.reassessment_triggered': 'Early reassessment triggered' });
+  const trgValues = typeof values !== 'undefined' && values ? values : {};
+  const trgErrors = typeof errors !== 'undefined' && errors ? errors : [];
+  const trgOpen = (typeof open !== 'undefined' && open) || trgErrors.length > 0;
+  const trgHref = '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id + '/triggers';
+  const trgReasons = [['breach', 'Breach'], ['ownership_change', 'Change of ownership'], ['ai_change', 'Change of AI model or provider'], ['other', 'Other']];
+%>
+<% if (thirdParty.status === 'in_use') { %>
+<details class="panel" id="trigger" data-tprm-trigger-panel <%= trgOpen ? 'open' : '' %>>
+  <summary class="panel-pad tprm-trigger-summary">
+    <strong>Early reassessment</strong>
+    <span class="meta text-xs">A breach, a change of ownership, or a change of AI model or provider brings the reassessment forward. <a href="<%= trgHref %>">Trigger events</a></span>
+  </summary>
+  <% if (typeof canManage !== 'undefined' && canManage) { %>
+  <form method="POST" action="<%= trgHref %>" class="panel-pad tprm-trigger-form" data-tprm-trigger-form>
+    <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+    <input type="hidden" name="row_version" value="<%= thirdParty.row_version %>">
+    <% if (trgErrors.length) { %>
+      <div class="callout tpu-span-all tpu-problem-edge" role="alert" data-tprm-form-errors>
+        <div class="callout-title tpu-problem-text">Nothing was saved</div>
+        <ul class="tprm-list"><% trgErrors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+      </div>
+    <% } %>
+    <div><label class="label" for="trigger-reason">What happened</label>
+      <select class="select" id="trigger-reason" name="reason" required>
+        <option value="">Choose</option>
+        <% trgReasons.forEach(([k, label]) => { %><option value="<%= k %>" <%= trgValues.reason === k ? 'selected' : '' %>><%= label %></option><% }) %>
+      </select></div>
+    <div><label class="label" for="trigger-details">Details <span class="meta text-xs">(required for Other)</span></label>
+      <input class="input" id="trigger-details" name="details" maxlength="1000" value="<%= trgValues.details || '' %>"></div>
+    <div><button class="btn btn-secondary" type="submit" data-tprm-record-trigger>Record a trigger event</button></div>
+    <div class="meta text-xs tpu-span-all">The next due date becomes today (an earlier, overdue date is kept) and the third party shows in the due queue as triggered until the next client decision.</div>
+  </form>
+  <% } %>
+</details>
+<% } %>

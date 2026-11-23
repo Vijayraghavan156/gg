@@ -1,0 +1,496 @@
+<%
+  const ctx = p.ctx;
+  const base = '/vendor/q/' + token;
+  const fmtDay = d => (d ? tpf.day(d) : '');
+  const fmtWhen = d => (d ? tpf.dayTime(d, { zone: true }) : '');
+  const today = tpf.today;
+  const errorList = (errors || []).map(e => (e && typeof e === 'object' ? e : { id: null, message: String(e) }));
+  const errorsFor = id => errorList.filter(e => e.id === id);
+  const sizeOf = n => tpf.fileSize(n);
+  const allQuestions = p.sections.flatMap(s => s.questions);
+  const questionText = id => { const q = allQuestions.find(x => x.id === id); return q ? q.question : ''; };
+  const sectionHref = (n, anchor) => base + '?s=' + n + (anchor ? '#' + anchor : '');
+  const onSection = view === 'section' && !!section && ctx.mode === 'answering';
+  const FORM_ID = 'vq-answer-form';
+  const goValue = s => (s && s.questions && s.questions[0] ? s.questions[0].id : null);
+  const openClarifications = p.clarifications.filter(c => c.status === 'open');
+  const answeredClarifications = p.clarifications.filter(c => c.status === 'answered');
+  const pct = p.total ? Math.round((p.answered / p.total) * 100) : 0;
+  const answering = ctx.mode === 'answering';
+  const firstOpen = p.sections.find(s => !s.complete) || null;
+  const started = p.answered > 0;
+  const fileMb = p.limits.fileBytes / 1048576;
+  const plural = (n, one, many) => n + ' ' + (n === 1 ? one : (many || one + 's'));
+  const rv = reportValues || null;
+  const rvFor = kind => (rv && rv.kind === kind ? rv : null);
+  const titleOf = view === 'section' && section ? section.title : view === 'confirm' ? 'Review and submit' : view === 'documents' ? 'Your documents' : view === 'clarify' ? 'Questions from the reviewers' : 'Welcome';
+  const firmName = p.firm.name || 'the review team';
+  const listWords = items => (items.length < 2 ? items.join('') : items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1]);
+  const docCount = p.documentsNeeded.reduce((n, g) => n + g.documents.length, 0);
+  const shelfFor = q => p.shelf.filter(d => !q.files.some(f => f.id === d.id));
+%><!doctype html>
+<html lang="en" class="page-standalone" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light">
+  <title>Questionnaire for <%= ctx.clientName %> · <%= titleOf %></title>
+  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/tprm-tokens.css">
+  <link rel="stylesheet" href="/tprm-vendor.css">
+  <script src="/tprm-vendor.js" defer></script>
+</head>
+<body class="vq-body">
+  <a class="vq-skip" href="#main">Skip to the content</a>
+
+  <%- include('partials/tprm_vendor_brandbar', { firm: p.firm, label: 'Secure questionnaire' }) %>
+
+  <% if (view !== 'start' || !answering) { %>
+  <header class="vq-top">
+    <div class="vq-wrap">
+      <h1 class="vq-title">Security questionnaire for <span data-vendor-client><%= ctx.clientName %></span></h1>
+      <p class="vq-top-meta"><span class="vq-due" data-vendor-deadline>Due <strong><%= fmtDay(ctx.expiresAt) %></strong></span><% if (answering) { %>. <span data-vendor-progress><%= p.answered %> of <%= p.total %> questions answered</span>. <span data-vendor-last-saved><%= p.lastSavedAt ? 'Last saved ' + fmtWhen(p.lastSavedAt) : 'Nothing saved yet' %></span><% } %>.</p>
+    </div>
+  </header>
+  <% } %>
+
+  <div class="vq-shell<%= answering ? '' : ' vq-shell--single' %>">
+    <% if (answering) { %>
+      <% const attr = v => String(v).replace(/&/g, '&amp;').replace(/"/g, '&#34;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+         const navOpen = (kind, cls, go, href, cur, extra) => onSection
+           ? '<button type="submit" form="' + FORM_ID + '" name="go" value="' + attr(go) + '" formnovalidate data-vendor-nav="' + kind + '" class="' + cls + '"' + (cur ? ' aria-current="page"' : '') + (extra || '') + '>'
+           : '<a data-vendor-nav="' + kind + '" class="' + cls + '" href="' + attr(href) + '"' + (cur ? ' aria-current="page"' : '') + (extra || '') + '>';
+         const navClose = onSection ? '</button>' : '</a>'; %>
+      <% const navItems = () => { %>
+        <li><%- navOpen('start', 'vq-nav-item' + (view === 'start' ? ' is-current' : ''), 'start', base, view === 'start') %><span class="vq-nav-label">Before you start</span><%- navClose %></li>
+        <li><%- navOpen('documents', 'vq-nav-item vq-nav-item--start' + (view === 'documents' ? ' is-current' : ''), 'documents', base + '?view=documents', view === 'documents') %><span class="vq-nav-label">Your documents</span><span class="vq-nav-count"><%= p.shelf.length %><span class="sr-only"> added</span></span><%- navClose %></li>
+        <% p.sections.forEach(s => { const cur = view === 'section' && section && section.index === s.index; %>
+          <li><%- navOpen('section', 'vq-nav-item' + (cur ? ' is-current' : '') + (s.complete ? ' is-done' : '') + (s.attention ? ' is-attention' : ''), goValue(s) || 'review', sectionHref(s.index), cur, ' data-vendor-section-link="' + attr(s.title) + '"') %>
+            <span class="vq-nav-label"><%= s.title %></span>
+            <span class="vq-nav-count"><%= s.answered %> of <%= s.total %><span class="sr-only"> answered<%= s.attention ? ', ' + plural(s.attention, 'question needs', 'questions need') + ' attention' : '' %><%= s.complete ? ', complete' : '' %></span></span>
+          <%- navClose %></li>
+        <% }) %>
+        <li><%- navOpen('review', 'vq-nav-item vq-nav-item--review' + (view === 'confirm' ? ' is-current' : ''), 'review', base + '?view=review', view === 'confirm') %><span class="vq-nav-label">Review and submit</span><%- navClose %></li>
+      <% } %>
+      <% if (onSection) { %>
+        <button type="submit" form="<%= FORM_ID %>" name="intent" value="save" class="vq-default-submit" tabindex="-1" aria-hidden="true" data-vendor-default-submit>Save</button>
+      <% } %>
+      <nav class="vq-side" aria-label="Sections">
+        <ol class="vq-nav"><% navItems() %></ol>
+      </nav>
+      <details class="vq-picker">
+        <summary class="vq-picker-summary">
+          <span class="vq-picker-now"><%= view === 'section' && section ? 'Section ' + section.index + ' of ' + p.sections.length + ': ' + section.title : titleOf %></span>
+          <span class="vq-picker-hint">All sections</span>
+        </summary>
+        <nav aria-label="Sections"><ol class="vq-nav"><% navItems() %></ol></nav>
+      </details>
+    <% } %>
+
+    <main class="vq-main" id="main" data-vendor-link-open data-vendor-mode="<%= ctx.mode %>" data-vendor-view="<%= view %>">
+      <% if (notice) { %>
+        <div class="vq-alert vq-alert--ok" role="status" data-vendor-notice><%= notice %></div>
+      <% } %>
+      <% if (errorList.length) { %>
+        <div class="vq-alert vq-alert--bad" role="alert" data-vendor-errors>
+          <p class="vq-alert-title">Nothing was saved. Please correct the following:</p>
+          <ul>
+            <% errorList.forEach(e => { const inHere = view === 'section' && section && section.questions.some(q => q.id === e.id); %><li><% if (e.id) { %><a href="<%= inHere ? '' : sectionHref(p.sectionOf.get(e.id) || 1) %>#q-<%= e.id %>"><%= e.id %></a>: <% } %><%= e.message %></li><% }) %>
+          </ul>
+        </div>
+      <% } %>
+
+      <% if (view === 'clarify' || openClarifications.length || answeredClarifications.length) { %>
+        <section class="vq-page" aria-labelledby="clarifications-title" data-vendor-clarifications>
+          <h2 class="vq-page-title" id="clarifications-title">Questions from the reviewers</h2>
+          <% if (openClarifications.length) { %>
+            <p class="vq-lead">The reviewers need a little more information about some of your answers. Answer each one below; each response is sent on its own.</p>
+          <% } %>
+          <% openClarifications.forEach(c => { %>
+            <form method="POST" action="<%= base %>/clarifications/<%= c.id %>" enctype="multipart/form-data" class="vq-item" data-vendor-clarification="<%= c.id %>">
+              <input type="hidden" name="_aft" value="<%= aft %>">
+              <p class="vq-item-ref">Question <%= c.question_id %><% if (c.raised_for) { %>. <span data-vendor-clarification-document>A document is needed.</span><% } %></p>
+              <p class="vq-item-text"><%= c.question %></p>
+              <% if (c.answer && c.answer.response) { %><p class="vq-item-sub vq-pre" data-vendor-clarify-answer>Your answer: <%= c.answerText ? c.answerText : p.responseLabels[c.answer.response] + (c.answer.detail ? ': ' + c.answer.detail : '') %></p><% } %>
+              <p class="vq-item-label">The reviewers asked on <%= fmtDay(c.asked_at) %></p>
+              <p class="vq-item-quote vq-pre"><%= c.body %></p>
+              <div class="vq-field">
+                <label class="vq-label" for="cr-<%= c.id %>">Your response</label>
+                <textarea class="vq-input vq-textarea" id="cr-<%= c.id %>" name="response" rows="4" maxlength="<%= p.limits.response %>" required></textarea>
+              </div>
+              <div class="vq-field">
+                <label class="vq-label" for="cf-<%= c.id %>">Attach a file <span class="vq-optional">optional, up to <%= fileMb %> MB</span></label>
+                <input class="vq-file-input" id="cf-<%= c.id %>" type="file" name="file">
+              </div>
+              <div class="vq-form-foot"><button class="vq-btn vq-btn--primary" type="submit" data-vendor-clarification-send>Send response</button></div>
+            </form>
+          <% }) %>
+          <% answeredClarifications.forEach(c => { %>
+            <div class="vq-item" data-vendor-clarification-answered="<%= c.id %>">
+              <p class="vq-item-ref">Question <%= c.question_id %>. Response sent; waiting for the reviewers.</p>
+              <p class="vq-item-text"><%= c.question %></p>
+              <p class="vq-item-label">The reviewers asked</p>
+              <p class="vq-item-quote vq-pre"><%= c.body %></p>
+              <p class="vq-item-label">You responded on <%= fmtDay(c.responded_at) %></p>
+              <p class="vq-item-quote vq-pre"><%= c.response %></p>
+              <% if (c.response_file_name) { %><p class="vq-item-sub">File: <span class="vq-file-name"><%= c.response_file_name %></span></p><% } %>
+            </div>
+          <% }) %>
+          <% if (view === 'clarify' && !openClarifications.length) { %>
+            <div class="vq-item" data-vendor-nothing-to-do>
+              <p class="vq-item-text">Nothing to answer right now</p>
+              <p class="vq-muted">Your questionnaire has been submitted. There is nothing for you to answer at the moment.</p>
+            </div>
+          <% } %>
+        </section>
+      <% } %>
+
+      <% if (view === 'start' && answering) { const n = p.counts; %>
+        <section class="vq-start" aria-labelledby="welcome-title" data-vendor-start-page>
+          <header class="vq-start-head">
+            <h1 class="vq-start-title" id="welcome-title" data-vendor-cover-title>Security questionnaire for <%= ctx.clientName %></h1>
+            <p class="vq-start-from">From <strong data-vendor-preparer><%= firmName %></strong>, on behalf of <span data-vendor-client><%= ctx.clientName %></span><% if (ctx.recipientName) { %>, for <strong data-vendor-recipient><%= ctx.recipientName %></strong><% } %></p>
+          </header>
+          <p class="vq-lead" data-vendor-deadline>Answer the questions section by section and submit them by <strong><%= fmtDay(ctx.expiresAt) %></strong>, when this link stops working. You can stop and return at any time.</p>
+          <dl class="vq-start-facts">
+            <div><dt>Questions</dt><dd data-vendor-counts data-vendor-questions-left="<%= p.total - p.answered %>"><%= plural(p.total, 'question') %> in <%= plural(p.sections.length, 'section') %><%= n.documents ? ', ' + n.documents + ' asking for a document' : '' %></dd></div>
+            <div><dt>Answered</dt><dd><span data-vendor-progress><%= p.answered %> of <%= p.total %> questions answered</span>. <span class="vq-muted" data-vendor-last-saved><%= p.lastSavedAt ? 'Last saved ' + fmtWhen(p.lastSavedAt) : 'Nothing saved yet' %></span></dd></div>
+            <% if (ctx.issuer) { %><div><dt>Questions about it</dt><dd data-vendor-contact><%= ctx.issuer.name ? ctx.issuer.name + ', ' : '' %><a href="mailto:<%= ctx.issuer.email %>"><%= ctx.issuer.email %></a></dd></div><% } %>
+          </dl>
+          <% if (p.coveredDocuments) { %><p data-vendor-report-covered>Your certificate or report covers the documents for <%= plural(p.coveredDocuments, 'question') %>, so they need none of their own.</p><% } %>
+          <% if (p.lastTime) { %><p class="vq-start-note" data-vendor-last-time-note>Some answers are filled in from your answers of <%= fmtDay(p.lastTime) %>, marked "From last time". Confirm each one is still correct, or change it.</p><% } %>
+          <% if (p.aiAddedByAnswer) { %><p class="vq-start-note" id="ai-services">An <strong>AI Services</strong> section has been added because you answered Yes to AIS-01.</p><% } %>
+          <div class="vq-cta">
+            <% if (p.sections.length) { %>
+              <a class="vq-btn vq-btn--primary vq-btn--lg" href="<%= sectionHref(started && firstOpen ? firstOpen.index : 1) %>" data-vendor-start><%= started ? (firstOpen ? 'Continue where you left off' : 'Go to the questions') : 'Start the questionnaire' %></a>
+            <% } %>
+            <a class="vq-btn vq-btn--secondary vq-btn--lg" href="<%= base %>?view=documents" data-vendor-documents-link>Your documents</a>
+            <% if (started) { %><a class="vq-btn vq-btn--quiet" href="<%= base %>?view=review">Review and submit</a><% } %>
+          </div>
+        </section>
+
+        <% if (docCount) { %>
+          <section class="vq-page vq-page--follow" aria-labelledby="ready-title" data-vendor-documents-needed>
+            <h2 class="vq-h2" id="ready-title">What to have ready</h2>
+            <p class="vq-lead">These are the documents the questions ask for. Add each file once on <a href="<%= base %>?view=documents">Your documents</a>, then choose it on every question it supports. If you do not have a file, you can name the document instead.</p>
+            <details class="vq-docs">
+              <summary class="vq-docs-summary">The documents we ask for (<%= docCount %>)</summary>
+              <% p.documentsNeeded.forEach(g => { %>
+                <h3 class="vq-docs-group"><%= g.group %></h3>
+                <ul class="vq-docs-list">
+                  <% g.documents.forEach(d => { %><li data-vendor-document-needed><%= d.name %> <span class="vq-muted">(<%= d.questions.join(', ') %>)</span></li><% }) %>
+                </ul>
+              <% }) %>
+            </details>
+          </section>
+        <% } %>
+
+        <% if (p.reports.enabled) { %>
+          <section class="vq-page vq-page--follow" id="reports" aria-labelledby="reports-title" data-vendor-reports>
+            <h2 class="vq-h2" id="reports-title">Your certificate or report <span class="vq-optional">optional, saves time</span></h2>
+            <p class="vq-lead">If you hold a current ISO 27001 certificate or a SOC 2 Type II report, add it here. Questions it covers will show "Covered by your report" and will not need separate evidence. Our reviewers check the report once, after you submit.</p>
+            <% if (p.reports.counts.total) { %>
+              <p class="vq-report-total" data-vendor-report-covers><%= 'Your ' + (p.reports.byKind.iso27001 && p.reports.byKind.soc2_type2 ? 'certificate and report cover' : p.reports.byKind.iso27001 ? 'certificate covers' : 'report covers') %> the evidence for <strong><%= plural(p.reports.counts.total, 'question') %></strong> in this questionnaire.</p>
+            <% } %>
+            <div class="vq-reports">
+              <% ['iso27001', 'soc2_type2'].forEach(kind => { const r = p.reports.byKind[kind]; const iso = kind === 'iso27001'; const v = rvFor(kind) || {}; %>
+                <article class="vq-report<%= r ? ' is-added' : '' %>" data-vendor-report="<%= kind %>">
+                  <h3 class="vq-h3"><%= iso ? 'ISO 27001 certificate' : 'SOC 2 Type II report' %><% if (r) { %> <span class="vq-done">Added</span><% } %></h3>
+                  <p class="vq-muted"><%= r ? 'Covers the evidence for ' + plural(p.reports.counts[kind], 'question') + '.' : 'Would cover the evidence for up to ' + plural(p.reports.would[kind], 'question') + '.' %></p>
+                  <% if (r) { %>
+                    <dl class="vq-report-facts">
+                      <div><dt><%= iso ? 'Certificate' : 'Report' %></dt><dd class="vq-file-name"><%= r.file ? r.file.name : '' %></dd></div>
+                      <% if (iso) { %>
+                        <div><dt>Statement of Applicability</dt><dd class="vq-file-name"><%= r.soaFile ? r.soaFile.name : '' %></dd></div>
+                        <div><dt>Expires</dt><dd><%= fmtDay(r.certificate_expires_on) %></dd></div>
+                        <div><dt>Scope</dt><dd class="vq-pre"><%= r.scope %></dd></div>
+                      <% } else { %>
+                        <div><dt>Period ended</dt><dd><%= fmtDay(r.period_end) %></dd></div>
+                        <div><dt>Bridge letter</dt><dd><%= r.bridgeFile ? '' : 'None' %><% if (r.bridgeFile) { %><span class="vq-file-name"><%= r.bridgeFile.name %></span><% } %></dd></div>
+                      <% } %>
+                    </dl>
+                  <% } %>
+                  <% if (r) { %><details class="vq-report-edit"<%= rvFor(kind) ? ' open' : '' %>>
+                    <summary class="vq-link-btn">Replace or change</summary><% } %>
+                    <form method="POST" action="<%= base %>/reports" enctype="multipart/form-data" class="vq-report-form" data-vendor-report-form="<%= kind %>">
+                      <input type="hidden" name="_aft" value="<%= aft %>">
+                      <input type="hidden" name="kind" value="<%= kind %>">
+                      <div class="vq-field">
+                        <label class="vq-label" for="rf-<%= kind %>"><%= iso ? 'Certificate' : 'SOC 2 Type II report' %><% if (r) { %> <span class="vq-optional">only to replace it</span><% } %></label>
+                        <input class="vq-file-input" id="rf-<%= kind %>" type="file" name="report_file"<%= r ? '' : ' required' %>>
+                      </div>
+                      <% if (iso) { %>
+                        <div class="vq-field">
+                          <label class="vq-label" for="rs-<%= kind %>">Statement of Applicability<% if (r) { %> <span class="vq-optional">only to replace it</span><% } %></label>
+                          <input class="vq-file-input" id="rs-<%= kind %>" type="file" name="soa_file"<%= r ? '' : ' required' %>>
+                        </div>
+                        <div class="vq-field vq-field--narrow">
+                          <label class="vq-label" for="re-<%= kind %>">Certificate expiry date</label>
+                          <input class="vq-input" id="re-<%= kind %>" type="date" name="expires_on" min="<%= today %>" value="<%= v.expires_on || (r ? r.certificate_expires_on : '') %>" required>
+                        </div>
+                        <div class="vq-field">
+                          <label class="vq-label" for="rc-<%= kind %>">Scope <span class="vq-optional">as written on the certificate</span></label>
+                          <textarea class="vq-input vq-textarea" id="rc-<%= kind %>" name="scope" rows="3" maxlength="<%= p.limits.scope %>" required><%= v.scope || (r ? r.scope : '') %></textarea>
+                        </div>
+                      <% } else { %>
+                        <div class="vq-field vq-field--narrow">
+                          <label class="vq-label" for="rp-<%= kind %>">Report period end date</label>
+                          <input class="vq-input" id="rp-<%= kind %>" type="date" name="period_end" max="<%= today %>" value="<%= v.period_end || (r ? r.period_end : '') %>" required>
+                        </div>
+                        <div class="vq-field">
+                          <label class="vq-label" for="rb-<%= kind %>">Bridge letter <span class="vq-optional">optional; useful if the period ended more than 12 months ago</span></label>
+                          <input class="vq-file-input" id="rb-<%= kind %>" type="file" name="bridge_file">
+                        </div>
+                      <% } %>
+                      <div class="vq-form-foot"><button class="vq-btn vq-btn--primary" type="submit" data-vendor-report-save="<%= kind %>"><%= r ? 'Save changes' : (iso ? 'Add certificate' : 'Add report') %></button></div>
+                    </form>
+                  <% if (r) { %></details><% } %>
+                  <% if (r) { %>
+                    <form method="POST" action="<%= base %>/reports" class="vq-report-remove">
+                      <input type="hidden" name="_aft" value="<%= aft %>">
+                      <input type="hidden" name="kind" value="<%= kind %>">
+                      <input type="hidden" name="remove" value="1">
+                      <button class="vq-link-btn vq-link-btn--danger" type="submit" data-vendor-report-remove="<%= kind %>">Remove <%= iso ? 'certificate' : 'report' %></button>
+                    </form>
+                  <% } %>
+                </article>
+              <% }) %>
+            </div>
+          </section>
+        <% } %>
+      <% } %>
+
+      <% if (view === 'section' && answering && section) { const s = section; const prev = p.sections[s.index - 2] || null; const next = p.sections[s.index] || null;
+           const stillNeeded = { evidence: 'a document for this answer.', explain: 'an explanation of your answer.', fields: 'each field of your answer.' };
+           const qn = qi => s.index + '.' + (qi + 1); %>
+        <section class="vq-section" data-vendor-section="<%= s.title %>">
+        <header class="vq-section-head">
+          <p class="vq-section-where">Section <%= s.index %> of <%= p.sections.length %></p>
+          <h2 class="vq-section-title" id="<%= s.slug %>"><%= s.title %></h2>
+          <% if (s.summary) { %><p class="vq-section-summary" data-vendor-section-summary><%= s.summary %></p><% } %>
+          <% const stillOpen = errorList.length ? 0 : s.questions.filter(q => q.problems.some(x => stillNeeded[x.kind])).length; %>
+          <p class="vq-section-progress"><%= s.answered %> of <%= s.total %> answered.<% if (stillOpen) { %> <span data-vendor-section-attention><%= plural(stillOpen, 'question still needs', 'questions still need') %> something before you can submit.</span><% } %><% if (s.aiAdded) { %> Added because you answered Yes to AIS-01.<% } %></p>
+        </header>
+
+        <form method="POST" action="<%= base %>/save" enctype="multipart/form-data" novalidate class="vq-form" id="<%= FORM_ID %>" data-vendor-answer-form>
+          <input type="hidden" name="_aft" value="<%= aft %>">
+          <input type="hidden" name="section" value="<%= s.index %>">
+          <% s.questions.forEach((q, qi) => { const v = q.value; const errs = errorsFor(q.id); const R = q.rules; const freeText = R.typed && R.type === 'free_text'; const legacy = !R.typed; const covered = q.badge.key === 'covered';
+               const required = !!R.evidenceMandatory && !covered; const needed = !errs.length ? q.problems.filter(x => stillNeeded[x.kind]) : [];
+               const docOpen = !!errs.length || needed.some(x => x.kind === 'evidence'); %>
+            <div class="vq-q<%= errs.length ? ' has-error' : '' %>" id="q-<%= q.id %>" role="group" aria-labelledby="qt-<%= q.id %>" data-vendor-question="<%= q.id %>" data-kind="<%= legacy ? 'legacy' : freeText ? 'text' : 'choice' %>"<% if (errs.length) { %> aria-invalid="true"<% } %>>
+              <span class="vq-q-num" aria-hidden="true"><%= qn(qi) %></span>
+              <div class="vq-q-body">
+              <p class="vq-q-text" id="qt-<%= q.id %>"><span class="sr-only">Question <%= qn(qi) %>: </span><%= q.question %></p>
+              <% if (q.guidance) { %><p class="vq-q-guidance" id="g-<%= q.id %>"><%= q.guidance %></p><% } %>
+              <% if (q.acronyms && q.acronyms.length) { %>
+                <details class="vq-what" data-vendor-what="<%= q.id %>"><summary class="vq-what-summary">What is <%= q.acronyms.map(a => a.term).join(', ') %>?</summary>
+                  <dl class="vq-what-list"><% q.acronyms.forEach(a => { %><div><dt><%= a.term %></dt><dd><%= a.meaning %></dd></div><% }) %></dl></details>
+              <% } %>
+              <% errs.forEach(e => { %><p class="vq-error" role="alert"><%= e.message %></p><% }) %>
+              <% needed.forEach(x => { %><p class="vq-needed">Still needed: <%= stillNeeded[x.kind] %></p><% }) %>
+              <% if (q.fromLastTime) { %>
+                <p class="vq-last" data-vendor-from-last-time>Filled in from your answers last time.
+                  <label class="vq-check"><input type="checkbox" name="confirm[<%= q.id %>]" value="1"<% if (v.confirm) { %> checked<% } %>> This answer is still correct</label></p>
+              <% } %>
+
+              <% if (freeText && R.fieldsOn === 'answer') { %>
+                <div class="vq-fields<%= R.fieldsOn === 'answer' ? ' vq-answer-text' : ' vq-yes' %>" data-vendor-fields="<%= q.id %>">
+                  <% R.fields.forEach(f => { const fid = 'f-' + q.id + '-' + f.key; const fv = (v.fields || {})[f.key] || ''; %>
+                    <div class="vq-field<%= f.kind === 'long' ? ' vq-field--wide' : '' %>"><label class="vq-label" for="<%= fid %>"><%= f.label %><% if (f.optional) { %> <span class="vq-optional">optional</span><% } %></label>
+                      <% if (f.kind === 'long') { %><textarea class="vq-input vq-textarea" id="<%= fid %>" name="f[<%= q.id %>][<%= f.key %>]" rows="3" maxlength="<%= f.max %>"><%= fv %></textarea>
+                      <% } else { %><input class="vq-input" id="<%= fid %>" name="f[<%= q.id %>][<%= f.key %>]" type="<%= f.kind === 'date' ? 'date' : 'text' %>"<% if (f.kind === 'number') { %> inputmode="decimal"<% } %> maxlength="<%= f.max %>" value="<%= fv %>"><% } %></div>
+                  <% }) %>
+                </div>
+                <label class="vq-check vq-na-toggle"><input data-vendor-na class="vq-na-input" type="checkbox" name="r[<%= q.id %>]" value="na"<% if (v.response === 'na') { %> checked<% } %>> This does not apply to us</label>
+              <% } else if (freeText) { %>
+                <div class="vq-field vq-answer-text">
+                  <label class="sr-only" for="t-<%= q.id %>">Your answer to question <%= qn(qi) %></label>
+                  <textarea class="vq-input vq-textarea" id="t-<%= q.id %>" name="t[<%= q.id %>]" rows="4" maxlength="<%= p.limits.detail %>"<% if (q.guidance) { %> aria-describedby="g-<%= q.id %>"<% } %>><%= v.answer_text || '' %></textarea>
+                </div>
+                <label class="vq-check vq-na-toggle"><input data-vendor-na class="vq-na-input" type="checkbox" name="r[<%= q.id %>]" value="na"<% if (v.response === 'na') { %> checked<% } %>> This does not apply to us</label>
+              <% } else { %>
+                <fieldset class="vq-choices">
+                  <legend class="sr-only">Your answer to question <%= qn(qi) %></legend>
+                  <% R.responses.forEach(r => { %>
+                    <label class="vq-choice"><input class="vq-choice-input" type="radio" id="r-<%= q.id %>-<%= r %>" name="r[<%= q.id %>]" value="<%= r %>"<% if (v.response === r) { %> checked<% } %><% if (!legacy && R.explainOn.includes(r)) { %> data-explain<% } %><% if (!legacy && R.evidenceOn.includes(r)) { %> data-evidence<% } %><% if (r === 'yes' && (R.fieldsOn === 'yes' || R.detailsOnYes)) { %> data-yes<% } %><% if (q.guidance) { %> aria-describedby="g-<%= q.id %>"<% } %>> <%= p.responseLabels[r] %></label>
+                  <% }) %>
+                </fieldset>
+                <% if (R.fieldsOn === 'yes') { %>
+                <div class="vq-fields<%= R.fieldsOn === 'answer' ? ' vq-answer-text' : ' vq-yes' %>" data-vendor-fields="<%= q.id %>">
+                  <% R.fields.forEach(f => { const fid = 'f-' + q.id + '-' + f.key; const fv = (v.fields || {})[f.key] || ''; %>
+                    <div class="vq-field<%= f.kind === 'long' ? ' vq-field--wide' : '' %>"><label class="vq-label" for="<%= fid %>"><%= f.label %><% if (f.optional) { %> <span class="vq-optional">optional</span><% } %></label>
+                      <% if (f.kind === 'long') { %><textarea class="vq-input vq-textarea" id="<%= fid %>" name="f[<%= q.id %>][<%= f.key %>]" rows="3" maxlength="<%= f.max %>"><%= fv %></textarea>
+                      <% } else { %><input class="vq-input" id="<%= fid %>" name="f[<%= q.id %>][<%= f.key %>]" type="<%= f.kind === 'date' ? 'date' : 'text' %>"<% if (f.kind === 'number') { %> inputmode="decimal"<% } %> maxlength="<%= f.max %>" value="<%= fv %>"><% } %></div>
+                  <% }) %>
+                </div>
+                <% } else if (R.detailsOnYes) { %>
+                <div class="vq-field vq-yes" data-vendor-yes-details="<%= q.id %>">
+                  <label class="vq-label" for="y-<%= q.id %>"><%= R.detailsOnYes %></label>
+                  <textarea class="vq-input vq-textarea" id="y-<%= q.id %>" name="y[<%= q.id %>]" rows="3" maxlength="<%= p.limits.detail %>"><%= v.yes_details || '' %></textarea>
+                </div>
+                <% } %>
+              <% } %>
+
+              <div class="vq-field vq-explain">
+                <label class="vq-label" for="d-<%= q.id %>"><%= legacy ? 'Details' : 'Explanation' %> <span class="vq-optional"><%= legacy ? 'needed for Partially, No and Not applicable' : freeText ? 'why this does not apply' : 'needed for ' + R.explainOn.map(x => p.responseLabels[x]).join(' and ') %></span></label>
+                <textarea class="vq-input vq-textarea" id="d-<%= q.id %>" name="d[<%= q.id %>]" rows="3" maxlength="<%= p.limits.detail %>"><%= v.detail %></textarea>
+              </div>
+
+              <% if (q.evidence || required || q.files.length || v.evidence_ref || legacy) { %>
+              <div class="vq-evidence">
+                <% if (covered) { %>
+                  <p class="vq-doc-line"><span data-vendor-evidence-covered><%= q.badge.label %></span>, so no document is needed here.</p>
+                <% } else if (q.evidence) { %>
+                  <p class="vq-doc-line"<% if (required) { %> data-vendor-evidence-required<% } %>><%= required ? 'Document for this answer' : 'Document, if you have one' %>: <%= q.evidence %><%= /[.!?]$/.test(q.evidence) ? '' : '.' %></p>
+                <% } else if (required) { %>
+                  <p class="vq-doc-line" data-vendor-evidence-required>This answer needs a supporting document.</p>
+                <% } %>
+                <% if (q.files.length) { %>
+                  <ul class="vq-files" data-vendor-files>
+                    <% q.files.forEach(f => { %>
+                      <li data-vendor-file="<%= f.id %>"><span class="vq-file-name"><%= f.name %></span> <span class="vq-muted"><%= sizeOf(f.size) %></span>
+                        <% if (!f.locked) { %><label class="vq-check vq-check--sm"><input type="checkbox" name="remove[<%= q.id %>]" value="<%= f.id %>"> Remove when I save</label><% } %></li>
+                    <% }) %>
+                  </ul>
+                <% } %>
+                <% if (v.evidence_ref && !q.files.length) { %><p class="vq-doc-named">Named: <%= v.evidence_ref %><%= v.evidence_date ? ', dated ' + fmtDay(v.evidence_date) : '' %></p><% } %>
+                <details class="vq-doc"<%= docOpen ? ' open' : '' %>>
+                  <summary class="vq-doc-summary"><%= q.files.length || v.evidence_ref ? 'Add another document or change it' : 'Add a document' %></summary>
+                  <% const choosable = shelfFor(q); if (choosable.length) { %>
+                    <fieldset class="vq-pick" data-vendor-pick="<%= q.id %>">
+                      <legend class="vq-label">Choose from your documents</legend>
+                      <% choosable.forEach(d => { %><label class="vq-check"><input type="checkbox" name="pick[<%= q.id %>]" value="<%= d.id %>"> <span><span class="vq-file-name"><%= d.name %></span><% if (d.description) { %> <span class="vq-muted"><%= d.description %></span><% } %></span></label><% }) %>
+                    </fieldset>
+                  <% } %>
+                  <p class="vq-pick-more"><button type="submit" form="<%= FORM_ID %>" name="go" value="documents" formnovalidate class="vq-link-btn" data-vendor-to-documents>Add files to your documents</button> <span class="vq-muted">saves this section first</span></p>
+                  <div class="vq-field vq-attach">
+                    <label class="vq-label" for="f-<%= q.id %>">Attach a file <span class="vq-optional">up to <%= fileMb %> MB</span></label>
+                    <input class="vq-file-input" id="f-<%= q.id %>" type="file" name="file__<%= q.id %>">
+                  </div>
+                  <div class="vq-row">
+                    <div class="vq-field"><label class="vq-label" for="ref-<%= q.id %>">Or name the document <span class="vq-optional">title, version or link</span></label>
+                      <input class="vq-input" id="ref-<%= q.id %>" name="ref[<%= q.id %>]" maxlength="<%= p.limits.evidenceRef %>" value="<%= v.evidence_ref %>"></div>
+                    <div class="vq-field"><label class="vq-label" for="date-<%= q.id %>">Document date</label>
+                      <input class="vq-input" id="date-<%= q.id %>" type="date" name="date[<%= q.id %>]" max="<%= today %>" value="<%= v.evidence_date %>"></div>
+                  </div>
+                </details>
+              </div>
+              <% } %>
+              </div>
+            </div>
+          <% }) %>
+
+          <div class="vq-actions">
+            <% if (prev) { %><button class="vq-btn vq-btn--quiet" type="submit" name="go" value="<%= goValue(prev) %>" formnovalidate data-vendor-prev>Previous section</button><% } else { %><button class="vq-btn vq-btn--quiet" type="submit" name="go" value="start" formnovalidate data-vendor-prev>Before you start</button><% } %>
+            <span class="vq-actions-gap"></span>
+            <button class="vq-btn vq-btn--quiet" type="submit" name="intent" value="save" data-vendor-save>Save</button>
+            <button class="vq-btn vq-btn--primary" type="submit" name="intent" value="next" data-vendor-next><%= next ? 'Save and continue' : 'Save and review' %></button>
+          </div>
+        </form>
+
+        <p class="vq-refs">References for this section: <%= s.questions.map((q, qi) => qn(qi) + ' ' + q.id + (q.theme ? ' (' + q.theme + ')' : '')).join(', ') %>.</p>
+        </section>
+      <% } %>
+
+      <% if (view === 'documents' && answering) { %>
+        <section class="vq-page" aria-labelledby="documents-title" data-vendor-documents>
+          <h2 class="vq-page-title" id="documents-title">Your documents</h2>
+          <p class="vq-lead">Add each file once, with a short description of what it shows. Then, on each question it supports, choose it under "Add a document". <%= ctx.clientName %>'s reviewers see the files you choose for your answers.</p>
+          <% if (p.shelf.length) { %>
+            <ul class="vq-shelf" data-vendor-shelf>
+              <% p.shelf.forEach(d => { %>
+                <li class="vq-shelf-item" data-vendor-shelf-item="<%= d.id %>">
+                  <p class="vq-shelf-name"><span class="vq-file-name"><%= d.name %></span> <span class="vq-muted"><%= sizeOf(d.size) %>, added <%= fmtDay(d.uploadedAt) %></span></p>
+                  <p class="vq-shelf-use vq-muted"><%= d.report ? 'Used for your certificate or report. ' : '' %><%= d.answers ? 'Chosen for ' + plural(d.answers, 'answer') + '.' : (d.report ? '' : 'Not chosen for any answer yet.') %><%= d.locked ? ' The reviewers are using it.' : '' %></p>
+                  <form method="POST" action="<%= base %>/documents/<%= d.id %>" class="vq-shelf-form">
+                    <input type="hidden" name="_aft" value="<%= aft %>">
+                    <label class="sr-only" for="desc-<%= d.id %>">Description of <%= d.name %></label>
+                    <input class="vq-input" id="desc-<%= d.id %>" name="description" maxlength="<%= p.limits.description %>" value="<%= d.description %>" placeholder="What it shows, for example the policy and its version">
+                    <button class="vq-btn vq-btn--secondary" type="submit" data-vendor-describe="<%= d.id %>">Save description</button>
+                  </form>
+                  <% if (d.deletable) { %>
+                    <form method="POST" action="<%= base %>/documents/<%= d.id %>" class="vq-shelf-delete">
+                      <input type="hidden" name="_aft" value="<%= aft %>">
+                      <input type="hidden" name="delete" value="1">
+                      <button class="vq-link-btn vq-link-btn--danger" type="submit" data-vendor-delete-document="<%= d.id %>">Delete this document</button>
+                    </form>
+                  <% } %>
+                </li>
+              <% }) %>
+            </ul>
+          <% } else { %>
+            <p class="vq-muted" data-vendor-shelf-empty>No documents yet.</p>
+          <% } %>
+          <form method="POST" action="<%= base %>/documents" enctype="multipart/form-data" class="vq-shelf-add" data-vendor-add-documents>
+            <input type="hidden" name="_aft" value="<%= aft %>">
+            <h3 class="vq-h3">Add documents <span class="vq-optional">up to 3 at a time, <%= fileMb %> MB each</span></h3>
+            <% [1, 2, 3].forEach(n => { %>
+              <div class="vq-row vq-shelf-row">
+                <div class="vq-field"><label class="vq-label" for="doc-file-<%= n %>">File <%= n %></label>
+                  <input class="vq-file-input" id="doc-file-<%= n %>" type="file" name="doc_file_<%= n %>"></div>
+                <div class="vq-field"><label class="vq-label" for="doc-desc-<%= n %>">What it shows <span class="vq-optional">optional</span></label>
+                  <input class="vq-input" id="doc-desc-<%= n %>" name="desc_<%= n %>" maxlength="<%= p.limits.description %>"></div>
+              </div>
+            <% }) %>
+            <div class="vq-form-foot"><button class="vq-btn vq-btn--primary" type="submit" data-vendor-documents-save>Add these documents</button></div>
+          </form>
+          <p class="vq-back"><a href="<%= started && firstOpen ? sectionHref(firstOpen.index) : sectionHref(1) %>">Back to the questions</a></p>
+        </section>
+      <% } %>
+
+      <% if (view === 'confirm' && answering) { const ready = !p.problems.length; %>
+        <section class="vq-page" aria-labelledby="confirm-title" data-vendor-confirm>
+          <h2 class="vq-page-title" id="confirm-title">Review and submit</h2>
+          <% if (!ready) { %>
+            <p class="vq-lead" data-vendor-problem-count><%= plural(p.problems.length, 'item needs', 'items need') %> attention before you can submit. Your answers so far are saved.</p>
+          <% } else { %>
+            <p class="vq-lead" data-vendor-ready>All <%= p.total %> questions are answered. Once you submit, your answers can no longer be changed.</p>
+          <% } %>
+          <table class="vq-table">
+            <thead><tr><th scope="col">Section</th><th scope="col" class="vq-num">Answered</th><th scope="col">Still to do</th></tr></thead>
+            <tbody>
+              <% p.sections.forEach(s => { const left = s.total - s.answered; %>
+                <tr data-vendor-review-section="<%= s.title %>">
+                  <td><a href="<%= sectionHref(s.index) %>"><%= s.title %></a></td>
+                  <td class="vq-num"><%= s.answered %> of <%= s.total %></td>
+                  <td class="<%= s.complete ? 'vq-done' : s.attention ? 'vq-attention' : 'vq-muted' %>"><%= s.complete ? 'Complete' : [left ? left + ' unanswered' : null, s.attention ? plural(s.attention, 'needs', 'need') + ' attention' : null].filter(Boolean).join(', ') %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+          <% if (!ready) { %>
+            <h3 class="vq-h3">What is missing</h3>
+            <% const kindWord = { unanswered: 'not answered', evidence: 'need a document', explain: 'need an explanation', fields: 'need details', confirm: 'to confirm' };
+               const groups = p.sections.map(s => ({ s, items: p.problems.filter(x => x.section === s.index) })).filter(g => g.items.length); %>
+            <div class="vq-missing-groups" data-vendor-problems>
+              <% groups.forEach((g, gi) => { const counts = {}; g.items.forEach(x => { counts[x.kind] = (counts[x.kind] || 0) + 1; }); const urgent = g.items.some(x => x.kind !== 'unanswered'); %>
+                <details class="vq-missing-group"<%= urgent || gi < 2 ? ' open' : '' %>>
+                  <summary><span class="vq-missing-title"><%= g.s.title %></span> <span class="vq-missing-count"><%= Object.entries(counts).map(([k, n]) => n + ' ' + (n === 1 ? kindWord[k].replace(/^need /, 'needs ') : kindWord[k])).join(', ') %></span></summary>
+                  <ul class="vq-missing">
+                    <% g.items.forEach(x => { %><li data-vendor-problem="<%= x.id %>" data-vendor-problem-kind="<%= x.kind %>"><a href="<%= sectionHref(x.section, 'q-' + x.id) %>"><%= questionText(x.id) %></a> <span class="vq-muted"><%= x.id %>.</span> <span class="vq-missing-why"><%= x.message %></span></li><% }) %>
+                  </ul>
+                </details>
+              <% }) %>
+            </div>
+            <div class="vq-cta"><a class="vq-btn vq-btn--primary" href="<%= sectionHref(p.problems[0].section, 'q-' + p.problems[0].id) %>" data-vendor-back>Go to the first one</a></div>
+          <% } else { %>
+            <form method="POST" action="<%= base %>/submit" class="vq-submit" data-vendor-submit-form>
+              <input type="hidden" name="_aft" value="<%= aft %>">
+              <label class="vq-check vq-check--confirm"><input type="checkbox" name="confirm_submit" value="1" required data-vendor-submit-confirm> I confirm these answers are accurate and complete to the best of my knowledge, and that they can be shared with <%= ctx.clientName %>.</label>
+              <div class="vq-form-foot">
+                <a class="vq-btn vq-btn--quiet" href="<%= sectionHref(1) %>">Go back to the questions</a>
+                <button class="vq-btn vq-btn--primary vq-btn--lg" type="submit" data-vendor-submit>Submit answers to <%= ctx.clientName %></button>
+              </div>
+            </form>
+          <% } %>
+        </section>
+      <% } %>
+
+    </main>
+  </div>
+  <%- include('partials/tprm_vendor_footer', { firm: p.firm, expiresAt: answering ? fmtDay(ctx.expiresAt) : null, note: 'This page is private to you. Do not share the link.' }) %>
+</body>
+</html>

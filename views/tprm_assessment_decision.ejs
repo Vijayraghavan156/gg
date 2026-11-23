@@ -1,0 +1,55 @@
+<%
+  const dp = decisionPanel;
+  const dcsrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const dWhen = d => tpf.dayTime(d) || '-';
+  const dBase = '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id + '/assessments/' + assessment.id + '/recommendations';
+%>
+<div id="client-decision" data-tprm-decision-step>
+<% if (dp.informationRequest) { const q = dp.informationRequest; %>
+  <div class="panel" data-tprm-information-requested>
+    <div class="panel-head"><h2>Client requested more information</h2><span class="meta">Version <%= q.version %></span></div>
+    <div class="panel-pad">
+      <div class="meta tpu-mb-6"><%= q.decided_by_name || 'The client decision owner' %> · <%= dWhen(q.decided_at) %></div>
+      <div class="tprm-pre" data-tprm-information-request-text><%= q.rationale %></div>
+    </div>
+    <% if (dp.canStartRevision) { %>
+      <form method="POST" action="<%= dBase %>/new-version" class="panel-pad tprm-divide tprm-form-stack" data-tprm-start-revision-form>
+        <input type="hidden" name="_csrf" value="<%= dcsrf %>">
+        <label class="label" for="revision-reason">Reason for the revised version</label>
+        <textarea class="input" id="revision-reason" name="reason" rows="2" maxlength="1000" required>The client asked for more information.</textarea>
+        <div class="tprm-actions-split">
+          <span class="meta">Starts version <%= q.version + 1 %> as a draft from the issued content. Version <%= q.version %> stays issued until the new one is issued.</span>
+          <button class="btn btn-primary" type="submit" data-tprm-start-revision>Start revised recommendation</button>
+        </div>
+      </form>
+    <% } else { %>
+      <div class="panel-pad meta tprm-divide">A consultant starts a revised recommendation from here.</div>
+    <% } %>
+  </div>
+<% } %>
+
+<div class="panel" data-tprm-client-decisions>
+  <div class="panel-head"><h2>Client decision</h2>
+    <% if (dp.approval) { %><%- include('partials/tprm_status', { text: dp.approval.label, tone: dp.approval.tone, attrs: 'data-tprm-approval-state="' + dp.approval.state + '"' }) %><% } %></div>
+  <% if (!dp.decisions.length) { %>
+    <div class="panel-pad meta" data-tprm-no-decision>
+      <% if (assessment.status === 'recommendation_issued') { %>Waiting for <%= assessment.client_decision_owner_name || 'the client decision owner' %> to decide in the client portal.
+      <% } else { %>The client decision owner decides once a recommendation is issued.
+      <details class="tprm-how"><summary>How this works</summary>Firm users never record the client's decision.</details><% } %>
+    </div>
+  <% } else { %>
+    <% dp.decisions.forEach(d => { %>
+      <div class="panel-pad tprm-divide" data-tprm-client-decision="<%= d.id %>" data-tprm-client-decision-outcome="<%= d.outcome %>">
+        <div class="tprm-aw-between-wrap">
+          <strong><%= dp.labels[d.outcome] %></strong>
+          <span class="meta">On version <%= d.version %> · <%= d.decided_by_name || 'Client decision owner' %> · <%= dWhen(d.decided_at) %></span>
+        </div>
+        <% if (d.diverges) { %>
+          <div class="tpu-mt-6"><%- include('partials/tprm_status', { text: 'Differs from the recommendation (' + dp.labels[d.recommended_outcome] + '). Risk accepted until ' + (tpf.day(d.risk_acceptance_until) || '-') + '.', tone: 'attention', attrs: 'data-tprm-decision-diverges' }) %></div>
+        <% } %>
+        <% if (d.rationale) { %><div class="tpu-pre tpu-mt-6"><%= d.rationale %></div><% } %>
+      </div>
+    <% }) %>
+  <% } %>
+</div>
+</div>

@@ -1,0 +1,66 @@
+<%- include('partials/header', { title: 'Criticality model · Third-party risk', user, active }) %>
+<% const fmt = d => d ? tpf.day(d) : ''; %>
+<% const statusTone = s => s === 'active' ? 'good' : 'quiet'; %>
+<div class="page-head" data-tprm-criticality>
+  <div>
+    <a class="text-xs tpu-back" href="/tprm">← Third-party risk clients</a>
+    <h1 class="page-title tpu-mt-6">Criticality model</h1>
+    <div class="page-subtitle">Set the questions that decide a third party's tier, and how often each tier is reassessed, for every client of the firm.</div>
+  </div>
+  <% if (!canEdit) { %>
+    <%- include('partials/tprm_status', { text: 'Read only · managers change the model', attrs: 'data-tprm-criticality-readonly' }) %>
+  <% } else if (draft) { %>
+    <a class="btn btn-primary" href="/tprm/settings/criticality/versions/<%= draft.id %>" data-tprm-continue-draft>Continue draft version <%= draft.version %></a>
+  <% } else { %>
+    <form method="POST" action="/tprm/settings/criticality/drafts" class="tpu-m-0">
+      <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+      <button class="btn btn-primary" type="submit" data-tprm-new-version>New version</button>
+    </form>
+  <% } %>
+</div>
+
+<% if (!activeVersion) { %>
+  <div class="panel empty-state">No active version.<%= canEdit ? ' Create a new version and activate it.' : ' A manager needs to activate one.' %></div>
+<% } else { %>
+<div class="tpu-split tprm-criticality-grid">
+  <div class="panel" data-tprm-active-version="<%= activeVersion.version %>">
+    <div class="panel-head">
+      <h2>Active version <%= activeVersion.version %></h2>
+      <span class="meta">Active since <%= fmt(activeVersion.activatedAt) %><%= activeVersion.activatedByName ? ' · ' + activeVersion.activatedByName : '' %></span>
+    </div>
+    <%- include('tprm_criticality_parts', { part: 'questions', model: activeVersion }) %>
+  </div>
+  <div class="tpu-stack-14">
+    <div class="panel">
+      <div class="panel-head"><h2>How scoring works</h2></div>
+      <%- include('tprm_criticality_parts', { part: 'example', model: activeVersion }) %>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Reassessment intervals</h2></div>
+      <%- include('tprm_criticality_parts', { part: 'intervals', model: activeVersion }) %>
+    </div>
+  </div>
+</div>
+<% } %>
+
+<% if (canEdit) { %>
+<div class="panel tpu-mt-14" data-tprm-version-history>
+  <div class="panel-head"><h2>Version history</h2><span class="meta"><%= versions.length %></span></div>
+  <table class="t">
+    <thead><tr><th>Version</th><th>Status</th><th>Created</th><th>Activated</th><th>Retired</th></tr></thead>
+    <tbody>
+      <% versions.forEach(v => { %>
+        <tr data-version-row="<%= v.version %>">
+          <td><a href="/tprm/settings/criticality/versions/<%= v.id %>">Version <%= v.version %></a></td>
+          <td><%- include('partials/tprm_status', { text: v.status[0].toUpperCase() + v.status.slice(1), tone: statusTone(v.status) }) %></td>
+          <td><%= fmt(v.createdAt) %><%= v.createdByName ? ' · ' + v.createdByName : (v.createdBy ? '' : ' · starter model') %></td>
+          <td><%= fmt(v.activatedAt) %><%= v.activatedByName ? ' · ' + v.activatedByName : '' %></td>
+          <td><%= fmt(v.retiredAt) %><%= v.retiredByName ? ' · ' + v.retiredByName : '' %></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  <div class="panel-pad meta">Old versions are kept. Third parties keep the tier and version they were scored under until their next assessment.</div>
+</div>
+<% } %>
+<%- include('partials/footer') %>

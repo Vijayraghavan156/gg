@@ -1,0 +1,4 @@
+<% Object.assign(actionLabels, { 'third_party.conditions_met': 'All conditions met' }); %>
+<% if (typeof approval !== 'undefined' && approval && approval.conditions) { const cs = approval.conditions; %>
+  <span class="tprm-fact"><%- include('partials/tprm_status', { text: cs.label, tone: cs.state === 'overdue' ? 'problem' : cs.state === 'met' ? 'good' : 'quiet', attrs: 'data-tprm-conditions-state="' + cs.state + '"' }) %></span>
+<% } %>

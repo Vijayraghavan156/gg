@@ -1,0 +1,20 @@
+<%
+  const previewQuery = typeof clientPreview !== 'undefined' && clientPreview ? '&preview=client' : '';
+  const currentPortalView = typeof portalView !== 'undefined' ? portalView : 'home';
+  const portalHref = view => `/workspaces/${ws.id}/client-portal?view=${view}${previewQuery}`;
+  const portalItems = [
+    { key: 'home', label: 'Home', href: portalHref('home'), icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>' },
+    { key: 'actions', label: 'My actions', href: portalHref('actions'), icon: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>' },
+    { key: 'progress', label: 'Progress', href: portalHref('progress'), icon: '<path d="M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14"/><path d="M8 7h8M8 11h8M8 15h5"/>' },
+  ];
+  if (!(typeof clientPreview !== 'undefined' && clientPreview)) portalItems.push({key:'updates',label:'Updates',href:`/workspaces/${ws.id}/client-portal/updates`,icon:'<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/>'});
+  // Third-party risk is its own service: listed only for client users of a client with TPRM switched on.
+  if (typeof tpPortalEnabled !== 'undefined' && tpPortalEnabled === true && !(typeof clientPreview !== 'undefined' && clientPreview)) portalItems.push({key:'third-party-risk',label:'Third-party risk',href:`/workspaces/${ws.id}/client-portal/third-party-risk`,icon:'<path d="M12 3 4 6v6c0 5 3.4 8.2 8 9 4.6-.8 8-4 8-9V6l-8-3Z"/><path d="M8 12h8M12 8v8"/>'});
+%>
+<div class="nav-group-label">Your engagement</div>
+<% portalItems.forEach(item => { %>
+  <a href="<%= item.href %>" class="nav-item <%= currentPortalView === item.key ? 'active' : '' %>"<% if (currentPortalView === item.key) { %> aria-current="page"<% } %>>
+    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><%- item.icon %></svg>
+    <span class="nav-item-text"><%= item.label %></span>
+  </a>
+<% }) %>

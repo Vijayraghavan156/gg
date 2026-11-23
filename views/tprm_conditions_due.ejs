@@ -1,0 +1,47 @@
+<%- include('partials/header', { title: 'Conditions due · Third-party risk', user, active }) %>
+<%
+  const lists = [
+    { key: 'overdue', title: 'Overdue', rows: due.overdue, empty: 'No condition is overdue.' },
+    { key: 'due-soon', title: 'Due within ' + due.dueSoonDays + ' days', rows: due.dueSoon, empty: 'No condition falls due in the next ' + due.dueSoonDays + ' days.' },
+    { key: 'awaiting', title: 'Awaiting verification', rows: due.awaiting, empty: 'No other proof is waiting for verification.' },
+  ];
+  const L = locals.lq || { rows: l => l || [], th: (k, t) => '<th>' + t + '</th>', row: () => '', form: () => '' };
+  const txt = r => [r.third_party_name, r.client_name, r.description].filter(Boolean).join(' ');
+  const allRows = lists.reduce((n, l) => n + l.rows.length, 0);
+  const shownRows = lists.reduce((n, l) => n + L.rows(l.rows, txt).length, 0);
+%>
+<div class="page-head" data-tprm-conditions-due>
+  <div>
+    <h1 class="page-title">Conditions due</h1>
+    <div class="page-subtitle">Follow up each condition below until it is verified or waived.
+      <details class="tprm-how"><summary>How this works</summary>Conditions the client decided with that are not verified or waived yet, across the clients you can reach. A condition is overdue once its due date has passed, in the client's time zone.</details></div>
+  </div>
+</div>
+<%- include('partials/tprm_home_tabs', { current: 'conditions' }) %>
+<% if (allRows) { %><%- L.form({ placeholder: 'Search a third party, client or condition', shown: shownRows, total: allRows }) %><% } %>
+
+<% lists.forEach((l, i) => { %>
+<div class="panel<%= i ? ' tpu-mt-14' : '' %>" data-tprm-conditions-list="<%= l.key %>">
+  <div class="panel-head"><h2><%= l.title %></h2><span class="meta"><%= l.rows.length %></span></div>
+  <% if (!l.rows.length) { %>
+    <div class="panel-pad meta" data-tprm-conditions-list-empty><%= l.empty %></div>
+  <% } else { %>
+    <div class="table-scroll"><table class="t" data-tp-list>
+      <thead><tr><%- L.th('third_party', 'Third party') %><%- L.th('client', 'Client') %><th>Condition</th><th>Owner</th><%- L.th('due', 'Due') %><th>Status</th></tr></thead>
+      <tbody>
+      <% L.rows(l.rows, txt).forEach(r => { %>
+        <tr <%- L.row(r, txt) %> data-tprm-conditions-row="<%= r.id %>">
+          <td><a href="/tprm/clients/<%= r.workspace_id %>/third-parties/<%= r.third_party_id %>/assessments/<%= r.assessment_id %>?step=decision#conditions"><strong><%= r.third_party_name %></strong></a></td>
+          <td><%= r.client_name %></td>
+          <td>Condition <%= r.position %> <span class="meta text-xs"><%= String(r.description).slice(0, 120) %></span></td>
+          <td><%= C.OWNER_LABELS[r.owner] %></td>
+          <td><%= tpf.day(r.due_date) %><% if (r.state.overdue) { %> <%- include('partials/tprm_status', { text: 'Overdue', tone: 'problem' }) %><% } %></td>
+          <td><%- include('partials/tprm_status', { text: r.state.label, tone: r.state.awaitingVerification ? 'attention' : 'quiet' }) %><% if (r.pending_since) { %> <span class="meta text-xs">since <%= tpf.day(r.pending_since) %></span><% } %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+</div>
+<% }) %>
+<%- include('partials/footer') %>

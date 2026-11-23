@@ -1,0 +1,43 @@
+<%- include('partials/header', { title: 'Activate version ' + model.version + ' · Third-party risk', user, active }) %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; %>
+<div class="page-head" data-tprm-criticality-activate="<%= model.version %>">
+  <div>
+    <a class="text-xs tpu-back" href="/tprm/settings/criticality/versions/<%= model.id %>">← Back to draft version <%= model.version %></a>
+    <h1 class="page-title tpu-mt-6">Activate version <%= model.version %></h1>
+    <div class="page-subtitle">Check the changes, then activate: new assessments will be scored with version <%= model.version %><%= activeVersion ? ', and version ' + activeVersion.version + ' will be retired' : '' %>.</div>
+    <details class="tprm-how"><summary>How this works</summary>
+      <p>Third parties already scored keep their tier and version until their next assessment.</p>
+    </details>
+  </div>
+</div>
+
+<% if (errors.length) { %>
+  <div class="callout tpu-mb-14 tpu-problem-edge" role="alert" data-tprm-criticality-errors>
+    <div class="callout-title tpu-problem-text">This draft cannot be activated yet</div>
+    <ul class="tpu-list-pad"><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+  </div>
+<% } %>
+
+<div class="panel tpu-mb-14" data-tprm-criticality-changes>
+  <div class="panel-head"><h2>Changes from version <%= activeVersion ? activeVersion.version : '-' %></h2><span class="meta"><%= changes.length %></span></div>
+  <% if (!changes.length) { %>
+    <div class="panel-pad meta">No changes: this draft is the same as the active version.</div>
+  <% } else { %>
+    <ul class="panel-pad tprm-crit-changes"><% changes.forEach(c => { %><li><%= c %></li><% }) %></ul>
+  <% } %>
+</div>
+
+<div class="tpu-split tprm-criticality-grid">
+  <div class="panel"><div class="panel-head"><h2>Questions</h2><span class="meta"><%= model.questions.length %></span></div>
+    <%- include('tprm_criticality_parts', { part: 'questions', model }) %>
+  </div>
+  <div class="tpu-stack-14">
+    <div class="panel"><div class="panel-head"><h2>Reassessment intervals</h2></div><%- include('tprm_criticality_parts', { part: 'intervals', model }) %></div>
+    <form method="POST" action="/tprm/settings/criticality/versions/<%= model.id %>/activate" class="panel panel-pad tpu-m-0" data-tprm-activate-form>
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <input type="hidden" name="row_version" value="<%= model.rowVersion %>">
+      <button class="btn btn-primary tprm-crit-full" type="submit" data-tprm-activate <%= errors.length ? 'disabled' : '' %>>Activate version <%= model.version %></button>
+    </form>
+  </div>
+</div>
+<%- include('partials/footer') %>

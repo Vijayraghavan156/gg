@@ -1,0 +1,61 @@
+<%- include('partials/header', { title: 'Exit plan · ' + service.description + ' · ' + thirdParty.name, user, active }) %>
+<%- include('tprm_client_nav', { tpClient, section: 'register', canManage, canSettings }) %>
+<%
+  const v = values || {};
+  const back = '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id + '#exit-plans';
+%>
+<div class="panel tpu-narrow" data-tprm-exit-plan-page="<%= service.id %>">
+  <div class="panel-head">
+    <h2>Exit plan · <%= service.description %></h2>
+    <%- include('partials/tprm_status', { text: complete ? 'Complete' : (plan ? 'Incomplete' : 'Not recorded'), tone: complete ? 'good' : 'attention', attrs: 'data-tprm-exit-plan-state="' + (complete ? 'complete' : (plan ? 'incomplete' : 'none')) + '"' }) %>
+  </div>
+  <div class="panel-pad meta tpu-rule-bottom">
+    <%= thirdParty.name %><%= service.material ? ' · Material service' : ' · Not marked material' %>.
+    <% if (!complete) { %><span data-tprm-exit-plan-missing>Missing: <%= missing.join(', ').toLowerCase() %>.</span><% } %>
+    <% if (plan && plan.updated_at) { %> Last saved by <%= plan.updated_by_name || 'a firm user' %> on <%= tpf.day(plan.updated_at) %>.<% } %>
+    <details class="tprm-how"><summary>How this works</summary>A checklist, not a score: the plan is complete when the alternative provider, data return and deletion, time to switch and the date it was last tested or reviewed are all filled.</details>
+  </div>
+  <% if (canManage) { %>
+  <form method="POST" action="/tprm/clients/<%= tpClient.id %>/third-parties/<%= thirdParty.id %>/services/<%= service.id %>/exit-plan" class="panel-pad tprm-form-cols" data-tprm-exit-plan-form>
+    <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+    <input type="hidden" name="row_version" value="<%= rowVersion %>">
+    <% if (errors && errors.length) { %>
+      <div class="callout tpu-span-all tpu-problem-edge" role="alert" data-tprm-form-errors>
+        <div class="callout-title tpu-problem-text">Nothing was saved</div>
+        <ul class="tpu-list"><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+      </div>
+    <% } %>
+    <div class="tpu-span-all"><label class="label" for="ep-alt">Alternative provider</label>
+      <textarea class="input" id="ep-alt" name="alternative_provider" rows="2" maxlength="<%= EP.LIMITS.alternative %>"><%= v.alternative_provider || '' %></textarea></div>
+    <div class="tpu-span-all"><label class="label" for="ep-data">Data return and deletion</label>
+      <textarea class="input" id="ep-data" name="data_return" rows="3" maxlength="<%= EP.LIMITS.dataReturn %>"><%= v.data_return || '' %></textarea></div>
+    <div><label class="label" for="ep-time">Time to switch</label>
+      <div class="tprm-inline-pair">
+        <input class="input tprm-max-110" id="ep-time" name="switch_time" type="number" min="1" max="<%= EP.LIMITS.switchMax %>" value="<%= v.switch_time == null ? '' : v.switch_time %>">
+        <select class="select" name="switch_unit" aria-label="Unit">
+          <option value="">-</option>
+          <% EP.SWITCH_UNITS.forEach(u => { %><option value="<%= u %>" <%= v.switch_unit === u ? 'selected' : '' %>><%= EP.SWITCH_UNIT_LABELS[u] %></option><% }) %>
+        </select>
+      </div></div>
+    <div><label class="label" for="ep-tested">Date last tested or reviewed</label>
+      <input class="input" id="ep-tested" name="last_tested_on" type="date" value="<%= v.last_tested_on || '' %>"></div>
+    <div class="tpu-span-all"><label class="label" for="ep-notes">Notes</label>
+      <textarea class="input" id="ep-notes" name="notes" rows="3" maxlength="<%= EP.LIMITS.notes %>"><%= v.notes || '' %></textarea></div>
+    <div class="tpu-span-all tprm-form-end">
+      <a class="btn btn-ghost" href="<%= back %>">Cancel</a>
+      <button class="btn btn-primary" type="submit">Save exit plan</button>
+    </div>
+  </form>
+  <% } else if (plan) { %>
+  <div class="panel-pad tprm-stack-10">
+    <div><div class="label">Alternative provider</div><div class="tpu-pre"><%= plan.alternative_provider || '-' %></div></div>
+    <div><div class="label">Data return and deletion</div><div class="tpu-pre"><%= plan.data_return || '-' %></div></div>
+    <div><div class="label">Time to switch</div><div><%= plan.switch_time ? plan.switch_time + ' ' + EP.SWITCH_UNIT_LABELS[plan.switch_unit] : '-' %></div></div>
+    <div><div class="label">Date last tested or reviewed</div><div><%= tpf.day(plan.last_tested_on) || '-' %></div></div>
+    <div><div class="label">Notes</div><div class="tpu-pre"><%= plan.notes || '-' %></div></div>
+  </div>
+  <% } else { %>
+  <div class="panel-pad meta">No exit plan recorded.</div>
+  <% } %>
+</div>
+<%- include('partials/footer') %>

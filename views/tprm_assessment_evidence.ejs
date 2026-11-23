@@ -1,0 +1,103 @@
+<%
+  const ep = evidencePanel;
+  Object.assign(actionLabels, ep.actionLabels);
+  const evBase = '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id + '/assessments/' + assessment.id;
+  const evCsrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const evWhen = d => tpf.dayTime(d) || '-';
+  const evSize = n => tpf.fileSize(Number(n) || 0);
+  const released = ep.evidence.filter(e => e.released_to_client).length;
+%>
+<div class="panel" id="evidence" data-tprm-evidence>
+  <div class="panel-head">
+    <h2>Evidence and findings</h2>
+    <span class="meta" data-tprm-evidence-count><%= ep.evidence.length %> file<%= ep.evidence.length === 1 ? '' : 's' %> · <%= released %> released to the client · <%= ep.findings.length %> finding<%= ep.findings.length === 1 ? '' : 's' %></span>
+  </div>
+  <div class="panel-pad meta tprm-divide-b">
+    Release files to the client one by one; the rest stay internal.
+    <details class="tprm-how"><summary>How this works</summary>The recommendation report names every file on this assessment, but the client can open only the files you release, one by one. A file's description is never shown to the client. A released file cannot be deleted.</details>
+  </div>
+  <% if (ep.frozenMessage && ep.canRelease && !['completed', 'cancelled'].includes(assessment.status)) { %>
+    <div class="callout tprm-inset" role="status" data-tprm-evidence-frozen>
+      <div class="callout-title">Evidence and findings are frozen</div>
+      <div><%= ep.frozenMessage %> Files can still be released to the client.</div>
+    </div>
+  <% } %>
+
+  <% if (ep.canChange) { %>
+  <form method="POST" action="<%= evBase %>/evidence" enctype="multipart/form-data" class="panel-pad tprm-ev-upload tpu-rule-bottom" data-tprm-upload-form>
+    <input type="hidden" name="_csrf" value="<%= evCsrf %>">
+    <div data-tp-file><label class="label" for="evidence-files">Files <span class="meta text-xs">(up to <%= ep.limits.filesPerUpload %> at a time, 50 MB each)</span></label>
+      <input class="input" id="evidence-files" type="file" name="files" multiple required></div>
+    <div><label class="label" for="evidence-description">Description <span class="meta text-xs">(optional, for every file in this upload)</span></label>
+      <input class="input" id="evidence-description" name="description" maxlength="<%= ep.limits.description %>"></div>
+    <div><button class="btn btn-primary" type="submit" data-tprm-upload>Upload</button></div>
+  </form>
+  <% } %>
+
+  <% if (!ep.evidence.length) { %>
+    <div class="panel-pad meta" data-tprm-evidence-empty>No files uploaded yet.</div>
+  <% } else { %>
+  <table class="t" data-tprm-evidence-list>
+    <thead><tr><th>File</th><th>Uploaded</th><th>Client</th><th class="tprm-aw-th-right">Actions</th></tr></thead>
+    <tbody>
+    <% ep.evidence.forEach(e => { %>
+      <tr data-tprm-evidence-row="<%= e.id %>">
+        <td><a href="<%= evBase %>/evidence/<%= e.id %>/download" data-tprm-download><%= e.original_name %></a>
+          <% if (/\.(pdf|png|jpe?g|gif|webp)$/i.test(e.original_name || '')) { %> <a class="tprm-preview-link" href="<%= evBase %>/evidence/<%= e.id %>/download?inline=1" data-tp-preview="<%= evBase %>/evidence/<%= e.id %>/download?inline=1"<%- /\.pdf$/i.test(e.original_name) ? '' : ' data-tp-preview-kind="image"' %> aria-expanded="false" data-tprm-preview>Preview</a><% } %>
+          <div class="meta text-xs"><%= evSize(e.size_bytes) %> · SHA-256 <span title="<%= e.sha256 %>"><%= e.sha256.slice(0, 12) %>…</span><% if (e.description) { %> · <%= e.description %><% } %></div></td>
+        <td class="meta"<% if (e.source === 'vendor') { %> data-tprm-vendor-file<% } %>><%= e.source === 'vendor' ? 'The third party' : (e.uploaded_by_name || 'Unknown user') %><div class="text-xs"><%= evWhen(e.uploaded_at) %></div></td>
+        <td><% if (e.released_to_client) { %><%- include('partials/tprm_status', { text: 'Released', tone: 'good', attrs: 'data-tprm-released' }) %><div class="meta text-xs"><%= e.released_by_name || 'Unknown user' %> · <%= evWhen(e.released_at) %></div><% } else { %><%- include('partials/tprm_status', { text: 'Internal', attrs: 'data-tprm-internal' }) %><% } %></td>
+        <td class="tprm-right tprm-nowrap">
+          <% if (ep.canRelease && !e.released_to_client) { %>
+            <form method="POST" action="<%= evBase %>/evidence/<%= e.id %>/release" class="tpu-inline-form" data-tprm-release-form>
+              <input type="hidden" name="_csrf" value="<%= evCsrf %>"><%- include('partials/tprm_confirm_fields', { title: 'Release this file to the client?', body: 'The client will see it in the portal, and a released file can no longer be deleted.', action: 'Release to client' }) %>
+              <input type="hidden" name="row_version" value="<%= e.row_version %>">
+              <button class="btn btn-secondary btn-xs" type="submit" data-tprm-release>Release to client</button>
+            </form>
+          <% } %>
+          <% if (ep.canChange && !e.released_to_client && e.source !== 'vendor') { %>
+            <% if (!e.finding_count) { %>
+            <form method="POST" action="<%= evBase %>/evidence/<%= e.id %>/delete" class="tpu-inline-form" data-tprm-delete-form>
+              <input type="hidden" name="_csrf" value="<%= evCsrf %>"><%- include('partials/tprm_confirm_fields', { title: 'Delete this file?', body: 'The file is removed for good. This cannot be undone.', action: 'Delete file', tone: 'problem' }) %>
+              <input type="hidden" name="row_version" value="<%= e.row_version %>">
+              <button class="btn btn-ghost btn-xs" type="submit" data-tprm-delete>Delete</button>
+            </form>
+            <% } else { %><span class="meta text-xs" title="Remove it from its findings to delete it">Cited by <%= e.finding_count %> finding<%= e.finding_count === 1 ? '' : 's' %></span><% } %>
+          <% } %>
+        </td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table>
+  <% } %>
+</div>
+
+<div class="panel" id="findings" data-tprm-findings>
+  <div class="panel-head">
+    <h2>Findings</h2>
+    <% if (ep.canChange) { %><a class="btn btn-primary btn-xs" href="<%= evBase %>/findings/new" data-tprm-add-finding>Add finding</a><% } %>
+  </div>
+  <% if (!ep.findings.length) { %>
+    <div class="panel-pad meta" data-tprm-findings-empty>No findings recorded yet.</div>
+  <% } else { %>
+    <% ep.findings.forEach(f => { %>
+      <div class="panel-pad tprm-divide" data-tprm-finding="<%= f.id %>">
+        <div class="tprm-aw-between-top">
+          <div>
+            <span class="tpu-medium" data-tprm-finding-severity><%= ep.severityLabels[f.severity] %></span> ·
+            <% if (f.control_ref) { %><span class="meta" data-tprm-finding-control><%= f.control_ref %></span> · <% } %>
+            <strong><%= f.title %></strong>
+            <%- include('partials/tprm_status', { text: ep.findingStatusLabels[f.status], attrs: 'data-tprm-finding-status' }) %>
+          </div>
+          <% if (ep.canChange) { %><a class="btn btn-ghost btn-xs" href="<%= evBase %>/findings/<%= f.id %>/edit" data-tprm-edit-finding>Edit</a><% } %>
+        </div>
+        <% if (f.description) { %><div class="tpu-pre tpu-mt-6"><%= f.description %></div><% } %>
+        <% if (f.impact) { %><div class="tpu-mt-6" data-tprm-finding-impact-text><span class="meta text-xs">Why it matters:</span> <span class="tpu-pre"><%= f.impact %></span></div><% } %>
+        <div class="meta text-xs tpu-mt-6">
+          <% if (f.evidence.length) { %>Evidence: <% f.evidence.forEach((e, i) => { %><%= i ? ', ' : '' %><a href="<%= evBase %>/evidence/<%= e.id %>/download"><%= e.original_name %></a><% }) %><% } else { %>No evidence linked<% } %>
+          · Added by <%= f.created_by_name || 'Unknown user' %> · <%= evWhen(f.created_at) %><% if (f.source === 'ai_accepted') { %> · <span data-tprm-finding-source="ai_accepted">accepted from an AI suggestion</span><% } %>
+        </div>
+      </div>
+    <% }) %>
+  <% } %>
+</div>

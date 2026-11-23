@@ -1,0 +1,89 @@
+<%- include('partials/header', { title: 'Settings · ' + tpClient.name + ' · Third-party risk', user, active }) %>
+<%
+  const rows = labels.concat([{ label: '', tier: '' }, { label: '', tier: '' }, { label: '', tier: '' }]);
+  const iv = t => { const x = intervalValues['interval_months_' + t]; return x == null ? '' : x; };
+%>
+<%- include('tprm_client_nav', { tpClient, section: 'settings', canManage, canSettings }) %>
+
+<form method="POST" action="/tprm/clients/<%= tpClient.id %>/settings" data-tprm-settings class="tpu-narrow">
+  <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+  <input type="hidden" name="row_version" value="<%= rowVersion %>">
+  <% if (errors && errors.length) { %>
+    <div class="callout tpu-problem-edge tpu-mb-14" role="alert" data-tprm-form-errors>
+      <div class="callout-title tpu-problem-text">Nothing was saved</div>
+      <ul class="tpu-list"><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+    </div>
+  <% } %>
+
+  <div class="panel tpu-mb-14">
+    <div class="panel-head"><h2>Client labels</h2><span class="meta"><%= labels.filter(l => l.label).length %> mapped</span></div>
+    <div class="panel-pad meta tpu-rule-bottom">
+      Map each of the client's own criticality labels (for example "Tier 1" or "Business critical") to a tier.
+      <details class="tprm-how"><summary>How this works</summary>
+        <p>The label's tier is the tier a third party has until it is assessed. Matching ignores case and extra spaces. Imported or added third parties with an unmapped label show "Tier needed".</p>
+        <p>Saving a change to the mapping or the intervals recalculates the provisional tier and next due date of this client's third parties that are not assessed yet; assessed third parties keep theirs.</p>
+      </details>
+    </div>
+    <div class="panel-pad tprm-settings-labels" data-tprm-label-map>
+      <div class="label">Client label</div><div class="label">Tier</div>
+      <% rows.forEach((r, i) => { %>
+        <input class="input" name="label" maxlength="100" value="<%= r.label %>" aria-label="Client label <%= i + 1 %>">
+        <select class="select" name="tier" aria-label="Tier for label <%= i + 1 %>">
+          <option value="">-</option>
+          <% tp.TIERS.forEach(t => { %><option value="<%= t %>" <%= r.tier === t ? 'selected' : '' %>><%= tp.TIER_LABELS[t] %></option><% }) %>
+        </select>
+      <% }) %>
+    </div>
+    <div class="panel-pad meta text-xs tpu-rule-top">Clear a label to remove it. Save to get more empty rows.</div>
+  </div>
+
+  <div class="panel tpu-mb-14">
+    <div class="panel-head"><h2>Reassessment intervals</h2></div>
+    <div class="panel-pad meta tpu-rule-bottom">
+      Enter the months between assessments for each tier, or leave a tier blank to use the firm default.
+      <details class="tprm-how"><summary>How this works</summary>
+        <p>The next due date of an in-use third party is its last assessment date plus the interval for its tier.</p>
+      </details>
+    </div>
+    <div class="panel-pad tprm-settings-intervals" data-tprm-intervals>
+      <% tp.TIERS.forEach(t => { %>
+        <div><label class="label" for="iv-<%= t %>"><%= tp.TIER_LABELS[t] %></label>
+          <input class="input" id="iv-<%= t %>" name="interval_months_<%= t %>" inputmode="numeric" value="<%= iv(t) %>" placeholder="<%= defaults[t] %> (firm default)">
+          <div class="meta text-xs tpu-mt-4">Firm default <%= defaults[t] %> months</div></div>
+      <% }) %>
+    </div>
+  </div>
+  <div class="panel tpu-mb-14" data-tprm-vendor-reminders>
+    <div class="panel-head"><h2>Reminders to third parties</h2></div>
+    <div class="panel-pad">
+      <input type="hidden" name="vendor_reminders_shown" value="1">
+      <label class="tprm-check"><input type="checkbox" name="vendor_reminders" value="1"<%= (intervalValues && intervalValues.vendor_reminders_shown === '1' ? intervalValues.vendor_reminders === '1' : settings.vendor_reminders !== false) ? ' checked' : '' %>> <span>Remind third parties by email 7 days and 1 day before their questionnaire link stops working, and once if it stops unanswered</span></label>
+    </div>
+  </div>
+  <div class="tpu-end"><button class="btn btn-primary" type="submit">Save settings</button></div>
+</form>
+<% if (typeof rulebooksPanel !== 'undefined' && rulebooksPanel) { %><%- include('tprm_client_rulebooks') %><% } %>
+
+<div class="panel tpu-narrow tpu-mt-18" data-tprm-service-switch>
+  <div class="panel-head"><h2>Third-party risk service</h2><%- include('partials/tprm_status', { text: 'On', tone: 'good' }) %></div>
+  <% if (typeof hasIsoProgramme !== 'undefined' && !hasIsoProgramme) { %>
+    <div class="panel-pad meta" data-tprm-switch-off-no-iso>
+      To switch third-party risk off, enable an ISO programme for the client first, or delete the client if the engagement has ended.
+      <details class="tprm-how"><summary>How this works</summary>
+        <p>Third-party risk cannot be switched off for this client: it has no ISO programme, so it would be left with no service.</p>
+      </details>
+    </div>
+  <% } else if (thirdPartyCount > 0) { %>
+    <div class="panel-pad meta" data-tprm-switch-off-blocked>
+      Third-party risk cannot be switched off for this client while it has third parties recorded
+      (<%= thirdPartyCount %>, exited ones included): their register and history must stay available.
+    </div>
+  <% } else { %>
+    <form method="POST" action="/tprm/clients/<%= tpClient.id %>/disable" class="panel-pad tprm-settings-switch">
+      <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>"><%- include('partials/tprm_confirm_fields', { title: 'Switch third-party risk off for this client?', body: 'The client leaves the third-party risk area. A manager can switch it on again.', action: 'Switch off' }) %>
+      <span class="meta">No third parties are recorded, so the service can be switched off: this removes the client from the third-party risk area, and a manager can switch it on again from there.</span>
+      <button class="btn btn-secondary" type="submit" data-tprm-switch-off>Switch off</button>
+    </form>
+  <% } %>
+</div>
+<%- include('partials/footer') %>

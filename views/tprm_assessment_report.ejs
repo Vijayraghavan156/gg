@@ -1,0 +1,15 @@
+<%
+  Object.assign(actionLabels, { 'recommendation.report_generated': 'Recommendation report downloaded' });
+  const repIssued = recommendation.issued;
+  const repDay = d => tpf.day(d) || '-';
+%>
+<% if (repIssued) { %>
+<div class="panel" id="report" data-tprm-report-panel>
+  <div class="panel-head"><h2>Recommendation report</h2><span class="meta text-xs">Version <%= repIssued.version %>, issued <%= repDay(repIssued.issued_at) %></span></div>
+  <div class="panel-pad tprm-actions-split">
+    <div class="meta text-xs">The client sees the same PDF in the client portal.
+      <details class="tprm-how"><summary>How this works</summary>It holds no AI suggestions, review comments or internal notes.</details></div>
+    <a class="btn btn-secondary" href="/tprm/clients/<%= tpClient.id %>/third-parties/<%= thirdParty.id %>/assessments/<%= assessment.id %>/recommendations/<%= repIssued.id %>/report.pdf" data-tprm-report-download="<%= repIssued.id %>">Recommendation report (PDF)</a>
+  </div>
+</div>
+<% } %>

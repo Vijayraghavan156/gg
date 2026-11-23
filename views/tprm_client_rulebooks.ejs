@@ -1,0 +1,24 @@
+<% const rp = rulebooksPanel; const rpCsrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; const rpWhen = d => tpf.day(d) || '-'; %>
+<div class="panel tpu-narrow tpu-mt-18" id="rulebooks" data-tprm-client-rulebooks>
+  <div class="panel-head"><h2>Rulebooks</h2><span class="meta"><%= rp.rulebooks.filter(r => r.tick).length %> ticked</span></div>
+  <div class="panel-pad meta tpu-rule-bottom">
+    Tick the rulebooks this client is regulated under.
+    <details class="tprm-how"><summary>How this works</summary>Each ticked rulebook adds its questions to the client's questionnaires, its clauses to the contract checklist and, where it names a country, a check that the data stays there. A change applies from the client's next questionnaire: questionnaires already prepared keep the rulebooks they were prepared with.</details>
+  </div>
+  <form method="POST" action="/tprm/clients/<%= tpClient.id %>/rulebooks" class="tpu-m-0" data-tprm-client-rulebooks-form>
+    <input type="hidden" name="_csrf" value="<%= rpCsrf %>">
+    <input type="hidden" name="fingerprint" value="<%= rp.fingerprint %>">
+    <div class="panel-pad tprm-rulebook-grid">
+      <% rp.rulebooks.forEach(r => { const can = rp.canEdit && (r.tickable || r.tick); %>
+        <label class="tprm-rulebook-option<%= r.tickable || r.tick ? '' : ' tpu-quiet' %>" data-tprm-client-rulebook="<%= r.key %>" data-tprm-client-rulebook-ticked="<%= r.tick ? '1' : '0' %>">
+          <input type="checkbox" name="rulebook" value="<%= r.id %>" <%= r.tick ? 'checked' : '' %> <%= can ? '' : 'disabled' %>>
+          <span><%= r.name %>
+            <% if (r.country_name) { %><span class="meta text-xs"> · data in <%= r.country_name %></span><% } %>
+            <% if (r.tick) { %><span class="meta text-xs tprm-block">Ticked by <%= r.tick.ticked_by_name || 'Unknown user' %> on <%= rpWhen(r.tick.ticked_at) %><% if (!r.tickable) { %>. <%= r.reason %> Not used for new questionnaires.<% } %></span><% } else if (r.reason) { %><span class="meta text-xs tprm-block" data-tprm-rulebook-not-tickable><%= r.reason %></span><% } %>
+          </span>
+        </label>
+      <% }) %>
+    </div>
+    <% if (rp.canEdit) { %><div class="panel-pad tpu-end tpu-rule-top"><button class="btn btn-secondary" type="submit" data-tprm-save-rulebooks>Save rulebooks</button></div><% } %>
+  </form>
+</div>

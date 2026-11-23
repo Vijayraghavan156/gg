@@ -1,0 +1,82 @@
+<%- include('partials/header', { title: 'Due for reassessment · Third-party risk', user, active }) %>
+<%
+  const q = queue;
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const L = locals.lq || { q: '', sort: '', dir: 'asc', rows: l => l || [], th: (k, t) => '<th>' + t + '</th>', row: () => '' };
+  const txt = r => [r.name, r.clientName, r.category].filter(Boolean).join(' ');
+  const shownRows = L.rows(q.rows, txt);
+  const dueLine = r => {
+    const d = tpLabels.due({ nextDueDate: r.nextDueDate, lastAssessmentDate: r.lastAssessmentDate, inProgress: !!r.openAssessment, today: r.today });
+    return d.label ? d : { key: 'none', label: 'No due date', tone: 'quiet' };
+  };
+%>
+<div class="page-head" data-tprm-due-queue>
+  <div>
+    <h1 class="page-title">Due for reassessment</h1>
+    <div class="page-subtitle">Start or continue the reassessment of each third party below.
+      <details class="tprm-how"><summary>How this works</summary>Listed: third parties in use, across your third-party risk clients, that are overdue, have no due date, or fall due within <%= R.WINDOW_DAYS %> days. Each client's own date is used.</details></div>
+  </div>
+</div>
+<%- include('partials/tprm_home_tabs', { current: 'due' }) %>
+
+<div class="panel tpu-mb-14">
+  <form method="GET" action="/tprm/due" class="panel-pad tprm-due-filter" data-tprm-due-filter data-tp-list-controls>
+    <div><label class="label" for="due-q">Search</label>
+      <input class="input" id="due-q" type="search" name="q" value="<%= L.q %>" placeholder="Third party, client or category" autocomplete="off" data-tp-list-search></div>
+    <% if (L.sort) { %><input type="hidden" name="sort" value="<%= L.sort %>"><% if (L.dir === 'desc') { %><input type="hidden" name="dir" value="desc"><% } %><% } %>
+    <div><label class="label" for="due-client">Client</label>
+      <select class="select" id="due-client" name="client">
+        <option value="">All clients</option>
+        <% q.clients.forEach(c => { %><option value="<%= c.id %>" <%= clientId === c.id ? 'selected' : '' %>><%= c.name %></option><% }) %>
+      </select></div>
+    <button class="btn btn-secondary btn-xs" type="submit">Apply</button>
+    <% if (clientId || L.q || L.sort) { %><a class="btn btn-ghost btn-xs" href="/tprm/due" data-tp-list-clear>Clear</a><% } %>
+    <span class="meta" data-tp-list-count data-tp-total="<%= q.rows.length %>">Showing <%= shownRows.length %> of <%= q.rows.length %></span>
+    <span class="meta tprm-due-counts" data-tprm-due-counts>
+      <% R.BUCKETS.forEach((b, i) => { %><%= i ? ' · ' : '' %><%= R.BUCKET_LABELS[b] %> <%= q.counts[b] || 0 %><% }) %>
+    </span>
+  </form>
+</div>
+
+<% if (!q.rows.length) { %>
+  <div class="panel"><div class="empty-state" data-tprm-due-empty>
+    <div class="text-lg tpu-label-strong">Nothing is due in the next <%= R.WINDOW_DAYS %> days</div>
+    <div class="meta">Third parties in use appear here when they are overdue, have no due date, or fall due within <%= R.WINDOW_DAYS %> days.</div>
+  </div></div>
+<% } else { %>
+  <% R.BUCKETS.filter(b => q.counts[b]).forEach(b => { %>
+  <div class="panel tpu-mb-14" data-tprm-due-bucket="<%= b %>">
+    <div class="panel-head"><h2><%= R.BUCKET_LABELS[b] %></h2><span class="meta"><%= q.counts[b] %></span></div>
+    <div class="table-scroll">
+    <table class="t" data-tp-list>
+      <thead><tr><%- L.th('client', 'Client') %><%- L.th('third_party', 'Third party') %><th class="tprm-w-130">Tier</th><%- L.th('due', 'Due') %><th class="tpu-w-200">Client decision</th><th class="tpu-w-170"></th></tr></thead>
+      <tbody>
+      <% shownRows.filter(r => r.bucket === b).forEach(r => { const tpHref = '/tprm/clients/' + r.clientId + '/third-parties/' + r.id; %>
+        <tr <%- L.row(r, txt) %> data-tprm-due-row="<%= r.id %>" data-tprm-due-client="<%= r.clientId %>">
+          <td><a href="/tprm/clients/<%= r.clientId %>?view=due"><%= r.clientName %></a></td>
+          <td><a href="<%= tpHref %>"><strong><%= r.name %></strong></a>
+            <% if (r.trigger) { %><%- include('partials/tprm_status', { text: r.trigger.label, tone: 'problem', as: 'div', attrs: 'data-tprm-due-trigger="' + r.trigger.reason + '"' }) %><% } %>
+            <% if (r.category) { %><div class="meta text-xs"><%= r.category %></div><% } %></td>
+          <td><% if (r.tier) { %><%= tp.TIER_LABELS[r.tier] %><% if (r.tierSource === 'provisional_from_client_label') { %> <span class="meta text-xs">provisional</span><% } %><% } else { %><%- include('partials/tprm_status', { text: tpLabels.TIER_NEEDED, tone: 'attention' }) %><% } %></td>
+          <% const dl = dueLine(r); %>
+          <td><%- include('partials/tprm_status', { text: dl.label, tone: dl.tone, attrs: 'data-tprm-due-state="' + dl.key + '"' }) %></td>
+          <td data-tprm-due-approval="<%= r.approval ? r.approval.state : '' %>"><% if (r.approval) { %><%- include('partials/tprm_status', { text: r.approval.label, tone: r.approval.tone, as: 'div' }) %><% if (r.approval.pending) { %><%- include('partials/tprm_status', { text: tpLabels.pending(r.approval.pending, 'firm'), tone: r.approval.pendingTone, as: 'div' }) %><% } %><% } %></td>
+          <td>
+            <% if (r.openAssessment) { %>
+              <a class="btn btn-secondary btn-xs" href="<%= tpHref %>/assessments/<%= r.openAssessment.id %>" data-tprm-due-open>Open assessment</a>
+            <% } else if (r.canStart) { %>
+              <form method="POST" action="<%= tpHref %>/assessments" class="tpu-m-0" data-tprm-due-start>
+                <input type="hidden" name="_csrf" value="<%= csrf %>">
+                <button class="btn btn-secondary btn-xs" type="submit">Start reassessment</button>
+              </form>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+    </div>
+  </div>
+  <% }) %>
+<% } %>
+<%- include('partials/footer') %>

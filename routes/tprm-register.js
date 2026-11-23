@@ -1,0 +1,256 @@
+'use strict';
+
+const { withToast, auditCtx } = require('../lib/http-helpers');
+const access = require('../lib/tprm/access');
+const register = require('../lib/tprm/register');
+const assessments = require('../lib/tprm/assessments');
+const decisions = require('../lib/tprm/decisions');
+const tpImport = require('../lib/tprm/import');
+const clientSettings = require('../lib/tprm/client-settings');
+const tpSettings = require('../lib/tprm/settings');
+const placement = require('../lib/tprm/placement');
+const { TprmError } = require('../lib/tprm/errors');
+
+const NOT_FOUND = 'This third-party risk client does not exist, or it is not available to your account.';
+
+function clientView(ws) {
+  return { id: ws.id, name: ws.brand_display_name || ws.client_name, sector: ws.sector || null };
+}
+
+function registerRoutes(app, deps) {
+  const { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces, logAction, csvUpload } = deps;
+  const lookup = { db, getWorkspace, permissionsFor, listWorkspaces };
+  const base = actor => `/tprm/clients/${actor.ws.id}`;
+
+  function renderPage(req, res, view, actor, locals = {}, status = 200) {
+    return res.status(status).render(view, {
+      user: req.user,
+      active: 'tprm-portfolio',
+      tpClient: clientView(actor.ws),
+      tp: placement,
+      canManage: access.can(req.user, actor.perms, 'tp.manage'),
+      canSettings: access.can(req.user, actor.perms, 'tp.settings'),
+      ...locals,
+    });
+  }
+
+  function fail(req, res, err) {
+    if (!(err instanceof TprmError)) throw err;
+    const message = err.status === 404 ? (err.message || NOT_FOUND) : err.message;
+    return res.status(err.status).render('error', { user: req.user, message });
+  }
+
+  function handler(fn, { permission = 'tp.view' } = {}) {
+    return async (req, res, next) => {
+      try {
+        const loaded = await access.loadFirmWorkspace(lookup, req.user, req.params.wsId);
+        if (!loaded) return res.status(404).render('error', { user: req.user, message: NOT_FOUND });
+        const actor = { user: req.user, perms: loaded.perms, ws: loaded.ws };
+        if (permission !== 'tp.view' && !access.can(req.user, actor.perms, permission)) {
+          return res.status(403).render('error', {
+            user: req.user,
+            message: permission === 'tp.settings'
+              ? 'Only a manager can change third-party risk settings for this client.'
+              : 'Your role does not allow changes to this client\'s third parties.',
+          });
+        }
+        return await fn(req, res, actor);
+      } catch (err) {
+        if (err instanceof TprmError) return fail(req, res, err);
+        return next(err);
+      }
+    };
+  }
+
+  async function renderThirdPartyForm(req, res, actor, { thirdParty = null, values = {}, errors = [], duplicates = [], status = 200 }) {
+    const settings = await clientSettings.get(db, actor.ws.id);
+    return renderPage(req, res, 'tprm_third_party_form', actor, {
+      thirdParty, values, errors, duplicates,
+      labels: Object.keys(settings.label_tier_map || {}),
+      formAction: thirdParty ? `${base(actor)}/third-parties/${thirdParty.id}` : `${base(actor)}/third-parties`,
+    }, status);
+  }
+
+  async function saveThirdParty(req, res, actor, thirdParty) {
+    const confirmDuplicate = req.body.confirm_duplicate === '1';
+    const firstService = !thirdParty && req.body.first_service === '1' ? req.body : null;
+    try {
+      const result = thirdParty
+        ? await register.updateThirdParty(db, actor, thirdParty.id, req.body, { confirmDuplicate })
+        : await register.createThirdParty(db, actor, req.body, { confirmDuplicate, firstService });
+      if (result.needsConfirmation) {
+        return await renderThirdPartyForm(req, res, actor, { thirdParty, values: req.body, duplicates: result.duplicates, status: 200 });
+      }
+      const saved = result.thirdParty;
+      const added = result.service ? 'Third party and its first service added' : 'Third party added';
+      const message = thirdParty
+        ? (result.unchanged ? 'No changes to save' : 'Third party updated')
+        : (result.duplicates.length ? `${added}. Another third party has the same name; check it is not a duplicate` : added);
+      return res.redirect(withToast(`${base(actor)}/third-parties/${saved.id}`, message,
+        !thirdParty && result.duplicates.length ? 'warn' : undefined));
+    } catch (err) {
+      if (err instanceof TprmError && err.status === 400) {
+        return await renderThirdPartyForm(req, res, actor, { thirdParty, values: req.body, errors: err.errors || [err.message], status: 400 });
+      }
+      throw err;
+    }
+  }
+
+  app.get('/tprm/clients/:wsId/third-parties/new', requireAuth, handler(async (req, res, actor) =>
+    renderThirdPartyForm(req, res, actor, { values: { status: 'in_use' } }), { permission: 'tp.manage' }));
+
+  app.post('/tprm/clients/:wsId/third-parties', requireAuth, handler(async (req, res, actor) =>
+    saveThirdParty(req, res, actor, null), { permission: 'tp.manage' }));
+
+  app.get('/tprm/clients/:wsId/third-parties/:tpId', requireAuth, handler(async (req, res, actor) => {
+    const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+    const [services, history, duplicates] = await Promise.all([
+      register.listServices(db, actor, thirdParty.id),
+      register.recentEvents(db, actor, thirdParty.id),
+      register.sameNamed(db, actor.ws.id, thirdParty.name, thirdParty.id),
+    ]);
+    return renderPage(req, res, 'tprm_third_party', actor, {
+      thirdParty, services, history, duplicates, today: register.today(actor),
+      serviceErrors: [], serviceValues: {},
+      assessmentList: await assessments.listForThirdParty(db, actor, thirdParty.id), at: assessments,
+      approval: await decisions.currentApproval(db, actor.ws, thirdParty.id),
+      stage: (await require('../lib/tprm/pipeline').stagesForClient(db, actor.ws.id)).get(Number(thirdParty.id)) || null,
+      tab: req.query && typeof req.query.tab === 'string' ? req.query.tab : null,
+    });
+  }));
+
+  app.get('/tprm/clients/:wsId/third-parties/:tpId/edit', requireAuth, handler(async (req, res, actor) => {
+    const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+    return renderThirdPartyForm(req, res, actor, { thirdParty, values: thirdParty });
+  }, { permission: 'tp.manage' }));
+
+  app.post('/tprm/clients/:wsId/third-parties/:tpId', requireAuth, handler(async (req, res, actor) => {
+    const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+    return saveThirdParty(req, res, actor, thirdParty);
+  }, { permission: 'tp.manage' }));
+
+  app.post('/tprm/clients/:wsId/third-parties/:tpId/services', requireAuth, handler(async (req, res, actor) => {
+    const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+    try {
+      await register.addService(db, actor, thirdParty.id, req.body);
+    } catch (err) {
+      if (!(err instanceof TprmError) || err.status !== 400) throw err;
+      const [services, history, duplicates] = await Promise.all([
+        register.listServices(db, actor, thirdParty.id),
+        register.recentEvents(db, actor, thirdParty.id),
+        register.sameNamed(db, actor.ws.id, thirdParty.name, thirdParty.id),
+      ]);
+      return renderPage(req, res, 'tprm_third_party', actor, {
+        thirdParty, services, history, duplicates, today: register.today(actor),
+        serviceErrors: err.errors || [err.message], serviceValues: req.body,
+        assessmentList: await assessments.listForThirdParty(db, actor, thirdParty.id), at: assessments,
+        approval: await decisions.currentApproval(db, actor.ws, thirdParty.id),
+        stage: (await require('../lib/tprm/pipeline').stagesForClient(db, actor.ws.id)).get(Number(thirdParty.id)) || null,
+      }, 400);
+    }
+    return res.redirect(withToast(`${base(actor)}/third-parties/${thirdParty.id}#services`, 'Service added'));
+  }, { permission: 'tp.manage' }));
+
+  async function renderServiceForm(req, res, actor, thirdParty, service, values, errors = [], status = 200) {
+    return renderPage(req, res, 'tprm_service_form', actor, { thirdParty, service, values, errors }, status);
+  }
+
+  app.get('/tprm/clients/:wsId/third-parties/:tpId/services/:sid/edit', requireAuth, handler(async (req, res, actor) => {
+    const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+    const service = await register.getService(db, actor, thirdParty.id, req.params.sid);
+    return renderServiceForm(req, res, actor, thirdParty, service, service);
+  }, { permission: 'tp.manage' }));
+
+  app.post('/tprm/clients/:wsId/third-parties/:tpId/services/:sid', requireAuth, handler(async (req, res, actor) => {
+    const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+    const service = await register.getService(db, actor, thirdParty.id, req.params.sid);
+    try {
+      await register.updateService(db, actor, thirdParty.id, service.id, req.body);
+    } catch (err) {
+      if (!(err instanceof TprmError) || err.status !== 400) throw err;
+      return renderServiceForm(req, res, actor, thirdParty, service, req.body, err.errors || [err.message], 400);
+    }
+    return res.redirect(withToast(`${base(actor)}/third-parties/${thirdParty.id}#services`, 'Service updated'));
+  }, { permission: 'tp.manage' }));
+
+  app.post('/tprm/clients/:wsId/third-parties/:tpId/services/:sid/remove', requireAuth, handler(async (req, res, actor) => {
+    const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+    await register.removeService(db, actor, thirdParty.id, req.params.sid, req.body);
+    return res.redirect(withToast(`${base(actor)}/third-parties/${thirdParty.id}#services`, 'Service removed'));
+  }, { permission: 'tp.manage' }));
+
+  async function renderSettings(req, res, actor, { values = null, errors = [], status = 200 } = {}) {
+    const settings = await clientSettings.get(db, actor.ws.id);
+    const labels = values
+      ? (Array.isArray(values.label) ? values.label : [values.label || '']).map((label, i) => ({
+        label, tier: (Array.isArray(values.tier) ? values.tier : [values.tier || ''])[i] || '' }))
+      : Object.entries(settings.label_tier_map).map(([label, tier]) => ({ label, tier }));
+    return renderPage(req, res, 'tprm_settings', actor, {
+      settings, labels, errors,
+      intervalValues: values || settings,
+      rowVersion: values ? values.row_version : settings.row_version,
+      defaults: (await clientSettings.intervals(db, actor.ws, settings)).firm,
+      thirdPartyCount: await tpSettings.thirdPartyCount(db, actor.ws.id),
+      hasIsoProgramme: await tpSettings.hasIsoProgramme(db, actor.ws.id),
+    }, status);
+  }
+
+  app.get('/tprm/clients/:wsId/settings', requireAuth, handler(async (req, res, actor) =>
+    renderSettings(req, res, actor), { permission: 'tp.settings' }));
+
+  app.post('/tprm/clients/:wsId/settings', requireAuth, handler(async (req, res, actor) => {
+    let result;
+    try {
+      result = await clientSettings.update(db, actor, req.body);
+    } catch (err) {
+      if (err instanceof TprmError && err.status === 400) {
+        return renderSettings(req, res, actor, { values: req.body, errors: err.errors || [err.message], status: 400 });
+      }
+      throw err;
+    }
+    if (result.changed) {
+      await logAction(req.user.id, actor.ws.id, 'tprm_client_settings_updated', 'workspace', actor.ws.id,
+        { before: result.before, after: result.after, recalculated: result.recalculated }, auditCtx(req));
+    }
+    const n = result.recalculated || 0;
+    const message = !result.changed ? 'No changes to save'
+      : `Settings saved · ${n} third part${n === 1 ? 'y' : 'ies'} not yet assessed ${n === 1 ? 'has' : 'have'} a new tier or due date`;
+    return res.redirect(withToast(`${base(actor)}/settings`, message));
+  }, { permission: 'tp.settings' }));
+
+  app.get('/tprm/clients/:wsId/import', requireAuth, handler(async (req, res, actor) =>
+    renderPage(req, res, 'tprm_import', actor, { mode: 'upload', columns: tpImport.COLUMNS, maxRows: tpImport.MAX_ROWS }),
+  { permission: 'tp.manage' }));
+
+  app.get('/tprm/clients/:wsId/import/template', requireAuth, handler(async (req, res) => {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="third_parties_template.csv"');
+    return res.send(tpImport.template());
+  }, { permission: 'tp.manage' }));
+
+  app.post('/tprm/clients/:wsId/import/preview', requireAuth, csvUpload.single('file'), handler(async (req, res, actor) => {
+    if (!req.file || !req.file.buffer) {
+      return renderPage(req, res, 'tprm_import', actor, {
+        mode: 'upload', columns: tpImport.COLUMNS, maxRows: tpImport.MAX_ROWS, uploadError: 'Choose a CSV file to preview.',
+      }, 400);
+    }
+    const filename = req.file.originalname || 'upload.csv';
+    const result = await tpImport.preview(db, actor, req.file.buffer, filename);
+    return renderPage(req, res, 'tprm_import', actor, {
+      mode: 'preview', columns: tpImport.COLUMNS, maxRows: tpImport.MAX_ROWS, filename, ...result,
+    }, result.analysis.ok || result.alreadyImported ? 200 : 422);
+  }, { permission: 'tp.manage' }));
+
+  app.post('/tprm/clients/:wsId/import/commit', requireAuth, handler(async (req, res, actor) => {
+    const result = await tpImport.commit(db, actor, req.body.batch_id, req.body.csv);
+    if (result.alreadyImported) {
+      return res.redirect(withToast(base(actor), 'This file was already imported; nothing more was added', 'warn'));
+    }
+    await logAction(req.user.id, actor.ws.id, 'tprm_third_parties_imported', 'workspace', actor.ws.id,
+      { batch_id: result.batchId, count: result.imported, services: result.services || 0 }, auditCtx(req));
+    const withServices = result.services ? `, ${result.services} with a first service` : '';
+    return res.redirect(withToast(base(actor), `Imported ${result.imported} third part${result.imported === 1 ? 'y' : 'ies'}${withServices}`));
+  }, { permission: 'tp.manage' }));
+}
+
+module.exports = { register: registerRoutes };

@@ -1,0 +1,48 @@
+<%- include('partials/header', { title: 'AI review · Third-party risk', user, active }) %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; %>
+<div class="page-head" data-tprm-ai-settings>
+  <div>
+    <a class="text-xs tpu-back" href="/tprm">← Third-party risk clients</a>
+    <h1 class="page-title tpu-mt-6">AI review</h1>
+    <div class="page-subtitle">Choose whether the firm's AI first-pass review runs on its own for each assessment.</div>
+    <details class="tprm-how"><summary>How this works</summary>
+      <p>The AI review drafts suggestions for the consultant; nothing it writes reaches a client unless a consultant accepts it as a finding. Clients never see it.</p>
+    </details>
+  </div>
+</div>
+
+<div class="panel tpu-narrow tpu-mb-14">
+  <div class="panel-head"><h2>Automatic review</h2><%- include('partials/tprm_status', { text: setting.enabled ? 'On' : 'Off', tone: setting.enabled ? 'good' : 'quiet', attrs: 'data-tprm-ai-auto-state' }) %></div>
+  <form method="POST" action="/tprm/settings/ai-review" class="panel-pad tprm-settings-form-10" data-tprm-ai-settings-form>
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input type="hidden" name="row_version" value="<%= setting.rowVersion %>">
+    <label class="tpu-row">
+      <input type="checkbox" name="auto_review" value="1" <%= setting.enabled ? 'checked' : '' %> data-tprm-ai-auto>
+      Run the AI review automatically when a third party submits its questionnaire
+    </label>
+    <div class="meta text-xs">Consultants can always run it by hand from the assessment page ("Run AI review"), whatever this setting says, while the tier is confirmed and the evidence is not frozen.</div>
+    <div class="tpu-end"><button class="btn btn-primary" type="submit" data-tprm-ai-settings-save>Save</button></div>
+  </form>
+</div>
+
+<div class="panel tpu-narrow" data-tprm-ai-provider>
+  <div class="panel-head"><h2>Provider and what is sent</h2></div>
+  <div class="panel-pad tpu-stack-8">
+    <% if (info.configured) { %>
+      <div data-tprm-ai-provider-name>Provider: <strong><%= info.provider %></strong>, model <strong><%= info.model %></strong>. Set by the server's configuration.</div>
+    <% } else { %>
+      <div data-tprm-ai-not-configured><strong><%= notConfigured %></strong> Runs are recorded as "Not set up" and nothing is sent.</div>
+    <% } %>
+    <details class="tprm-how"><summary>How this works</summary>
+    <% if (info.configured && info.filesAsFiles) { %><div class="meta" data-tprm-ai-model-note>The AI review uses its own model, <%= info.model %>, at high effort; if it declines a request, the provider may answer with its recommended fallback model (the run history shows which model answered). The app's other AI features use <%= info.appModel %>.</div><% } %>
+    <% if (info.filesAsFiles) { %>
+      <div class="meta" data-tprm-ai-sent>Sent for each run: the assessment type, tier, delivery model and modules; each answer of the third party (question, response, detail, evidence reference and date); the clarifications and their responses; and the assessment's files (the third party's and the consultant's). PDFs and images (PNG, JPEG, GIF, WebP) are sent as the files themselves, confidential content included; Word (.docx), Excel (.xlsx: each sheet's name and rows), text, CSV and Markdown files as their text, up to <%= limits.fileChars.toLocaleString('en-GB') %> characters per file and <%= limits.totalFileChars.toLocaleString('en-GB') %> in all. Limits per run: <%= limits.files %> files, <%= limits.pdfPages %> PDF pages, <%= limits.images %> images, 20 MB per file (images 10 MB once encoded, at most <%= limits.imageDimension.toLocaleString('en-GB') %> pixels a side), and 32 MB for the whole request. Other files, and files over the limits, are listed by name only. The app does not add the client's or the third party's name (they can still appear inside the answers and files).</div>
+    <% } else { %>
+      <div class="meta" data-tprm-ai-sent>Sent for each run: the assessment type, tier, delivery model and modules; each answer of the third party (question, response, detail, evidence reference and date); the clarifications and their responses; and the text of the assessment's files (the third party's and the consultant's): PDF, Word (.docx), Excel (.xlsx: each sheet's name and rows), text, CSV and Markdown, up to <%= limits.fileChars.toLocaleString('en-GB') %> characters per file and <%= limits.totalFileChars.toLocaleString('en-GB') %> in all. Other files, and files over the limits, are listed by name only. The app does not add the client's or the third party's name (they can still appear inside the answers and files).</div>
+    <% } %>
+    <div class="meta">The AI drafts findings and a suggested reviewer conclusion per answer; nothing is set until a consultant accepts it. At most <%= limits.runsPerDay %> runs per assessment in 24 hours (automatic runs count); a manager can run past the limit with a reason, which is recorded.</div>
+    <div class="meta">Kept: who ran it and when, the provider, the model asked and the model that answered, a hash of each request sent, counts, and the suggestions. The text of the answers and the files are not stored again.</div>
+    </details>
+  </div>
+</div>
+<%- include('partials/footer') %>

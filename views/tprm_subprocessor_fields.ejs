@@ -1,0 +1,11 @@
+<div><label class="label" for="sp-name">Name</label>
+  <input class="input" id="sp-name" name="name" required maxlength="<%= LIMITS.name %>" value="<%= v.name || '' %>" placeholder="For example Amazon Web Services"></div>
+<div><label class="label" for="sp-service">What they do</label>
+  <textarea class="input" id="sp-service" name="service" rows="2" maxlength="<%= LIMITS.service %>"><%= v.service || '' %></textarea></div>
+<div><label class="label" for="sp-country">Country</label>
+  <input class="input" id="sp-country" name="country" maxlength="<%= LIMITS.country %>" value="<%= v.country || '' %>"></div>
+<div><label class="label" for="sp-answer">Source</label>
+  <select class="select" id="sp-answer" name="answer_id" data-tprm-subprocessor-source>
+    <option value="">Entered by the firm</option>
+    <% helper.answers.forEach(a => { %><option value="<%= a.id %>" <%= String(v.answer_id || '') === String(a.id) ? 'selected' : '' %>>From the answer to <%= a.question_id %><%= a.theme ? ' (' + a.theme + ')' : '' %></option><% }) %>
+  </select></div>

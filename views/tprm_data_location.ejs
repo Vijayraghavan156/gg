@@ -1,0 +1,54 @@
+<%
+  const dl = dataLocationPanel;
+  const dlBase = typeof dataLocationBase !== 'undefined' ? dataLocationBase : null;
+  const dlFlags = dl.flags.length + (dl.answerFlags ? dl.answerFlags.length : 0);
+  const dlReason = { response: 'The answer says the data is not kept only there.', names_other_country: 'The answer names another country.', no_country_named: 'The answer does not say where the data is kept.' };
+%>
+<div class="panel" id="data-location" data-tprm-data-location data-tprm-data-location-flags="<%= dlFlags %>">
+  <div class="panel-head"><h2>Data location</h2><%- include('partials/tprm_status', { text: dlFlags ? dlFlags + ' flag' + (dlFlags === 1 ? '' : 's') : 'No flags', tone: dlFlags ? 'attention' : 'good' }) %></div>
+  <div class="panel-pad meta tprm-divide-b">
+    <% dl.countries.forEach((c, i) => { %><%= i ? ' ' : '' %><%= c.rulebooks.join(', ') %> require<%= c.rulebooks.length === 1 ? 's' : '' %> the client's data to stay in <strong><%= c.name %></strong>.<% }) %>
+    <details class="tprm-how"><summary>How this works</summary><%= dl.source === 'questionnaire' ? 'Rulebooks pinned when the questionnaire was prepared.' : 'The client\'s rulebooks now.' %>
+    A flag is for the consultant to check: nothing is blocked.</details>
+  </div>
+  <% if (!dlFlags && !dl.unrecorded.length && !dl.unrecognised.length) { %>
+    <div class="panel-pad meta" data-tprm-data-location-clear>Every service is hosted in the required country.</div>
+  <% } %>
+  <% if (dl.flags.length) { %>
+    <div class="table-scroll"><table class="t" data-tprm-data-location-services>
+      <thead><tr><th>Service</th><th>Hosting countries</th><th>Outside</th><% if (dlBase && dl.canRaise) { %><th></th><% } %></tr></thead>
+      <tbody>
+      <% dl.flags.forEach(f => { %>
+        <tr data-tprm-data-location-service="<%= f.service_id %>" data-tprm-data-location-country="<%= f.country %>">
+          <td><strong><%= f.description %></strong><div class="meta text-xs">Must stay in <%= f.country_name %> (<%= f.rulebooks.join(', ') %>)</div></td>
+          <td><%= f.hosting %></td>
+          <td class="tprm-warn-text"><%= f.outside_names.join(', ') %></td>
+          <% if (dlBase && dl.canRaise) { %><td><a class="btn btn-secondary btn-xs" href="<%= dlBase %>/data-location/finding?service=<%= f.service_id %>&amp;country=<%= f.country %>" data-tprm-data-location-raise>Raise finding</a></td><% } %>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+  <% if (dl.answerFlags && dl.answerFlags.length) { %>
+    <div class="table-scroll"><table class="t" data-tprm-data-location-answers>
+      <thead><tr><th>Question</th><th>Answer</th><th>Why flagged</th><% if (dlBase && dl.canRaise) { %><th></th><% } %></tr></thead>
+      <tbody>
+      <% dl.answerFlags.forEach(f => { %>
+        <tr data-tprm-data-location-answer="<%= f.question_id %>">
+          <td><strong><%= f.question_id %></strong><div class="meta text-xs">Must stay in <%= f.country_name %> (<%= f.rulebooks.join(', ') %>)</div></td>
+          <td><%= f.response || '-' %><% if (f.detail) { %><div class="meta text-xs"><%= f.detail %></div><% } %></td>
+          <td><%= dlReason[f.reason] %><% if (f.outside_names.length) { %> <span class="tprm-warn-text"><%= f.outside_names.join(', ') %></span><% } %></td>
+          <% if (dlBase && dl.canRaise) { %><td><a class="btn btn-secondary btn-xs" href="<%= dlBase %>/data-location/finding?answer=<%= f.answer_id %>&amp;country=<%= f.country %>" data-tprm-data-location-raise>Raise finding</a></td><% } %>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+  <% if (dl.unrecorded.length || dl.unrecognised.length) { %>
+    <div class="panel-pad meta text-xs tprm-divide" data-tprm-data-location-unknown>
+      <% if (dl.unrecorded.length) { %>No hosting country recorded: <%= dl.unrecorded.map(s => s.description).join(', ') %>. <% } %>
+      <% if (dl.unrecognised.length) { %>Not recognised as countries (check them): <%= dl.unrecognised.map(s => s.description + ': ' + s.unknown.join(', ')).join('; ') %>.<% } %>
+    </div>
+  <% } %>
+  <% if (!dlBase && dlFlags) { %><div class="panel-pad meta text-xs tprm-divide">Raise a finding from the assessment page.</div><% } %>
+</div>

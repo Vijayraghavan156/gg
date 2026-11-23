@@ -1,0 +1,70 @@
+<%- include('partials/header', { title: 'Letterhead · Third-party risk', user, active }) %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; const v = values || {}; %>
+<div class="page-head" data-tprm-letterhead-settings>
+  <div>
+    <a class="text-xs tpu-back" href="/tprm">← Third-party risk clients</a>
+    <h1 class="page-title tpu-mt-6">Letterhead</h1>
+    <div class="page-subtitle">Printed at the top of every recommendation report the firm and its clients download. Managers change it; it applies to every TPRM client of the firm.</div>
+  </div>
+</div>
+
+<% if (errors && errors.length) { %>
+  <div class="callout tpu-narrow tpu-mb-14 tpu-problem-edge" role="alert" data-tprm-letterhead-errors>
+    <div class="callout-title tpu-problem-text">Nothing was saved</div>
+    <ul class="tpu-list-6"><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+  </div>
+<% } %>
+
+<div class="panel tpu-narrow">
+  <div class="panel-head"><h2>Firm details</h2><% if (lh.updatedAt) { %><span class="meta text-xs">Last saved <%= tpf.dayTime(lh.updatedAt) %></span><% } %></div>
+  <form method="POST" action="/tprm/settings/letterhead" enctype="multipart/form-data" class="panel-pad tpu-form" data-tprm-letterhead-form>
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input type="hidden" name="row_version" value="<%= lh.rowVersion %>">
+    <div>
+      <label class="label" for="lh-name">Firm name as printed</label>
+      <input class="input" id="lh-name" name="display_name" maxlength="<%= limits.displayName %>" value="<%= v.display_name || '' %>" placeholder="<%= lh.firmName %>">
+      <div class="meta text-xs">Left empty, the report prints the firm's account name (<%= lh.firmName %>).</div>
+    </div>
+    <div>
+      <label class="label" for="lh-address">Address</label>
+      <textarea class="input" id="lh-address" name="address_lines" rows="4" maxlength="<%= limits.address %>"><%= v.address_lines || '' %></textarea>
+      <div class="meta text-xs">Up to <%= limits.addressLines %> lines.</div>
+    </div>
+    <div>
+      <label class="label" for="lh-contact">Contact line</label>
+      <input class="input" id="lh-contact" name="contact_line" maxlength="<%= limits.contactLine %>" value="<%= v.contact_line || '' %>" placeholder="Phone, e-mail or website">
+    </div>
+    <div>
+      <label class="label" for="lh-footer">Footer</label>
+      <input class="input" id="lh-footer" name="footer_text" maxlength="<%= limits.footerText %>" value="<%= v.footer_text || '' %>" placeholder="For example: Confidential. Prepared for the client named above.">
+      <div class="meta text-xs">Printed at the foot of every page, beside the page number.</div>
+    </div>
+    <div>
+      <label class="label" for="lh-colour">Brand colour</label>
+      <input class="input" id="lh-colour" name="brand_colour" maxlength="7" value="<%= v.brand_colour || '' %>" placeholder="#1f3a5f" pattern="#?[0-9a-fA-F]{6}" aria-describedby="lh-colour-hint"<%- locals.errorField === 'brand_colour' ? ' aria-invalid="true" autofocus' : '' %> data-tprm-letterhead-colour>
+      <div class="meta text-xs" id="lh-colour-hint">The accent on third-party risk screens, the third party's pages and the report, as a hex colour. Left empty: deep navy (#1f3a5f). It must be dark enough for white text on it.</div>
+    </div>
+    <div>
+      <label class="label" for="lh-logo">Logo</label>
+      <% if (lh.logo) { %>
+        <div class="tprm-letterhead-logo-row" data-tprm-letterhead-logo>
+          <% if (logoUri) { %><img src="<%= logoUri %>" alt="Current logo" class="tprm-letterhead-logo-img"><% } %>
+          <span class="meta text-xs"><%= lh.logo.name %> · <%= Math.max(1, Math.round(lh.logo.size / 1024)) %> KB</span>
+          <label class="text-xs tprm-letterhead-remove"><input type="checkbox" name="remove_logo" value="1" data-tprm-letterhead-remove-logo> Remove the logo</label>
+        </div>
+      <% } %>
+      <div data-tp-file><input class="input" id="lh-logo" type="file" name="logo" accept=".png,.jpg,.jpeg,image/png,image/jpeg"<%- locals.errorField === 'logo' ? ' aria-invalid="true" autofocus' : '' %>></div>
+      <div class="meta text-xs">PNG or JPEG, at most 1 MB and <%= limits.logoDimension.toLocaleString('en-GB') %> pixels a side. Choosing a file replaces the current logo.</div>
+    </div>
+    <div class="tpu-end"><button class="btn btn-primary" type="submit" data-tprm-letterhead-save>Save</button></div>
+  </form>
+</div>
+
+<div class="panel tpu-narrow tpu-mt-14">
+  <div class="panel-head"><h2>What the report contains</h2></div>
+  <div class="panel-pad meta tpu-stack-6">
+    <div>For an issued recommendation version: the client, the third party, the assessment type and the version (issued on, by); the recommendation, residual risk, rationale and valid-until date; the tier and the reason for it; the findings (title, severity, control, status); the conditions with owner, due date and status; the files released to the client; the questionnaire's status; and the client's decision once recorded.</div>
+    <div>Never included: AI suggestions, review comments, internal notes, files not released to the client, drafts or storage paths. Each download is recorded in the assessment's history with a fingerprint (sha256) of the PDF; the PDF itself is not kept.</div>
+  </div>
+</div>
+<%- include('partials/footer') %>

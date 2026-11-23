@@ -1,0 +1,122 @@
+<%- include('partials/header', { title: 'Criticality model version ' + model.version + ' · Third-party risk', user, active }) %>
+<% const fmt = d => d ? tpf.day(d) : ''; %>
+<% const isDraft = model.status === 'draft'; %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; %>
+<div class="page-head" data-tprm-criticality-version="<%= model.version %>" data-status="<%= model.status %>">
+  <div>
+    <a class="text-xs tpu-back" href="/tprm/settings/criticality">← Criticality model</a>
+    <h1 class="page-title tpu-mt-6"><%= isDraft ? 'Draft version ' + model.version : 'Version ' + model.version %></h1>
+    <div class="page-subtitle">
+      <% if (isDraft) { %>
+        Not in use until it is activated<%= activeVersion ? '. Copied from the active version ' + activeVersion.version + ' unless edited' : '' %>.
+      <% } else if (model.status === 'active') { %>
+        Active since <%= fmt(model.activatedAt) %><%= model.activatedByName ? ' · ' + model.activatedByName : '' %>. Read-only: start a new version to change it.
+      <% } else { %>
+        Retired <%= fmt(model.retiredAt) %><%= model.retiredByName ? ' · ' + model.retiredByName : '' %>. Read-only; kept for third parties scored under it.
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<% if (errors && errors.length) { %>
+  <div class="callout tpu-mb-14 tpu-problem-edge" role="alert" data-tprm-criticality-errors>
+    <div class="callout-title tpu-problem-text">Not saved</div>
+    <ul class="tpu-list-pad">
+      <% errors.forEach(e => { %><li><%= e %></li><% }) %>
+    </ul>
+  </div>
+<% } %>
+
+<% if (!isDraft) { %>
+  <div class="tpu-split tprm-criticality-grid">
+    <div class="panel"><div class="panel-head"><h2>Questions</h2><span class="meta"><%= model.questions.length %></span></div>
+      <%- include('tprm_criticality_parts', { part: 'questions', model }) %>
+    </div>
+    <div class="tpu-stack-14">
+      <div class="panel"><div class="panel-head"><h2>How scoring works</h2></div><%- include('tprm_criticality_parts', { part: 'example', model }) %></div>
+      <div class="panel"><div class="panel-head"><h2>Reassessment intervals</h2></div><%- include('tprm_criticality_parts', { part: 'intervals', model }) %></div>
+    </div>
+  </div>
+<% } else { %>
+  <form method="POST" action="/tprm/settings/criticality/versions/<%= model.id %>" data-tprm-draft-form>
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input type="hidden" name="row_version" value="<%= model.rowVersion %>">
+    <button class="tprm-crit-default-submit" type="submit" name="op" value="save" tabindex="-1" aria-hidden="true">Save draft</button>
+
+    <div class="tpu-split tprm-criticality-grid">
+      <div class="panel">
+        <div class="panel-head"><h2>Questions</h2><span class="meta"><%= form.questions.length %> of up to <%= limits.questions %></span></div>
+        <% form.questions.forEach((q, i) => { const field = `questions[${i}]`; %>
+          <fieldset id="question-<%= i + 1 %>" class="panel-pad tprm-crit-question<%= focus === i ? ' is-focus' : '' %>" data-edit-question="<%= q.id %>">
+            <input type="hidden" name="<%= field %>[id]" value="<%= q.id %>">
+            <div class="tprm-crit-question-head">
+              <strong class="text-xs">Question <%= i + 1 %></strong>
+              <span class="tprm-crit-question-tools">
+                <button class="btn btn-ghost btn-xs" type="submit" name="op" value="move_up:<%= i %>" <%= i === 0 ? 'disabled' : '' %> aria-label="Move question <%= i + 1 %> up">↑</button>
+                <button class="btn btn-ghost btn-xs" type="submit" name="op" value="move_down:<%= i %>" <%= i === form.questions.length - 1 ? 'disabled' : '' %> aria-label="Move question <%= i + 1 %> down">↓</button>
+                <button class="btn btn-ghost btn-xs" type="submit" name="op" value="delete_question:<%= i %>" data-delete-question="<%= i %>">Delete question</button>
+              </span>
+            </div>
+            <label class="label" for="q<%= i %>-text">Question</label>
+            <input class="input" id="q<%= i %>-text" name="<%= field %>[text]" value="<%= q.text %>" maxlength="<%= limits.text %>" required>
+            <label class="label tpu-mt-8" for="q<%= i %>-kind">Kind</label>
+            <select class="input" id="q<%= i %>-kind" name="<%= field %>[kind]">
+              <option value="criticality" <%= q.kind === 'criticality' ? 'selected' : '' %>>Criticality: its answers set the tier</option>
+              <option value="service_description" <%= q.kind === 'service_description' ? 'selected' : '' %>>Service description: answers are always Low</option>
+            </select>
+            <div class="label tpu-mt-8">Answers</div>
+            <div class="tpu-stack-6">
+              <% q.answers.forEach((a, j) => { const af = `${field}[answers][${j}]`; %>
+                <div class="tprm-crit-answer" data-edit-answer="<%= a.id %>">
+                  <input type="hidden" name="<%= af %>[id]" value="<%= a.id %>">
+                  <input class="input" name="<%= af %>[label]" value="<%= a.label %>" maxlength="<%= limits.label %>" aria-label="Question <%= i + 1 %> answer <%= j + 1 %>" required>
+                  <% if (q.kind === 'criticality') { %>
+                    <select class="input" name="<%= af %>[tier]" aria-label="Tier for answer <%= j + 1 %> of question <%= i + 1 %>">
+                      <% tiers.forEach(t => { %><option value="<%= t %>" <%= a.tier === t ? 'selected' : '' %>><%= t %></option><% }) %>
+                    </select>
+                  <% } else { %>
+                    <input type="hidden" name="<%= af %>[tier]" value="Low"><span class="meta">Low (fixed)</span>
+                  <% } %>
+                  <button class="btn btn-ghost btn-xs" type="submit" name="op" value="delete_answer:<%= i %>:<%= j %>" <%= q.answers.length <= 2 ? 'disabled' : '' %> aria-label="Delete answer <%= j + 1 %> of question <%= i + 1 %>">Remove</button>
+                </div>
+              <% }) %>
+            </div>
+            <button class="btn btn-ghost btn-xs tpu-mt-6" type="submit" name="op" value="add_answer:<%= i %>" <%= q.answers.length >= limits.answers ? 'disabled' : '' %>>+ Add answer</button>
+          </fieldset>
+        <% }) %>
+        <div class="panel-pad tpu-rule-top">
+          <button class="btn btn-secondary btn-xs" type="submit" name="op" value="add_question" <%= form.questions.length >= limits.questions ? 'disabled' : '' %>>+ Add question</button>
+        </div>
+      </div>
+
+      <div class="tpu-stack-14">
+        <div class="panel">
+          <div class="panel-head"><h2>Reassessment intervals</h2></div>
+          <div class="panel-pad tpu-stack-8">
+            <% ['Critical', 'High', 'Medium', 'Low'].forEach(t => { const v = form.intervals[t]; %>
+              <label class="tprm-crit-interval">
+                <%- include('tprm_criticality_parts', { part: 'tier', tier: t }) %>
+                <span class="tprm-crit-interval-field"><input class="input tpu-w-90" type="number" name="interval_<%= t.toLowerCase() %>" min="<%= intervalRange.min %>" max="<%= intervalRange.max %>" step="1" value="<%= Number.isFinite(v) ? v : '' %>" required> <span class="meta">months</span></span>
+              </label>
+            <% }) %>
+            <div class="meta">Firm defaults; a client's own intervals take precedence.</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>How scoring works</h2><span class="meta">as last saved</span></div>
+          <%- include('tprm_criticality_parts', { part: 'example', model }) %>
+        </div>
+        <div class="panel panel-pad tpu-stack-8">
+          <button class="btn btn-primary" type="submit" name="op" value="save" data-tprm-save-draft>Save draft</button>
+          <button class="btn btn-secondary" type="submit" name="op" value="review" data-tprm-review-activate>Save and review activation</button>
+        </div>
+      </div>
+    </div>
+  </form>
+  <form method="POST" action="/tprm/settings/criticality/versions/<%= model.id %>/discard" class="tpu-mt-14" data-tprm-discard-draft>
+    <input type="hidden" name="_csrf" value="<%= csrf %>"><%- include('partials/tprm_confirm_fields', { title: 'Discard this draft version?', body: 'Its changes are lost. The active version is not affected.', action: 'Discard draft', tone: 'problem' }) %>
+    <input type="hidden" name="row_version" value="<%= model.rowVersion %>">
+    <button class="btn btn-ghost btn-xs" type="submit">Discard this draft</button>
+  </form>
+<% } %>
+<%- include('partials/footer') %>

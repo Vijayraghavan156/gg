@@ -1,0 +1,9 @@
+# Keep files that are executed or embedded as scripts on LF line endings, even on
+# Windows checkouts where core.autocrlf=true would otherwise turn them into CRLF.
+# A carriage return inside a Terraform heredoc ends up in the script an ECS task
+# runs (for example "set -eu\r") and the shell rejects it.
+*.tf       text eol=lf
+*.tfvars   text eol=lf
+*.hcl      text eol=lf
+*.sh       text eol=lf
+Dockerfile text eol=lf

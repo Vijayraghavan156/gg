@@ -1,0 +1,257 @@
+<%
+  const qp = questionnairePanel;
+  Object.assign(actionLabels, qp.eventLabels);
+  const qq = qp.questionnaire;
+  const qBase = '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id + '/assessments/' + assessment.id + '/questionnaire';
+  const qCsrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const qWhen = d => tpf.dayTime(d) || '-';
+  const qDay = d => tpf.day(d) || '-';
+  const linkTone = s => ({ active: 'good' })[s] || 'quiet';
+  const qRow = id => qp.byId ? qp.byId.get(id) : null;
+  const qText = t => String(t || '').replace(/<Client>/g, tpClient.name || 'the client');
+  const evidenceCount = ids => ids.filter(id => { const r = qRow(id); return r && r.evidence_mandatory; }).length;
+%>
+<% function questionTable(ids) { %>
+  <div class="table-scroll"><table class="t tprm-qtable">
+    <colgroup><col class="tprm-col-id"><col><col class="tprm-col-ev"></colgroup>
+    <thead><tr><th scope="col">ID</th><th scope="col">Question</th><th scope="col">Evidence</th></tr></thead>
+    <tbody>
+    <% ids.forEach(id => { const row = qRow(id); %>
+      <tr data-tprm-question-row="<%= id %>">
+        <td class="tprm-qid"><%= id %></td>
+        <td><%= row ? qText(row.question) : '' %></td>
+        <td><% if (row && row.evidence_mandatory) { %><span class="tprm-ev" data-tprm-evidence-required<% if (row.evidence) { %> title="<%= qText(row.evidence) %>"<% } %>>Required</span><% } else { %><span class="tprm-ev-none">Optional</span><% } %></td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table></div>
+<% } %>
+<div class="tprm-stack" id="questionnaire" data-tprm-questionnaire<% if (qq) { %> data-tprm-questionnaire-status="<%= qq.status %>"<% } %>>
+
+<div class="panel">
+  <div class="panel-head">
+    <h2>Questionnaire for the third party</h2>
+    <% if (qq) { %><%- include('partials/tprm_status', { text: qp.Q.STATUS_LABELS[qq.status], tone: qq.status === 'draft' ? 'attention' : 'quiet', attrs: 'data-tprm-questionnaire-stage' }) %><% } %>
+  </div>
+
+  <% if (newLink) { %>
+    <div class="callout tprm-inset" role="status" data-tprm-new-link>
+      <div class="callout-title">Copy this link now: it is shown only once</div>
+      <div class="meta tpu-mb-8">For <%= newLink.recipientName %> (<%= newLink.recipientEmail %>), valid until <%= qDay(newLink.expiresAt) %>. It is not stored anywhere: if it is lost, issue a new link.<% if (newLink.replaced) { %> The previous link no longer works.<% } %></div>
+      <div class="tprm-copy-row">
+        <input class="input mono" type="text" readonly value="<%= newLink.url %>" data-tprm-link-url onclick="this.select();">
+        <button class="btn btn-secondary" type="button" data-tprm-copy-link onclick="var i=this.parentNode.querySelector('input');i.select();if(navigator.clipboard){navigator.clipboard.writeText(i.value);}this.textContent='Copied';">Copy</button>
+      </div>
+      <% if (newLink.emailed) { %>
+        <div class="meta text-xs tpu-mt-8" data-tprm-link-emailed><%= newLink.emailed.ok ? 'Emailed to ' + newLink.recipientEmail + '.' : 'The email could not be sent (' + newLink.emailed.error + '). Copy the link and send it yourself.' %></div>
+      <% } %>
+    </div>
+  <% } %>
+
+  <% if (!qq) { %>
+    <% if (qp.blocked) { %>
+      <div class="panel-pad meta" data-tprm-questionnaire-blocked><%= qp.blocked %></div>
+    <% } else if (qp.canPrepare) { %>
+      <form method="POST" action="<%= qBase %>" class="panel-pad tprm-form-stack" data-tprm-prepare-form>
+        <input type="hidden" name="_csrf" value="<%= qCsrf %>">
+        <div class="meta">Prepare the questionnaire; you can add or remove modules before you send it.
+          <details class="tprm-how"><summary>How this works</summary>The questionnaire is assembled from the approved question bank for the confirmed tier (<%= tp.TIER_LABELS[assessment.final_tier] %>), the delivery model and the modules the answers call for.</details></div>
+        <% if (!qp.deliveryFromAnswers) { %>
+          <fieldset class="tprm-fieldset" data-tprm-delivery-choice>
+            <legend>How is the service delivered? <span class="meta text-xs">(not answered on the assessment; your choice is recorded)</span></legend>
+            <% qp.A.DELIVERY_MODELS.forEach(m => { %>
+              <label class="tprm-check"><input type="radio" name="delivery_model" value="<%= m %>" required> <span><%= qp.A.DELIVERY_MODEL_LABELS[m] %></span></label>
+            <% }) %>
+          </fieldset>
+        <% } else { %>
+          <div><span class="label">Delivery model</span><%= qp.A.DELIVERY_MODEL_LABELS[qp.deliveryFromAnswers] %></div>
+        <% } %>
+        <% if (qp.note) { %><div class="meta text-xs" data-tprm-delivery-note><%= qp.note %></div><% } %>
+        <div><span class="label">Rulebooks</span><span data-tprm-rulebooks-to-pin><% if ((qp.rulebooksToPin || []).length) { %><%= qp.rulebooksToPin.map(r => r.name).join(', ') %> <span class="meta text-xs">(ticked for the client: their questions are added and they stay with this questionnaire)</span><% } else { %><span class="meta">None ticked for the client.</span><% } %></span><% if (typeof canSettings !== 'undefined' && canSettings) { %> <a class="tprm-link" href="/tprm/clients/<%= tpClient.id %>/settings#rulebooks" data-tprm-rulebooks-change>Change</a><% } %></div>
+        <div class="tprm-actions"><button class="btn btn-primary" type="submit" data-tprm-prepare>Prepare questionnaire</button></div>
+      </form>
+    <% } else { %>
+      <div class="panel-pad meta">The questionnaire has not been prepared yet.</div>
+    <% } %>
+  <% } else { %>
+    <% const qRegulatory = Object.values(qp.counts.rulebooks || {}).reduce((n, c) => n + c, 0); %>
+    <% const qAllIds = (qp.sections || []).reduce((all, s) => all.concat(s.ids), []); %>
+    <p class="panel-pad tprm-summary-line" data-tprm-questionnaire-summary><strong data-tprm-vendor-count><%= qq.vendor_question_count %></strong> questions for the third party, <span data-tprm-evidence-required-count><%= evidenceCount(qAllIds) %></span> of <%= qAllIds.length %> asking for evidence: <span data-tprm-base-count><%= qp.counts.base %></span> base<% if ((qq.rulebooks || []).length) { %>, <span data-tprm-regulatory-count><%= qRegulatory %></span> regulatory<% } %>. Tier <%= tp.TIER_LABELS[qq.tier] %>, <span data-tprm-delivery-model><%= qp.A.DELIVERY_MODEL_LABELS[qq.delivery_model] %></span><% if (qq.delivery_model_source === 'consultant') { %> (chosen by the consultant)<% } %>.</p>
+    <div class="panel-pad meta text-xs">Prepared by <%= qq.prepared_by_name || 'Unknown user' %> on <%= qWhen(qq.prepared_at) %> from question bank <span data-tprm-bank-version>Version <%= qq.bank_version %></span>.</div>
+    <% if (qp.note) { %><div class="panel-pad meta text-xs tprm-divide" data-tprm-delivery-note><%= qp.note %></div><% } %>
+    <% if (qp.blocked && !['completed', 'cancelled'].includes(assessment.status)) { %>
+      <div class="callout tprm-inset" role="status" data-tprm-questionnaire-frozen>
+        <div class="callout-title">The questionnaire is frozen</div>
+        <div><%= qp.blocked %></div>
+      </div>
+    <% } else if (qp.blocked) { %>
+      <div class="panel-pad meta tprm-divide" data-tprm-questionnaire-blocked><%= qp.blocked %></div>
+    <% } %>
+  <% } %>
+</div>
+
+<% if (qq) { %>
+<div class="panel" data-tprm-modules>
+  <div class="panel-head"><h2>Modules</h2><span class="meta"><%= (qq.modules || []).filter(m => m.included).length %> included</span></div>
+  <% if (!(qq.modules || []).length) { %><div class="panel-pad meta">No modules.</div><% } %>
+  <% (qq.modules || []).forEach(m => { const section = qp.sections.find(s => s.kind === 'module' && s.title === m.module); %>
+    <div class="tprm-module <%= m.included ? '' : 'is-removed' %>" data-tprm-module="<%= m.module %>" data-tprm-module-included="<%= m.included ? '1' : '0' %>">
+      <div class="tprm-module-main">
+        <% if (m.included && section) { %>
+          <details>
+            <summary class="tprm-summary"><span class="tprm-module-name"><%= m.module %></span> <span class="meta"><span data-tprm-module-count><%= section.ids.length %></span> question<%= section.ids.length === 1 ? '' : 's' %>, <%= evidenceCount(section.ids) %> need<%= evidenceCount(section.ids) === 1 ? 's' : '' %> evidence</span></summary>
+            <div class="tpu-mt-8"><% questionTable(section.ids) %></div>
+          </details>
+        <% } else { %>
+          <span class="tprm-module-name tprm-strong"><%= m.module %></span>
+        <% } %>
+        <div class="meta text-xs tpu-mt-2">
+          <% if (m.source === 'auto') { %>Added from the answers: <%= m.because %>.<% } else if (m.source === 'third_party_answer') { %><span data-tprm-module-by-answer>Added by the third party's answer: <%= m.because %>.</span><% } else { %>Added by hand.<% } %>
+          <% if (m.changed_at) { %> <%= m.included ? 'Added' : 'Removed' %> by <%= m.changed_by_name || 'Unknown user' %> <%= qWhen(m.changed_at) %>: <%= m.reason %><% } %>
+        </div>
+        <% if (m.flag) { %><div class="meta text-xs tprm-warn-text" data-tprm-module-flag><%= m.flag %></div><% } %>
+      </div>
+      <% if (qp.canEditModules && m.included) { %>
+        <form method="POST" action="<%= qBase %>/modules" class="tprm-module-form" data-tprm-remove-module-form>
+          <input type="hidden" name="_csrf" value="<%= qCsrf %>">
+          <input type="hidden" name="row_version" value="<%= qq.row_version %>">
+          <input type="hidden" name="op" value="remove">
+          <input type="hidden" name="module" value="<%= m.module %>">
+          <input class="input" name="reason" placeholder="Why remove it" aria-label="Why remove <%= m.module %>" maxlength="<%= qp.limits.reason %>" required>
+          <button class="btn btn-secondary btn-xs" type="submit">Remove</button>
+        </form>
+      <% } %>
+    </div>
+  <% }) %>
+  <% if (qp.canEditModules && qp.addable.length) { %>
+    <form method="POST" action="<%= qBase %>/modules" class="panel-pad tprm-divide tprm-form-grid tprm-add-module" data-tprm-add-module-form>
+      <input type="hidden" name="_csrf" value="<%= qCsrf %>">
+      <input type="hidden" name="row_version" value="<%= qq.row_version %>">
+      <input type="hidden" name="op" value="add">
+      <div><label class="label" for="add-module">Add a module</label>
+        <select class="select" id="add-module" name="module" required>
+          <% qp.addable.forEach(m => { %><option value="<%= m %>"><%= m %></option><% }) %>
+        </select></div>
+      <div><label class="label" for="add-module-reason">Why</label><input class="input" id="add-module-reason" name="reason" maxlength="<%= qp.limits.reason %>" required></div>
+      <div><button class="btn btn-secondary" type="submit" data-tprm-add-module>Add module</button></div>
+    </form>
+  <% } %>
+  <% if ((qq.dynamic_modules || []).length) { %>
+    <div class="panel-pad meta text-xs tprm-divide" data-tprm-dynamic-modules>
+      Added while the third party answers: <% qq.dynamic_modules.forEach((d, i) => { %><%= i ? '; ' : '' %><strong><%= d.module %></strong> (<%= d.when %>)<% }) %>
+    </div>
+  <% } %>
+</div>
+
+<div class="panel" data-tprm-links>
+  <div class="panel-head"><h2>Link for the third party</h2><% if (qp.activeLink) { %><%- include('partials/tprm_status', { text: 'Active link', tone: 'good' }) %><% } %></div>
+  <% if (!qp.links.length) { %>
+    <div class="panel-pad meta" data-tprm-links-empty>No link has been created yet.</div>
+  <% } else { %>
+    <div class="table-scroll"><table class="t" data-tprm-link-list>
+      <thead><tr><th>Recipient</th><th>Created</th><th>Valid until</th><th>Status</th><th class="tprm-right">Actions</th></tr></thead>
+      <tbody>
+      <% qp.links.forEach(l => { %>
+        <tr data-tprm-link-row="<%= l.id %>" data-tprm-link-status="<%= l.effective_status %>">
+          <td><%= l.recipient_name %><div class="meta text-xs"><%= l.recipient_email %><% if (l.emailed_at) { %> · emailed<% } %></div></td>
+          <td class="meta"><%= l.created_by_name || 'Unknown user' %><div class="text-xs"><%= qWhen(l.created_at) %></div></td>
+          <td class="meta tprm-nowrap"><%= qDay(l.expires_at) %></td>
+          <td><%- include('partials/tprm_status', { text: qp.Q.LINK_STATUS_LABELS[l.effective_status], tone: linkTone(l.effective_status) }) %>
+            <% if (l.status === 'revoked') { %><div class="meta text-xs"><%= l.revoked_by_name || 'Unknown user' %> · <%= qWhen(l.revoked_at) %>: <%= l.revoke_reason %></div><% } %></td>
+          <td class="tprm-right tprm-nowrap">
+            <% if (qp.canRevoke && l.status === 'active') { %>
+              <form method="POST" action="<%= qBase %>/links/<%= l.id %>/revoke" class="tprm-module-form tprm-q-revoke" data-tprm-revoke-form>
+                <input type="hidden" name="_csrf" value="<%= qCsrf %>"><%- include('partials/tprm_confirm_fields', { title: 'Revoke this link?', body: 'The third party can no longer open the questionnaire with it. Answers already saved are kept.', action: 'Revoke link' }) %>
+                <input type="hidden" name="row_version" value="<%= l.row_version %>">
+                <input class="input tprm-q-revoke-reason" name="reason" placeholder="Reason (optional)" aria-label="Reason for revoking" maxlength="<%= qp.limits.reason %>">
+                <button class="btn btn-secondary btn-xs" type="submit" data-tprm-revoke>Revoke</button>
+              </form>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+  <% if (qp.canLink) { %>
+    <form method="POST" action="<%= qBase %>/links" class="panel-pad tprm-divide tprm-form-grid" data-tprm-link-form>
+      <input type="hidden" name="_csrf" value="<%= qCsrf %>">
+      <input type="hidden" name="row_version" value="<%= qq.row_version %>">
+      <div><label class="label" for="link-name">Recipient at the third party</label><input class="input" id="link-name" name="recipient_name" maxlength="<%= qp.limits.name %>" required></div>
+      <div><label class="label" for="link-email">Their email</label><input class="input" id="link-email" type="email" name="recipient_email" maxlength="<%= qp.limits.email %>" required></div>
+      <div><label class="label" for="link-days">Valid for (days)</label><input class="input" id="link-days" type="number" name="expires_in_days" min="<%= qp.limits.expiryDaysMin %>" max="<%= qp.limits.expiryDaysMax %>" value="<%= qp.defaultExpiryDays %>" required></div>
+      <div><label class="tprm-check"><input type="checkbox" name="send_email" value="1"> <span>Email the link to them</span></label></div>
+      <div class="tprm-full tprm-actions-split">
+        <span class="meta text-xs"><% if (qp.activeLink) { %>Issuing a new link revokes the current one.<% } else { %>The link is shown once, for you to copy. <% if (qq.status === 'draft') { %>Once it is created the questionnaire is sent and its modules can no longer change.<% } %><% } %></span>
+        <button class="btn btn-primary" type="submit" data-tprm-create-link><%= qp.activeLink ? 'Issue a new link' : 'Create link' %></button>
+      </div>
+    </form>
+  <% } %>
+  <% if (qq.not_returned) { %>
+    <div class="panel-pad tprm-divide" data-tprm-not-returned>
+      <div class="tprm-sub">Questionnaire not returned</div>
+      <div class="meta">Closed <%= qWhen(qq.closed_at) %> without the third party's answers: <span class="tprm-pre"><%= qq.not_returned_reason %></span></div>
+    </div>
+  <% } else if (qp.canCloseNotReturned) { %>
+    <details class="panel-pad tprm-divide" data-tprm-not-returned-panel>
+      <summary class="tprm-summary">The third party has not returned the questionnaire?</summary>
+      <form method="POST" action="<%= qBase %>/not-returned" class="tprm-form-stack tpu-mt-10" data-tprm-not-returned-form>
+        <input type="hidden" name="_csrf" value="<%= qCsrf %>"><%- include('partials/tprm_confirm_fields', { title: 'Close the questionnaire as not returned?', body: 'The link stops working and the third party can no longer answer. The reason is kept with the assessment.', action: 'Close as not returned' }) %>
+        <input type="hidden" name="row_version" value="<%= qq.row_version %>">
+        <div class="meta text-xs">Give the reason and close the questionnaire as not returned.
+          <details class="tprm-how"><summary>How this works</summary>A sent questionnaire must be closed before the recommendation is submitted for review: by closing the review of the answers once they are submitted, or here, as not returned. The link is revoked and the reason is kept; the recommendation step shows it.</details></div>
+        <div><label class="label" for="not-returned-reason">Reason</label><input class="input" id="not-returned-reason" name="reason" maxlength="<%= qp.limits.reason %>" required></div>
+        <div class="tprm-actions"><button class="btn btn-secondary" type="submit" data-tprm-close-not-returned>Close as not returned</button></div>
+      </form>
+    </details>
+  <% } %>
+</div>
+
+<div class="panel" data-tprm-question-list>
+  <div class="panel-head"><h2>Questions</h2><span class="meta">Open a section to see its questions</span></div>
+  <div data-tprm-base-sections>
+    <div class="panel-pad tprm-group-title">Base questions by domain</div>
+    <% qp.sections.filter(s => s.kind === 'base').forEach(s => { %>
+      <details class="tprm-qgroup" data-tprm-section="<%= s.title %>">
+        <summary class="tprm-summary"><span class="tpu-grow"><%= s.title %></span> <span class="tprm-qgroup-meta"><span data-tprm-section-count><%= s.ids.length %></span> question<%= s.ids.length === 1 ? '' : 's' %>, <%= evidenceCount(s.ids) %> need<%= evidenceCount(s.ids) === 1 ? 's' : '' %> evidence</span></summary>
+        <% questionTable(s.ids) %>
+      </details>
+    <% }) %>
+  </div>
+  <div data-tprm-regulatory>
+    <div class="panel-pad tprm-group-title tprm-divide">Regulatory <span class="meta text-xs">(the client's rulebooks, pinned when the questionnaire was prepared)</span></div>
+    <% if (!(qp.rulebooks || []).length) { %>
+      <div class="panel-pad meta tprm-divide" data-tprm-regulatory-empty>No rulebooks were ticked for the client when the questionnaire was prepared.</div>
+    <% } %>
+    <% (qp.rulebooks || []).forEach(r => { const section = qp.sections.find(s => s.kind === 'rulebook' && s.title === r.name); %>
+      <div class="tprm-qgroup" data-tprm-rulebook-section="<%= r.key %>">
+        <% if (section) { %>
+          <details>
+            <summary class="tprm-summary"><span class="tpu-grow"><%= r.name %> <span class="meta text-xs">version <%= r.version %></span></span> <span class="tprm-qgroup-meta"><span data-tprm-rulebook-count><%= section.ids.length %></span> question<%= section.ids.length === 1 ? '' : 's' %>, <%= evidenceCount(section.ids) %> need<%= evidenceCount(section.ids) === 1 ? 's' : '' %> evidence</span></summary>
+            <% questionTable(section.ids) %>
+          </details>
+        <% } else { %>
+          <div class="tprm-qgroup-static"><span class="tprm-strong"><%= r.name %></span> <span class="meta text-xs">version <%= r.version %></span> <span class="tprm-qgroup-meta"><span data-tprm-rulebook-count>0</span> questions</span></div>
+        <% } %>
+        <% const rbNote = (r.questions ? '' : 'No question of its own: every one is already asked above. ') + (r.checks ? r.checks + ' check' + (r.checks === 1 ? '' : 's') + ' for the consultant (below). ' : '') + (r.data_country ? 'Data must stay in ' + r.data_country + '. ' : ''); %>
+        <% if (rbNote) { %><div class="meta text-xs tprm-qgroup-note"><%= rbNote %></div><% } %>
+      </div>
+    <% }) %>
+  </div>
+</div>
+
+<div class="panel" data-tprm-consultant-checks>
+  <div class="panel-head"><h2>Checks for the consultant</h2><span class="meta">Not sent to the third party</span></div>
+  <% if (!qp.consultantChecks.length) { %>
+    <div class="panel-pad meta" data-tprm-consultant-checks-empty>None in this questionnaire.</div>
+  <% } else { %>
+    <div class="table-scroll"><table class="t tprm-qtable">
+      <colgroup><col class="tprm-col-id"><col></colgroup>
+      <thead><tr><th scope="col">ID</th><th scope="col">Check</th></tr></thead>
+      <tbody><% qp.consultantChecks.forEach(row => { %><tr data-tprm-consultant-check="<%= row.id %>"><td class="tprm-qid"><%= row.id %></td><td><%= qText(row.question) %></td></tr><% }) %></tbody>
+    </table></div>
+  <% } %>
+</div>
+<% } %>
+
+</div>

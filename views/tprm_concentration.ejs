@@ -1,0 +1,68 @@
+<%- include('partials/header', { title: (firmWide ? 'Firm' : tpClient.name) + ' · Concentration · Third-party risk', user, active }) %>
+<%
+  const s = summary;
+  const pct = x => Math.round(x * 100);
+  const isAccent = (dimension, g) => dimension === 'tier' && g.key === 'critical';
+%>
+<% if (firmWide) { %>
+<div class="page-head" data-tprm-concentration="firm">
+  <div>
+    <a class="text-xs tpu-back" href="/tprm">← Third-party risk</a>
+    <h1 class="page-title tpu-mt-6">Concentration across clients</h1>
+    <div class="page-subtitle">Services of third parties in use, across <%= s.clientCount %> third-party risk client<%= s.clientCount === 1 ? '' : 's' %>. Third parties are matched across clients by name.</div>
+  </div>
+</div>
+<% } else { %>
+<%- include('tprm_client_nav', { tpClient, section: 'concentration', canManage, canSettings }) %>
+<div data-tprm-concentration="client"></div>
+<% } %>
+
+<div class="panel tpu-mb-14" data-tprm-concentration-headlines>
+  <div class="panel-head"><h2>Concentration</h2><span class="meta"><%= s.total %> service<%= s.total === 1 ? '' : 's' %> · <%= s.thirdParties %> third part<%= s.thirdParties === 1 ? 'y' : 'ies' %> in use</span></div>
+  <div class="panel-pad meta tpu-rule-bottom">
+    <details class="tprm-how"><summary>How this works</summary>Counts services of third parties in use. Category and tier are the third party's; hosting countries and sole source are the service's. A service hosted in more than one country counts once in each.</details>
+    <% if (s.withoutServices) { %><span data-tprm-concentration-without="<%= s.withoutServices %>"><%= s.withoutServices %> third part<%= s.withoutServices === 1 ? 'y' : 'ies' %> in use <%= s.withoutServices === 1 ? 'has' : 'have' %> no service recorded and <%= s.withoutServices === 1 ? 'is' : 'are' %> not counted.</span><% } %>
+  </div>
+  <% if (!s.total) { %>
+    <div class="empty-state" data-tprm-concentration-empty>
+      <div class="text-lg tpu-label-strong">No services to count yet</div>
+      <div class="meta">Add services to the third parties in use to see where the client depends on them.</div>
+    </div>
+  <% } else { %>
+    <ul class="panel-pad tprm-headlines">
+      <% s.headlines.forEach(h => { %><li data-tprm-headline="<%= h.key %>" class="tpu-my-4<%= h.accent ? ' tprm-headline-accent' : '' %>"><%= h.text %></li><% }) %>
+    </ul>
+  <% } %>
+</div>
+
+<% if (s.total) { %>
+<% C.DIMENSIONS.forEach(d => { const shown = s.groups[d].filter(g => g.count > 1); const singles = s.groups[d].length - shown.length; %>
+<div class="panel tpu-mb-14" data-tprm-concentration-group="<%= d %>">
+  <div class="panel-head"><h2><%= C.DIMENSION_LABELS[d] %></h2><span class="meta"><%= shown.length ? shown.length + ' with more than one service' : 'No concentration' %></span></div>
+  <% if (shown.length) { %>
+  <div class="table-scroll">
+  <table class="t">
+    <thead><tr><th>Group</th><th class="num tpu-w-90">Services</th><th class="num tpu-w-90">Share</th><th class="num tpu-w-110">Third parties</th><% if (firmWide) { %><th class="num tpu-w-80">Clients</th><% } %></tr></thead>
+    <tbody>
+    <% shown.forEach(g => { %>
+      <tr data-tprm-group-row="<%= d %>:<%= g.key %>" data-tprm-group-count="<%= g.count %>">
+        <td><details><summary class="tpu-pointer"><%= g.label %></summary>
+          <ul class="text-sm tpu-list-6">
+            <% g.services.forEach(sv => { %><li><% if (!firmWide) { %><a href="/tprm/clients/<%= sv.client_id %>/third-parties/<%= sv.third_party_id %>#services"><%= sv.third_party_name %></a><% } else { %><a href="/tprm/clients/<%= sv.client_id %>/third-parties/<%= sv.third_party_id %>#services"><%= sv.client_name %> · <%= sv.third_party_name %></a><% } %>: <%= sv.description %></li><% }) %>
+          </ul></details></td>
+        <td class="num"><%= g.count %></td>
+        <td class="num"><%= pct(g.share) %>%</td>
+        <td class="num"><%= g.thirdParties %></td>
+        <% if (firmWide) { %><td class="num"><%= g.clients %></td><% } %>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table>
+  </div>
+  <% } %>
+  <% if (singles) { %><p class="panel-pad meta" data-tprm-concentration-singles="<%= d %>"><%= shown.length ? 'And ' : '' %><%= singles %> group<%= singles === 1 ? '' : 's' %> with one service each.</p><% } %>
+</div>
+<% }) %>
+<% } %>
+<% if (typeof summary !== 'undefined' && summary.fourth) { %><%- include('tprm_fourth_parties', { fourth: summary.fourth, mode: firmWide ? 'firm' : 'client' }) %><% } %>
+<%- include('partials/footer') %>

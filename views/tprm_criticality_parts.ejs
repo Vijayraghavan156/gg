@@ -1,0 +1,81 @@
+<% if (part === 'tier') { %>
+  <span data-tier="<%= tier %>"><%= tier %></span>
+<% } else if (part === 'questions') { %>
+  <div data-tprm-criticality-questions>
+    <% model.questions.forEach((q, i) => { %>
+      <div class="panel-pad tpu-rule-top" data-question-id="<%= q.id %>">
+        <div class="tprm-crit-q-head">
+          <strong><%= i + 1 %>. <%= q.text %></strong>
+          <span class="meta"><%= q.kind === 'criticality' ? 'Sets the tier' : 'Describes the service · never raises the tier' %></span>
+        </div>
+        <ul class="tprm-crit-answers">
+          <% q.answers.forEach(a => { %>
+            <li class="tprm-crit-answer-row" data-answer-id="<%= a.id %>">
+              <span><%= a.label %></span>
+              <% if (q.kind === 'criticality') { %><span><%= a.tier %></span><% } else { %><span class="meta">Low</span><% } %>
+            </li>
+          <% }) %>
+        </ul>
+      </div>
+    <% }) %>
+  </div>
+<% } else if (part === 'intervals') { %>
+  <table class="t" data-tprm-criticality-intervals>
+    <thead><tr><th>Tier</th><th>Reassess every</th></tr></thead>
+    <tbody>
+      <% ['Critical', 'High', 'Medium', 'Low'].forEach(t => { %>
+        <tr><td><%= t %></td><td data-interval="<%= t %>"><%= model.intervals[t] %> months</td></tr>
+      <% }) %>
+    </tbody>
+  </table>
+  <div class="panel-pad meta">Firm defaults. A client's own intervals, where set, take precedence for that client.</div>
+<% } else if (part === 'example') { %>
+  <% const scored = model.questions.filter(q => q.kind === 'criticality'); %>
+  <div class="panel-pad" data-tprm-scoring-example>
+    <div class="meta tprm-crit-example-lead">Choose answers to see the tier they give.
+      <details class="tprm-how"><summary>How this works</summary>
+        <p>A third party's tier is the most serious tier among its answers: no points, no totals. One serious answer is enough. Service-description questions never raise the tier.</p>
+      </details>
+    </div>
+    <div class="tpu-stack-8">
+      <% scored.forEach(q => { %>
+        <label class="tprm-crit-example-q">
+          <span class="text-xs"><%= q.text %></span>
+          <select class="input" data-example-question="<%= q.id %>">
+            <% q.answers.forEach(a => { %><option value="<%= a.id %>"><%= a.label %> (<%= a.tier %>)</option><% }) %>
+          </select>
+        </label>
+      <% }) %>
+    </div>
+    <div class="tprm-crit-example-result">
+      <span class="meta">Tier</span>
+      <span class="tpu-medium" data-example-tier>Low</span>
+      <span data-example-explanation></span>
+    </div>
+  </div>
+  <script type="application/json" data-example-model><%- jsonForScript(scored) %></script>
+  <script>
+  (function () {
+    var root = document.querySelector('[data-tprm-scoring-example]');
+    var source = document.querySelector('[data-example-model]');
+    if (!root || !source) return;
+    var questions = JSON.parse(source.textContent);
+    var rank = { Low: 1, Medium: 2, High: 3, Critical: 4 };
+    var tierEl = root.querySelector('[data-example-tier]');
+    var whyEl = root.querySelector('[data-example-explanation]');
+    function update() {
+      var best = null;
+      questions.forEach(function (q) {
+        var select = root.querySelector('[data-example-question="' + q.id + '"]');
+        var answer = select && q.answers.filter(function (a) { return a.id === select.value; })[0];
+        if (answer && (!best || rank[answer.tier] > rank[best.tier])) best = answer;
+      });
+      if (!best) return;
+      tierEl.textContent = best.tier;
+      whyEl.textContent = best.tier + ' because: ' + best.label;
+    }
+    root.addEventListener('change', update);
+    update();
+  })();
+  </script>
+<% } %>

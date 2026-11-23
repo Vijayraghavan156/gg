@@ -1,0 +1,32 @@
+<% const f4 = fourth; %>
+<div class="panel tpu-mb-14" data-tprm-fourth-parties="<%= mode %>">
+  <div class="panel-head"><h2>Fourth parties</h2><span class="meta"><%= f4.total %> subprocessor<%= f4.total === 1 ? '' : 's' %><% if (f4.shared) { %> · <%= f4.shared %> shared<% } %></span></div>
+  <div class="panel-pad meta tpu-rule-bottom">
+    A subprocessor used by several third parties is a shared point of failure.
+    <details class="tprm-how"><summary>How this works</summary>The vendors your third parties in use depend on (their subprocessors, recorded from the questionnaire or by <%= mode === 'portal' ? 'your consultants' : 'the firm' %>). Names are matched ignoring case.</details>
+  </div>
+  <% if (!f4.total) { %>
+    <div class="panel-pad meta" data-tprm-fourth-empty>No subprocessors recorded for third parties in use yet.</div>
+  <% } else { %>
+    <% if (f4.headlines.length) { %>
+    <ul class="panel-pad tprm-headlines">
+      <% f4.headlines.forEach(h => { %><li data-tprm-fourth-headline class="tpu-my-4"><%= h.text %></li><% }) %>
+    </ul>
+    <% } %>
+    <div class="table-scroll"><table class="t">
+      <thead><tr><th>Subprocessor</th><th class="num tpu-w-110">Third parties</th><% if (mode === 'firm') { %><th class="num tpu-w-80">Clients</th><% } %></tr></thead>
+      <tbody>
+      <% f4.list.forEach(g => { %>
+        <tr data-tprm-fourth-row="<%= g.label %>" data-tprm-fourth-count="<%= g.count %>">
+          <td><details><summary class="tpu-pointer"><%= g.label %></summary>
+            <ul class="text-sm tpu-list-6">
+              <% g.thirdParties.forEach(t => { %><li><% if (mode === 'portal') { %><%= t.name %><% } else if (mode === 'firm') { %><a href="/tprm/clients/<%= t.client_id %>/third-parties/<%= t.third_party_id %>#subprocessors"><%= t.client_name %> · <%= t.name %></a><% } else { %><a href="/tprm/clients/<%= t.client_id %>/third-parties/<%= t.third_party_id %>#subprocessors"><%= t.name %></a><% } %></li><% }) %>
+            </ul></details></td>
+          <td class="num"><%= g.count %></td>
+          <% if (mode === 'firm') { %><td class="num"><%= g.clients %></td><% } %>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+</div>

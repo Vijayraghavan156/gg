@@ -1,0 +1,405 @@
+<%
+  const rd = recommendation;
+  const R = rd.R;
+  const ra = assessment;
+  const rcsrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const rBase = '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id + '/assessments/' + ra.id + '/recommendations';
+  const rWhen = d => tpf.dayTime(d) || '-';
+  const rDay = d => tpf.day(d) || '-';
+  const rDash = x => (x == null || x === '') ? '-' : x;
+  const outcomeText = o => o ? rd.labels[o] : 'Not chosen yet';
+  const residualText = r => r ? R.RESIDUAL_LABELS[r] : 'Not chosen yet';
+  const statusTone = s => ({ issued: 'good', in_review: 'attention', changes_requested: 'attention' })[s] || 'quiet';
+  const condTone = s => ({ verified: 'good', proof_submitted: 'attention', changes_requested: 'attention' })[s] || 'quiet';
+  const sevTone = s => ({ critical: 'problem', high: 'problem', medium: 'attention' })[s] || 'quiet';
+  const open = rd.open;
+  const autoOpen = open ? open.conditions.filter(c => c.automatic) : [];
+  const issued = rd.issued;
+%>
+<div id="recommendation" class="tpa tpr" data-tprm-recommendation-step>
+<% function findingsList() { %>
+  <% if (rd.questionnaireNotReturned) { %>
+  <div class="tpr-block" data-tprm-rec-not-returned>
+    <p class="tpa-label">Questionnaire for the third party</p>
+    <p class="tpa-pre">Questionnaire not returned: <%= rd.questionnaireNotReturned.reason %></p>
+  </div>
+  <% } %>
+  <div class="tpr-block" data-tprm-rec-findings>
+    <p class="tpa-label">Findings on this assessment (<%= rd.findings.length %>)</p>
+    <% if (!rd.findings.length) { %>
+      <p class="tpa-meta" data-tprm-rec-findings-empty>No findings recorded.</p>
+    <% } else { %>
+      <ol class="tpr-findings">
+        <% rd.findings.forEach((f, fi) => { %>
+          <li data-tprm-rec-finding="<%= f.id %>"><span class="tpr-n"><%= fi + 1 %></span>
+            <span><span class="tpr-finding-title"><%= f.title %></span>
+              <span class="tpa-meta"><%- include('partials/tprm_status', { text: rd.findingSeverityLabels[f.severity], tone: sevTone(f.severity) }) %><% if (f.control_ref) { %> · <%= f.control_ref %><% } %> · <%= rd.findingStatusLabels[f.status] %></span></span></li>
+        <% }) %>
+      </ol>
+    <% } %>
+  </div>
+<% } %>
+<% if (!rd.ownerNamed && rd.assessmentOpen && rd.ready) { %>
+  <p class="tpa-note tpr-block" role="status" data-tprm-rec-owner-needed><span class="tpa-strong">No client decision owner is named yet.</span> The recommendation cannot be issued until one is: the client user (client sponsor or coordinator) who records the client's decision. Name them in <a href="?step=details">Assessment details</a>, or when issuing.</p>
+<% } %>
+<% function summary(rec) { %>
+  <dl class="tpr-summary" data-tprm-rec-summary="<%= rec.id %>">
+    <div><dt>Recommendation</dt><dd data-tprm-rec-outcome><strong><%= outcomeText(rec.outcome) %></strong></dd></div>
+    <div><dt>Residual risk</dt><dd data-tprm-rec-residual><%= residualText(rec.residual_rating) %></dd></div>
+    <div><dt>Valid until</dt><dd data-tprm-rec-valid-until><%= rec.valid_until ? rDay(rec.valid_until) : (rec.outcome === 'reject' ? 'Not set (not needed for ' + rd.labels.reject + ')' : '-') %></dd></div>
+    <div><dt>Author</dt><dd><%= rDash(rec.author_name) %></dd></div>
+    <% if (rec.issued_at) { %><div><dt>Issued by</dt><dd data-tprm-rec-issued-by><%= rDash(rec.reviewer_name) %>, <%= rWhen(rec.issued_at) %><% if (rec.self_issue_reason) { %><br><span class="tpa-meta" data-tprm-rec-self-issued>Self-issued by <%= rDash(rec.reviewer_name) %>: <%= rec.self_issue_reason %></span><% } %></dd></div><% } %>
+    <% if (rec.status === 'in_review') { %><div><dt>Submitted</dt><dd><%= rWhen(rec.submitted_at) %></dd></div><% } %>
+  </dl>
+  <div class="tpr-block">
+    <p class="tpa-label">Rationale</p>
+    <p class="tpa-pre" data-tprm-rec-rationale><%= rDash(rec.rationale) %></p>
+  </div>
+  <% if (rec.conditions.length) { %>
+  <div class="tpr-block" data-tprm-rec-conditions>
+    <p class="tpa-label">Conditions</p>
+    <ol class="tpr-findings">
+      <% rec.conditions.forEach((c, i) => { %>
+        <li data-tprm-rec-condition<%= c.automatic ? '-automatic' : '' %>><span class="tpr-n"><%= i + 1 %></span>
+          <span><span class="tpa-pre"><%= c.description %></span>
+            <span class="tpa-meta"><% if (c.automatic) { %><span data-tprm-auto-tag>Automatic</span> · <% } %><%= c.owner ? R.CONDITION_OWNER_LABELS[c.owner] : 'No owner' %> · due <%= rDay(c.due_date) %> · <%- include('partials/tprm_status', { text: ({ open: 'Open', proof_submitted: 'Proof submitted', verified: 'Verified', changes_requested: 'Changes requested', waived: 'Waived' })[c.status] || c.status, tone: condTone(c.status), attrs: 'data-tprm-rec-condition-status="' + (c.status || '') + '"' }) %></span></span></li>
+      <% }) %>
+    </ol>
+  </div>
+  <% } %>
+  <% if (rec.issued_at && rec.review_comment) { %>
+  <p class="tpa-meta tpr-block">Reviewer's comment: <%= rec.review_comment %></p>
+  <% } %>
+<% } %>
+
+<% if (issued) { %>
+  <section class="tpr-version" data-tprm-rec-issued="<%= issued.id %>">
+    <div class="tpr-head">
+      <h3 class="tpa-h" data-tprm-rec-version="<%= issued.version %>">Version <%= issued.version %></h3>
+      <%- include('partials/tprm_status', { text: 'Issued', tone: 'good', attrs: 'data-tprm-rec-status' }) %>
+    </div>
+    <% summary(issued) %>
+    <% findingsList() %>
+    <p class="tpa-meta tpr-block">Issued recommendations cannot be changed. The client decision owner records the client's own decision on it in the client portal.</p>
+  </section>
+<% } %>
+
+<% if (open) { %>
+  <section class="tpr-version" data-tprm-rec-open="<%= open.id %>" data-tprm-rec-open-status="<%= open.status %>">
+    <div class="tpr-head">
+      <h3 class="tpa-h" data-tprm-rec-version="<%= open.version %>">Version <%= open.version %></h3>
+      <%- include('partials/tprm_status', { text: R.STATUS_LABELS[open.status], tone: statusTone(open.status), attrs: 'data-tprm-rec-status' }) %>
+    </div>
+
+    <% if (open.status === 'changes_requested' && open.review_comment) { %>
+      <div class="tpr-block" role="status" data-tprm-rec-changes-requested>
+        <p class="tpa-strong">Changes requested by <%= rDash(open.reviewer_name) %>, <%= rWhen(open.reviewed_at) %></p>
+        <p class="tpa-pre"><%= open.review_comment %></p>
+      </div>
+    <% } %>
+
+    <% if (rd.exitPlans && rd.exitPlans.overrides.length) { %>
+      <div class="tpr-block tpa-meta" data-tprm-rec-auto-overrides>
+        <% rd.exitPlans.overrides.forEach(o => { %><p>Automatic exit plan condition for "<%= o.service_description || 'a service' %>" removed by <%= o.removed_by_name || 'a manager' %> on <%= rDay(o.removed_at) %>: <%= o.reason %></p><% }) %>
+        <% if (rd.exitPlans.outcomeChange) { const oc = rd.exitPlans.outcomeChange; %>
+          <p data-tprm-rec-override-outcome="<%= oc.outcome %>">Outcome changed to <%= outcomeText(oc.outcome) %> by <%= oc.by || 'a manager' %> on <%= rDay(oc.at) %>: <%= oc.reason %></p>
+        <% } else if (rd.exitPlans.approveBarred) { %>
+          <p data-tprm-rec-override-keeps>The recommendation stays "with conditions": only a manager can change the outcome, with a reason.</p>
+        <% } %>
+      </div>
+    <% } %>
+    <% if (rd.canEdit) { %>
+      <% const autoRows = open.conditions.filter(c => c.automatic); %>
+      <% const rows = open.conditions.filter(c => !c.automatic).concat([{ description: '', owner: '', due_date: '' }]); %>
+      <div class="tpr-grid">
+      <form method="POST" action="<%= rBase %>/<%= open.id %>" data-tprm-rec-form class="tpr-form" data-form-draft="tprm-recommendation" data-draft-record="<%= open.id %>" data-draft-version="<%= open.row_version %>">
+        <input type="hidden" name="_csrf" value="<%= rcsrf %>">
+        <input type="hidden" name="row_version" value="<%= open.row_version %>">
+        <fieldset class="tpa-fieldset" data-tprm-rec-outcomes>
+          <legend class="tpa-label">Recommendation</legend>
+          <% R.OUTCOMES.forEach(o => { %>
+            <label class="tpa-option"><input type="radio" name="outcome" value="<%= o %>" <%= open.outcome === o ? 'checked' : '' %>> <span><%= rd.labels[o] %></span></label>
+          <% }) %>
+        </fieldset>
+        <div class="tpr-row">
+          <div><label class="tpa-label" for="rec-residual">Residual risk</label>
+            <select class="tpa-input" id="rec-residual" name="residual_rating">
+              <option value="">Choose</option>
+              <% R.RESIDUAL_RATINGS.forEach(k => { %><option value="<%= k %>" <%= open.residual_rating === k ? 'selected' : '' %>><%= R.RESIDUAL_LABELS[k] %></option><% }) %>
+            </select></div>
+          <div><label class="tpa-label" for="rec-valid-until">Valid until</label>
+            <input class="tpa-input" id="rec-valid-until" type="date" name="valid_until" value="<%= tpf.ymd(open.valid_until) %>"></div>
+        </div>
+        <p class="tpa-meta" data-tprm-rec-valid-until-hint>Valid until is required for "<%= rd.labels.approve %>" and "<%= rd.labels.approve_with_conditions %>"; optional for "<%= rd.labels.reject %>".</p>
+        <div>
+          <label class="tpa-label" for="rec-rationale">Rationale</label>
+          <textarea class="tpa-input" id="rec-rationale" name="rationale" rows="7" maxlength="<%= R.LIMITS.rationale %>"><%= open.rationale || '' %></textarea>
+        </div>
+        <div class="tpr-block" data-tprm-rec-conditions-edit>
+          <p class="tpa-label">Conditions</p>
+          <p class="tpa-meta">Only for "<%= rd.labels[R.WITH_CONDITIONS] %>": at least one, each with an owner and a due date. Leave the last row blank if you have nothing to add.</p>
+          <% if (autoRows.length) { %>
+          <div data-tprm-rec-auto-conditions class="tpr-conds">
+            <% autoRows.forEach(c => { %>
+              <div data-tprm-rec-auto-condition="<%= c.id %>" class="tpr-cond">
+                <p class="tpa-pre"><span class="tpa-strong">Automatic exit plan condition.</span> <%= c.description %></p>
+                <p class="tpa-meta">Owner: <%= R.CONDITION_OWNER_LABELS[c.owner] %></p>
+                <div class="tpr-row"><div><label class="tpa-label" for="auto-<%= c.id %>-due">Due date</label>
+                  <input class="tpa-input" id="auto-<%= c.id %>-due" type="date" name="auto_conditions[c<%= c.id %>][due_date]" value="<%= tpf.ymd(c.due_date) %>"></div></div>
+              </div>
+            <% }) %>
+            <details><summary class="tpa-link">Why it is here</summary><p class="tpa-meta">Added because the client's rulebooks require an exit plan for each material service and this one has no complete plan. It goes when the plan is complete (third-party page) or the service is no longer material; only a manager can remove it otherwise, with a reason.</p></details>
+          </div>
+          <% } %>
+          <div data-tprm-rec-condition-rows class="tpr-conds">
+            <% rows.forEach((c, i) => { %>
+              <div data-tprm-rec-condition-row class="tpr-cond">
+                <div><label class="tpa-label" for="cond-<%= i %>-description">Condition <%= i + 1 %></label>
+                  <textarea class="tpa-input" id="cond-<%= i %>-description" name="conditions[<%= i %>][description]" rows="2" maxlength="<%= R.LIMITS.condition %>"><%= c.description %></textarea></div>
+                <div class="tpr-row">
+                  <div><label class="tpa-label" for="cond-<%= i %>-owner">Owner</label>
+                    <select class="tpa-input" id="cond-<%= i %>-owner" name="conditions[<%= i %>][owner]">
+                      <option value="">Choose</option>
+                      <% R.CONDITION_OWNERS.forEach(o => { %><option value="<%= o %>" <%= c.owner === o ? 'selected' : '' %>><%= R.CONDITION_OWNER_LABELS[o] %></option><% }) %>
+                    </select></div>
+                  <div><label class="tpa-label" for="cond-<%= i %>-due">Due date</label>
+                    <input class="tpa-input" id="cond-<%= i %>-due" type="date" name="conditions[<%= i %>][due_date]" value="<%= tpf.ymd(c.due_date) %>"></div>
+                </div>
+                <div><label class="tpa-label" for="cond-<%= i %>-finding">Addresses</label>
+                  <select class="tpa-input" id="cond-<%= i %>-finding" name="conditions[<%= i %>][finding_id]" data-tprm-rec-condition-finding>
+                    <option value="">No finding</option>
+                    <% rd.findings.forEach((f, fi) => { %><option value="<%= f.id %>" <%= Number(c.finding_id) === Number(f.id) ? 'selected' : '' %>>Finding <%= fi + 1 %>: <%= f.title %></option><% }) %>
+                  </select></div>
+                <label class="tpa-option"><input type="checkbox" name="conditions[<%= i %>][remove]" value="1"> Remove this condition</label>
+              </div>
+            <% }) %>
+          </div>
+          <button class="tpa-link tpr-add" type="button" data-tprm-rec-add-condition hidden>Add another condition</button>
+        </div>
+        <% if (rd.problems.length || rd.questionnaireBlocked || (rd.exitPlanProblems && rd.exitPlanProblems.length)) { %>
+          <div class="tpr-block" data-tprm-rec-problems>
+            <p class="tpa-label">Before you submit</p>
+            <ul class="tpr-list tpa-meta"><% rd.problems.forEach(p => { %><li><%= p %></li><% }) %>
+              <% (rd.exitPlanProblems || []).forEach(p => { %><li data-tprm-rec-exit-plan-problem><%= p %></li><% }) %>
+              <% if (rd.questionnaireBlocked) { %><li data-tprm-rec-questionnaire-blocked><%= rd.questionnaireBlocked %> <a href="?step=questionnaire">Go to the questionnaire</a></li><% } %></ul>
+          </div>
+        <% } %>
+        <div class="tpr-actions">
+          <button class="tpa-btn" type="submit" name="intent" value="save" data-tprm-rec-save>Save draft</button>
+          <button class="tpa-btn tpa-btn--primary" type="submit" name="intent" value="submit" data-tprm-rec-submit>Submit for review</button>
+        </div>
+      </form>
+      <aside class="tpr-aside" aria-label="What the recommendation rests on">
+        <% findingsList() %>
+      </aside>
+      </div>
+      <script>
+      (function () {
+        var list = document.querySelector('[data-tprm-rec-condition-rows]');
+        var add = document.querySelector('[data-tprm-rec-add-condition]');
+        if (!list || !add) return;
+        add.hidden = false;
+        add.addEventListener('click', function () {
+          var rows = list.querySelectorAll('[data-tprm-rec-condition-row]');
+          var last = rows[rows.length - 1];
+          var next = rows.length;
+          var copy = last.cloneNode(true);
+          copy.querySelectorAll('[name], [id], label[for]').forEach(function (el) {
+            ['name', 'id', 'for'].forEach(function (attr) {
+              var v = el.getAttribute(attr);
+              if (v) el.setAttribute(attr, v.replace(/conditions\[\d+\]/, 'conditions[' + next + ']').replace(/^cond-\d+-/, 'cond-' + next + '-'));
+            });
+            if (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && el.type !== 'checkbox')) el.value = '';
+            if (el.tagName === 'SELECT') el.selectedIndex = 0;
+            if (el.type === 'checkbox') el.checked = false;
+          });
+          var title = copy.querySelector('label[for="cond-' + next + '-description"]');
+          if (title) title.textContent = 'Condition ' + (next + 1);
+          list.appendChild(copy);
+        });
+      })();
+      </script>
+    <% } else { %>
+      <% summary(open) %>
+      <% findingsList() %>
+      <% if (rd.canReviewOpen) { %>
+        <form method="POST" action="<%= rBase %>/<%= open.id %>/issue" class="tpr-block tpr-form" data-tprm-rec-issue-form>
+          <input type="hidden" name="_csrf" value="<%= rcsrf %>"><%- include('partials/tprm_confirm_fields', { title: 'Issue this recommendation?', body: 'The client decision owner is told and can read it in the client portal. An issued version cannot be changed: a correction is a new version.', action: 'Issue' }) %>
+          <input type="hidden" name="row_version" value="<%= open.row_version %>">
+          <p class="tpa-strong">Your review</p>
+          <% if (!rd.ownerNamed) { %>
+            <div><label class="tpa-label" for="rec-issue-owner">Client decision owner</label>
+            <select class="tpa-input" id="rec-issue-owner" name="client_decision_owner_id" required data-tprm-rec-issue-owner>
+              <option value="">Choose who records the client's decision</option>
+              <% rd.owners.forEach(o => { %><option value="<%= o.id %>"><%= o.name %></option><% }) %>
+            </select>
+            <% if (!rd.owners.length) { %><p class="tpa-meta">No client sponsor or coordinator has a login for this client yet: one is needed before issuing.</p><% } %></div>
+          <% } %>
+          <div><label class="tpa-label" for="rec-issue-comment">Comment <span class="tpa-meta-inline">optional</span></label>
+          <textarea class="tpa-input" id="rec-issue-comment" name="comment" rows="2" maxlength="<%= R.LIMITS.comment %>"></textarea></div>
+          <div class="tpr-actions tpr-actions--split">
+            <span class="tpa-meta">Issuing fixes version <%= open.version %>: it cannot be changed afterwards.</span>
+            <button class="tpa-btn tpa-btn--primary" type="submit" data-tprm-rec-issue>Approve and issue</button>
+          </div>
+        </form>
+        <details class="tpr-block" data-tprm-rec-request-changes>
+          <summary class="tpa-link">Request changes instead</summary>
+          <form method="POST" action="<%= rBase %>/<%= open.id %>/request-changes" class="tpr-form">
+            <input type="hidden" name="_csrf" value="<%= rcsrf %>">
+            <input type="hidden" name="row_version" value="<%= open.row_version %>">
+            <div><label class="tpa-label" for="rec-changes-comment">What needs to change</label>
+            <textarea class="tpa-input" id="rec-changes-comment" name="comment" rows="3" maxlength="<%= R.LIMITS.comment %>" required></textarea></div>
+            <div class="tpr-actions"><button class="tpa-btn" type="submit">Request changes</button></div>
+          </form>
+        </details>
+      <% } else if (open.status === 'in_review' && rd.isAuthor) { %>
+        <% if (rd.canSelfIssue) { %>
+        <form method="POST" action="<%= rBase %>/<%= open.id %>/issue" class="tpr-block tpr-form" data-tprm-rec-self-issue-form>
+          <input type="hidden" name="_csrf" value="<%= rcsrf %>"><%- include('partials/tprm_confirm_fields', { title: 'Issue this recommendation?', body: 'The client decision owner is told and can read it in the client portal. An issued version cannot be changed: a correction is a new version.', action: 'Issue' }) %>
+          <input type="hidden" name="row_version" value="<%= open.row_version %>">
+          <% if (!rd.ownerNamed) { %>
+            <div><label class="tpa-label" for="rec-self-issue-owner">Client decision owner</label>
+            <select class="tpa-input" id="rec-self-issue-owner" name="client_decision_owner_id" required>
+              <option value="">Choose who records the client's decision</option>
+              <% rd.owners.forEach(o => { %><option value="<%= o.id %>"><%= o.name %></option><% }) %>
+            </select></div>
+          <% } %>
+          <p class="tpa-meta">You wrote this recommendation: to issue it yourself, give a written reason. It is recorded and shown to the firm ("Self-issued by ..."); the client sees only when it was issued and by whom. Otherwise a second person issues it from the review queue.</p>
+          <div><label class="tpa-label" for="rec-self-issue-reason">Self-issue reason</label>
+          <textarea class="tpa-input" id="rec-self-issue-reason" name="self_issue_reason" rows="2" maxlength="1000" required></textarea></div>
+          <div class="tpr-actions"><button class="tpa-btn tpa-btn--primary" type="submit" data-tprm-rec-self-issue>Issue my own recommendation</button></div>
+        </form>
+        <% } else { %>
+        <p class="tpa-meta tpr-block" data-tprm-rec-waiting>You wrote this recommendation. A second person (a senior consultant or a manager) issues it from the review queue.</p>
+        <% } %>
+        <% if (rd.canRecall) { %>
+        <form method="POST" action="<%= rBase %>/<%= open.id %>/recall" class="tpr-block tpr-actions tpr-actions--split" data-tprm-rec-recall-form>
+          <input type="hidden" name="_csrf" value="<%= rcsrf %>">
+          <input type="hidden" name="row_version" value="<%= open.row_version %>">
+          <span class="tpa-meta">Need to change something before it is reviewed? Recall it to draft: it leaves the review queue and keeps version <%= open.version %>.</span>
+          <button class="tpa-btn" type="submit" data-tprm-rec-recall>Recall to draft</button>
+        </form>
+        <% } %>
+      <% } else if (open.status === 'in_review') { %>
+        <p class="tpa-meta tpr-block" data-tprm-rec-waiting>Waiting for a senior consultant or a manager to review it.</p>
+      <% } else { %>
+        <p class="tpa-meta tpr-block" data-tprm-rec-waiting><%= rDash(open.author_name) %> is drafting this recommendation.</p>
+      <% } %>
+    <% } %>
+
+    <div class="tpr-more">
+      <% if (rd.exitPlans && rd.exitPlans.canOverride && autoOpen.length) { %>
+      <details data-tprm-rec-auto-override>
+        <summary class="tpa-link">Remove an automatic condition (manager)</summary>
+        <% autoOpen.forEach(c => { %>
+        <form method="POST" action="<%= rBase %>/<%= open.id %>/auto-conditions/<%= c.id %>/remove" class="tpr-form" data-tprm-rec-auto-override-form="<%= c.id %>">
+          <input type="hidden" name="_csrf" value="<%= rcsrf %>">
+          <input type="hidden" name="row_version" value="<%= open.row_version %>">
+          <p class="tpa-pre"><%= c.description %></p>
+          <div><label class="tpa-label" for="auto-remove-<%= c.id %>">Reason</label>
+          <textarea class="tpa-input" id="auto-remove-<%= c.id %>" name="reason" rows="2" maxlength="1000" required></textarea></div>
+          <div><label class="tpa-label" for="auto-remove-outcome-<%= c.id %>">Outcome</label>
+          <select class="tpa-input" id="auto-remove-outcome-<%= c.id %>" name="outcome" data-tprm-rec-override-outcome-select>
+            <option value="">Keep <%= outcomeText(open.outcome) %></option>
+            <option value="approve"><%= outcomeText('approve') %></option>
+            <option value="reject"><%= outcomeText('reject') %></option>
+          </select></div>
+          <p class="tpa-meta">Removing the condition does not change the outcome. If it is the last condition, keep it, add another condition first, or change the outcome here.</p>
+          <div><label class="tpa-label" for="auto-remove-outcome-reason-<%= c.id %>">Reason for changing the outcome</label>
+          <textarea class="tpa-input" id="auto-remove-outcome-reason-<%= c.id %>" name="outcome_reason" rows="2" maxlength="1000"></textarea></div>
+          <div class="tpr-actions"><button class="tpa-btn" type="submit">Remove this condition</button></div>
+        </form>
+        <% }) %>
+      </details>
+      <% } %>
+      <% if (rd.exitPlans && rd.exitPlans.canOverride && rd.exitPlans.overrides.length) { %>
+      <details data-tprm-rec-override-outcome-panel>
+        <summary class="tpa-link">Change the outcome (manager)</summary>
+        <form method="POST" action="<%= rBase %>/<%= open.id %>/override-outcome" class="tpr-form" data-tprm-rec-override-outcome-form>
+          <input type="hidden" name="_csrf" value="<%= rcsrf %>">
+          <input type="hidden" name="row_version" value="<%= open.row_version %>">
+          <p class="tpa-meta">An automatic condition was removed from this version, so only a manager can make it <%= outcomeText('approve') %>.</p>
+          <div><label class="tpa-label" for="override-outcome">Outcome</label>
+          <select class="tpa-input" id="override-outcome" name="outcome" required>
+            <option value="approve"><%= outcomeText('approve') %></option>
+            <option value="reject"><%= outcomeText('reject') %></option>
+          </select></div>
+          <div><label class="tpa-label" for="override-outcome-reason">Reason</label>
+          <textarea class="tpa-input" id="override-outcome-reason" name="outcome_reason" rows="2" maxlength="1000" required></textarea></div>
+          <div class="tpr-actions"><button class="tpa-btn" type="submit">Change the outcome</button></div>
+        </form>
+      </details>
+      <% } %>
+      <% if (rd.canReassign) { %>
+      <details data-tprm-rec-reassign>
+        <summary class="tpa-link">Hand to another consultant</summary>
+        <% if (!rd.authorCandidates.length) { %>
+          <p class="tpa-meta">No other consultant can work on this client's third-party risk.</p>
+        <% } else { %>
+        <form method="POST" action="<%= rBase %>/<%= open.id %>/reassign" class="tpr-form">
+          <input type="hidden" name="_csrf" value="<%= rcsrf %>">
+          <input type="hidden" name="row_version" value="<%= open.row_version %>">
+          <div><label class="tpa-label" for="rec-reassign-author">New author</label>
+          <select class="tpa-input" id="rec-reassign-author" name="author_id" required data-tprm-rec-reassign-author>
+            <option value="">Choose a consultant</option>
+            <% rd.authorCandidates.forEach(c => { %><option value="<%= c.id %>"><%= c.name || c.email %></option><% }) %>
+          </select></div>
+          <div><label class="tpa-label" for="rec-reassign-reason">Reason <span class="tpa-meta-inline">optional</span></label>
+          <textarea class="tpa-input" id="rec-reassign-reason" name="reason" rows="2" maxlength="<%= R.LIMITS.reason %>"></textarea></div>
+          <p class="tpa-meta">The new author continues version <%= open.version %> where it is. A second person still issues it; if the reviewer on record takes it over, their review is reset.</p>
+          <div class="tpr-actions"><button class="tpa-btn" type="submit">Hand over</button></div>
+        </form>
+        <% } %>
+      </details>
+      <% } %>
+      <% if (rd.canWithdraw) { %>
+      <details data-tprm-rec-withdraw>
+        <summary class="tpa-link">Withdraw this recommendation</summary>
+        <form method="POST" action="<%= rBase %>/<%= open.id %>/withdraw" class="tpr-form">
+          <input type="hidden" name="_csrf" value="<%= rcsrf %>">
+          <input type="hidden" name="row_version" value="<%= open.row_version %>">
+          <div><label class="tpa-label" for="rec-withdraw-reason">Reason</label>
+          <textarea class="tpa-input" id="rec-withdraw-reason" name="reason" rows="2" maxlength="<%= R.LIMITS.reason %>" required></textarea></div>
+          <p class="tpa-meta">The draft and its history are kept. <%= issued ? 'The issued version stays in force.' : 'A new draft can be started afterwards.' %></p>
+          <div class="tpr-actions"><button class="tpa-btn" type="submit">Withdraw</button></div>
+        </form>
+      </details>
+      <% } %>
+    </div>
+  </section>
+<% } else if (!issued) { %>
+  <section class="tpr-version" data-tprm-rec-empty>
+    <% if (rd.canCreate) { %>
+      <form method="POST" action="<%= rBase %>" class="tpr-actions tpr-actions--split" data-tprm-rec-create-form>
+        <input type="hidden" name="_csrf" value="<%= rcsrf %>">
+        <input type="hidden" name="row_version" value="<%= ra.row_version %>">
+        <span class="tpa-meta">The tier is confirmed. Draft the recommendation: <%= rd.labels.approve %>, <%= rd.labels.approve_with_conditions %> or <%= rd.labels.reject %>.</span>
+        <button class="tpa-btn tpa-btn--primary" type="submit" data-tprm-rec-create>Draft the recommendation</button>
+      </form>
+    <% } else if (rd.ready) { %>
+      <p class="tpa-empty">The consultant drafts the recommendation once the tier is confirmed.</p>
+    <% } else if (rd.assessmentOpen) { %>
+      <p class="tpa-empty" data-tprm-rec-not-ready>Available once a second person has confirmed the tier.</p>
+    <% } else { %>
+      <p class="tpa-empty">No recommendation was drafted on this assessment.</p>
+    <% } %>
+  </section>
+<% } %>
+
+<% if (rd.earlier.length) { %>
+  <details class="tpr-version" data-tprm-rec-earlier>
+    <summary class="tpa-link">Earlier versions (<%= rd.earlier.length %>)</summary>
+    <ul class="tpr-list">
+    <% rd.earlier.forEach(rec => { %>
+      <li data-tprm-rec-earlier-version="<%= rec.version %>">
+        <span class="tpa-strong">Version <%= rec.version %></span>, <%= outcomeText(rec.outcome) %>.
+        <span class="tpa-meta">
+          <% if (rec.superseded_by_id) { %>Issued <%= rWhen(rec.issued_at) %> by <%= rDash(rec.reviewer_name) %>, superseded by a later version.
+          <% } else { %>Withdrawn <%= rWhen(rec.withdrawn_at) %> by <%= rDash(rec.withdrawn_by_name) %>: <%= rec.withdraw_reason %><% } %>
+        </span>
+      </li>
+    <% }) %>
+    </ul>
+  </details>
+<% } %>
+</div>

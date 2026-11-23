@@ -1,0 +1,37 @@
+<%- include('partials/header', { title: 'Two-person rules · Third-party risk', user, active }) %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; %>
+<div class="page-head" data-tprm-two-person-settings>
+  <div>
+    <a class="text-xs tpu-back" href="/tprm">← Third-party risk clients</a>
+    <h1 class="page-title tpu-mt-6">Two-person rules</h1>
+    <div class="page-subtitle">Choose whether a manager may act as the second person on their own work, with a written reason that is recorded.</div>
+    <details class="tprm-how"><summary>How this works</summary>
+      <p>A proposed tier is confirmed, and a recommendation issued, by a second person. Consultants and senior consultants always need a different person.</p>
+      <p>The setting in force when a tier is confirmed or a recommendation issued is recorded with it; changing it later changes nothing already done.</p>
+    </details>
+  </div>
+</div>
+
+<div class="panel tpu-narrow">
+  <div class="panel-head"><h2>Managers</h2></div>
+  <form method="POST" action="/tprm/settings/two-person" class="panel-pad tpu-form" data-tprm-two-person-form>
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input type="hidden" name="row_version" value="<%= setting.rowVersion %>">
+    <div>
+      <label class="tpu-row">
+        <input type="checkbox" name="self_approve_tiers" value="1" <%= setting.selfApproveTiers ? 'checked' : '' %> data-tprm-self-approve-tiers>
+        Managers may self-approve tiers
+      </label>
+      <div class="meta text-xs">On by default. A manager who proposed a tier may confirm it with a self-approval reason, shown in the assessment's history and in the review queue ("Self-approved by ..."). Off: a second person confirms every tier.</div>
+    </div>
+    <div>
+      <label class="tpu-row">
+        <input type="checkbox" name="self_issue_recommendations" value="1" <%= setting.selfIssueRecommendations ? 'checked' : '' %> data-tprm-self-issue-recommendations>
+        Managers may issue their own recommendation
+      </label>
+      <div class="meta text-xs">Off by default. A manager who wrote a recommendation may approve and issue it with a reason, shown to the firm ("Self-issued by ..."). The client portal and the report show only when it was issued and by whom, not the reason. Off: a second person issues every recommendation.</div>
+    </div>
+    <div class="tpu-end"><button class="btn btn-primary" type="submit" data-tprm-two-person-save>Save</button></div>
+  </form>
+</div>
+<%- include('partials/footer') %>

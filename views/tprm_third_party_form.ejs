@@ -1,0 +1,81 @@
+<%- include('partials/header', { title: (thirdParty ? 'Edit ' + thirdParty.name : 'Add third party') + ' · ' + tpClient.name, user, active }) %>
+<%
+  const v = values || {};
+  const val = k => v[k] == null ? '' : v[k];
+  const isChecked = k => v[k] === true || v[k] === '1' || v[k] === 'on';
+  const cancelHref = thirdParty ? '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id : '/tprm/clients/' + tpClient.id;
+%>
+<%- include('tprm_client_nav', { tpClient, section: 'register', canManage, canSettings }) %>
+
+<div class="panel tpu-narrow" data-tprm-third-party-form>
+  <div class="panel-head"><h2><%= thirdParty ? 'Edit third party' : 'Add third party' %></h2></div>
+  <form method="POST" action="<%= formAction %>" class="panel-pad tprm-form-grid tprm-form-2">
+    <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+    <% if (thirdParty) { %><input type="hidden" name="row_version" value="<%= v.row_version != null ? v.row_version : thirdParty.row_version %>"><% } %>
+
+    <% if (errors && errors.length) { %>
+      <div class="callout tprm-callout-error tprm-full" role="alert" data-tprm-form-errors>
+        <div class="callout-title">Nothing was saved</div>
+        <ul class="tprm-list"><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+      </div>
+    <% } %>
+    <% if (duplicates && duplicates.length) { %>
+      <div class="callout tprm-full tpu-attention-edge" role="alert" data-tprm-duplicate-warning>
+        <div class="callout-title tpu-attention-text">Possible duplicate</div>
+        <div>This client already has <%= duplicates.length === 1 ? 'a third party' : duplicates.length + ' third parties' %> with this name:
+          <% duplicates.forEach((d, i) => { %><%= i ? ', ' : '' %><a href="/tprm/clients/<%= tpClient.id %>/third-parties/<%= d.id %>" target="_blank" rel="noopener"><%= d.name %> (<%= tp.STATUS_LABELS[d.status] %>)</a><% }) %>.
+          Names are not unique, so you can still save it as a separate third party.</div>
+        <input type="hidden" name="confirm_duplicate" value="1">
+      </div>
+    <% } %>
+
+    <div class="tprm-full"><label class="label" for="tp-name">Name</label><input class="input" id="tp-name" name="name" required maxlength="200" value="<%= val('name') %>"></div>
+    <div><label class="label" for="tp-status">Status</label>
+      <select class="select" id="tp-status" name="status" required>
+        <% tp.STATUSES.forEach(s => { %><option value="<%= s %>" <%= val('status') === s ? 'selected' : '' %>><%= tp.STATUS_LABELS[s] %></option><% }) %>
+      </select></div>
+    <% if (!thirdParty) { %>
+      <div class="tprm-form-section" data-tprm-first-service>
+        <h3 class="tprm-sub">What do they provide for this client?</h3>
+        <div class="meta text-xs">The service an assessment scopes. Only the description is required. Add any further services later on the third party's Services tab.</div>
+      </div>
+      <input type="hidden" name="first_service" value="1">
+      <%- include('tprm_service_fields', { v }) %>
+    <% } %>
+
+    <% const moreFilled = ['category', 'client_label', 'last_assessment_date', 'legal_name', 'registration_number', 'website', 'country', 'primary_contact_name', 'primary_contact_email'].some(k => val(k)) || isChecked('client_designated_critical'); %>
+    <details class="tprm-full tprm-more" data-tprm-more-details<%= thirdParty || moreFilled ? ' open' : '' %>>
+      <summary class="tprm-sub">More details <span class="meta text-xs">optional: category, the client's own rating, dates and contacts</span></summary>
+      <div class="tprm-form-grid tprm-form-2">
+        <div><label class="label" for="tp-category">Category</label><input class="input" id="tp-category" name="category" maxlength="100" value="<%= val('category') %>" placeholder="For example: Cloud hosting"></div>
+
+        <div><label class="label" for="tp-label">Client's criticality label</label>
+      <input class="input" id="tp-label" name="client_label" maxlength="100" value="<%= val('client_label') %>" list="tp-labels" placeholder="The client's own rating">
+      <datalist id="tp-labels"><% labels.forEach(l => { %><option value="<%= l %>"><% }) %></datalist>
+      <div class="meta text-xs tpu-mt-4">Mapped to a provisional tier in this client's settings<% if (!labels.length) { %> (no labels mapped yet)<% } %>.</div></div>
+        <div><label class="label" for="tp-last">Last assessment date</label><input class="input" id="tp-last" type="date" name="last_assessment_date" value="<%= val('last_assessment_date') %>">
+      <div class="meta text-xs tpu-mt-4">Sets the next due date of an in-use third party.</div></div>
+        <div class="tprm-full"><label class="tprm-checkline">
+      <input type="checkbox" name="client_designated_critical" value="1" <%= isChecked('client_designated_critical') ? 'checked' : '' %>>
+      The client designates this third party as Critical</label></div>
+    <% if (thirdParty && thirdParty.tier_source === 'assessed') { %>
+      <div class="meta tprm-full">This third party's tier was set by an assessment, so changing the label or dates here does not change its tier or due date.</div>
+    <% } %>
+
+        <div><label class="label" for="tp-legal">Legal name</label><input class="input" id="tp-legal" name="legal_name" maxlength="200" value="<%= val('legal_name') %>"></div>
+        <div><label class="label" for="tp-reg">Registration number</label><input class="input" id="tp-reg" name="registration_number" maxlength="100" value="<%= val('registration_number') %>"></div>
+        <div><label class="label" for="tp-web">Website</label><input class="input" id="tp-web" name="website" maxlength="300" value="<%= val('website') %>"></div>
+        <div><label class="label" for="tp-country">Country</label><input class="input" id="tp-country" name="country" maxlength="100" value="<%= val('country') %>"></div>
+        <div><label class="label" for="tp-contact">Primary contact</label><input class="input" id="tp-contact" name="primary_contact_name" maxlength="200" value="<%= val('primary_contact_name') %>"></div>
+        <div><label class="label" for="tp-email">Contact email</label><input class="input" id="tp-email" type="email" name="primary_contact_email" maxlength="200" value="<%= val('primary_contact_email') %>"></div>
+
+      </div>
+    </details>
+
+    <div class="tprm-full tprm-actions">
+      <a class="btn btn-ghost" href="<%= cancelHref %>">Cancel</a>
+      <button class="btn btn-primary" type="submit"><%= duplicates && duplicates.length ? 'Save anyway' : (thirdParty ? 'Save changes' : 'Add third party') %></button>
+    </div>
+  </form>
+</div>
+<%- include('partials/footer') %>

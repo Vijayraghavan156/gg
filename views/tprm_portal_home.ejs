@@ -1,0 +1,63 @@
+<%- include('partials/header', { title: 'Third-party risk', user, ws, active, portalView }) %>
+<%
+  const o = overview;
+  const base = '/workspaces/' + ws.id + '/client-portal/third-party-risk';
+  const status = (text, tone, attrs) => include('partials/tprm_status', { text, tone, attrs });
+%>
+<div class="page-head cp-page-head" data-tprm-portal-home>
+  <div>
+    <div class="eyebrow">Client engagement</div>
+    <h1>Third-party risk</h1>
+    <div class="page-subtitle">Review your consultants' recommendations on your third parties and record your decisions.</div>
+  </div>
+  <div><a class="btn btn-secondary btn-xs" href="<%= base %>/concentration" data-tprm-portal-concentration-link>Concentration of services</a></div>
+</div>
+<% const waitingRows = o.rows.filter(r => r.approval.pending === 'decision_needed' && r.recommendation); const owned = typeof clientConditions !== 'undefined' ? clientConditions : []; %>
+<% if (o.decisionsNeeded) { %>
+  <section class="tpa tprm-brief-block" role="status" data-tprm-portal-decisions-needed>
+    <h2 class="tpa-h">Waiting for your decision (<%= o.decisionsNeeded %>)</h2>
+    <p class="tpa-meta">The decision owner named on each assessment reads the recommendation and records the decision.</p>
+    <ul class="tprm-brief-list tprm-plain-list">
+      <% waitingRows.forEach(r => { %><li><a href="<%= base %>/recommendations/<%= r.recommendation.recommendation_id %>" data-tprm-portal-waiting-link="<%= r.id %>"><%= r.name %></a> <span class="tpa-meta-inline">recommendation version <%= r.recommendation.version %></span></li><% }) %>
+    </ul>
+  </section>
+<% } %>
+<% if (owned.length) { %>
+  <section class="tpa tprm-brief-block" data-tprm-portal-own-conditions>
+    <h2 class="tpa-h">Conditions you own (<%= owned.length %>)</h2>
+    <ul class="tprm-brief-list tprm-plain-list">
+      <% owned.forEach(c => { const late = c.due_date && c.due_date < o.today; %><li data-tprm-portal-own-condition="<%= c.id %>"><a href="<%= base %>/recommendations/<%= c.recommendation_id %>#conditions"><%= c.third_party_name %>, condition <%= c.position %></a>: <%= c.description %>
+        <span class="tpa-meta tprm-block"><% if (late) { %><%- status('Due ' + tpf.day(c.due_date) + ', overdue', 'problem') %><% } else { %>Due <%= c.due_date ? tpf.day(c.due_date) : 'date not set' %><% } %><%= c.status === 'proof_submitted' ? ' · proof sent, waiting for your consultants' : c.status === 'changes_requested' ? ' · your consultants asked for changes' : '' %></span></li><% }) %>
+    </ul>
+  </section>
+<% } %>
+<div class="panel" data-tprm-portal-list>
+  <% if (!o.rows.length) { %>
+    <div class="cp-empty-state">
+      <strong>Nothing to review yet</strong>
+      <p>When your consultants issue a recommendation on a third party, it appears here for your decision owner.</p>
+    </div>
+  <% } else { %>
+    <div class="table-scroll"><table class="t">
+      <thead><tr><th>Third party</th><th class="tpu-w-100">Status</th><th class="tpu-w-100">Tier</th><th class="tpu-w-220">Decision</th><th class="tpu-w-120">Next due</th><th class="tpu-w-170"></th></tr></thead>
+      <tbody>
+      <% o.rows.forEach(r => { const ap = r.approval;
+           const due = r.status === 'in_use' ? labels.due({ nextDueDate: r.next_due_date, lastAssessmentDate: r.last_assessment_date, inProgress: !!ap.openAssessment, today: o.today }) : null; %>
+        <tr data-tprm-portal-row="<%= r.id %>" data-tprm-approval="<%= ap.state %>">
+          <td><strong><%= r.name %></strong></td>
+          <td><%= tp.STATUS_LABELS[r.status] %></td>
+          <td><%= r.current_tier ? tp.TIER_LABELS[r.current_tier] : '-' %><% if (r.tier_source === 'provisional_from_client_label') { %> <span class="meta text-xs">provisional</span><% } %></td>
+          <td>
+            <% if (ap.pending) { %><%- status(ap.pendingLabel, ap.pendingTone, 'data-tprm-pending="' + escapeHtml(ap.pending) + '"') %>
+            <% } else if (!(ap.conditions && ap.conditions.state === 'overdue')) { %><%- include('partials/tprm_status', { text: ap.label, tone: ap.tone, attrs: 'data-tprm-approval-label', as: 'div' }) %><% } %>
+            <% if (ap.conditions && !ap.pending && ap.conditions.state === 'overdue') { %><%- include('partials/tprm_status', { text: ap.conditions.label, tone: ap.conditions.state === 'overdue' ? 'problem' : 'quiet', attrs: 'data-tprm-portal-conditions-state="' + escapeHtml(ap.conditions.state) + '"', as: 'div' }) %><% } %>
+          </td>
+          <td><% if (due && due.label && !['in_progress', 'not_assessed'].includes(due.key)) { %><%- status(due.label, due.tone, 'data-tprm-portal-due="' + escapeHtml(due.key) + '"') %><% } else { %>-<% } %></td>
+          <td><% if (r.recommendation) { %><a class="btn <%= ap.pending === 'decision_needed' ? 'btn-primary' : 'btn-secondary' %> btn-xs" href="<%= base %>/recommendations/<%= r.recommendation.recommendation_id %>" data-tprm-portal-open="<%= r.recommendation.recommendation_id %>"><%= ap.pending === 'decision_needed' ? 'Review and decide' : 'View recommendation' %></a><% } %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+</div>
+<%- include('partials/footer') %>

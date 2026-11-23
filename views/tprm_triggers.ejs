@@ -1,0 +1,30 @@
+<%- include('partials/header', { title: 'Trigger events · ' + thirdParty.name + ' · ' + tpClient.name, user, active }) %>
+<%
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const tpHref = '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id;
+%>
+<%- include('tprm_client_nav', { tpClient, section: 'register', canManage, canSettings }) %>
+
+<div class="tpu-mb-10"><a class="text-xs tpu-back" href="<%= tpHref %>">← <%= thirdParty.name %></a></div>
+
+<% if (canManage && thirdParty.status === 'in_use') { %>
+  <%- include('tprm_third_party_trigger', { thirdParty, values, errors, open: true }) %>
+<% } else if (canManage) { %>
+  <div class="panel panel-pad meta tpu-mb-14">An early reassessment is triggered only for a third party in use.</div>
+<% } %>
+
+<div class="panel" data-tprm-trigger-history>
+  <div class="panel-head"><h2>Trigger events</h2><span class="meta"><%= triggers.length %></span></div>
+  <% if (openTrigger) { %><div class="panel-pad tpu-rule-top"><%- include('partials/tprm_status', { text: openTrigger.label, tone: 'problem', attrs: 'data-tprm-open-trigger' }) %> <span class="meta">Due <%= tpf.day(openTrigger.new_due_date) %> until the next client decision.</span></div><% } %>
+  <% if (!triggers.length) { %>
+    <div class="panel-pad meta">No trigger event has been recorded for this third party.</div>
+  <% } %>
+  <% triggers.forEach(g => { %>
+    <div class="panel-pad tpu-rule-top tprm-trigger-row" data-tprm-trigger-row="<%= g.id %>">
+      <span><strong><%= R.REASON_LABELS[g.reason] %></strong><% if (g.details) { %><span class="meta"> · <%= g.details %></span><% } %>
+        <div class="meta text-xs">Due date <%= tpf.day(g.previous_due_date) || 'none' %> → <%= tpf.day(g.new_due_date) %></div></span>
+      <span class="meta"><%= g.recorded_by_name || 'Unknown user' %> · <%= tpf.dayTime(g.recorded_at) %></span>
+    </div>
+  <% }) %>
+</div>
+<%- include('partials/footer') %>

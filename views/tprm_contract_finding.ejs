@@ -1,0 +1,61 @@
+<%- include('partials/header', { title: 'Raise finding · ' + row.clause_id + ' · ' + thirdParty.name + ' · ' + tpClient.name, user, active }) %>
+<%
+  const vals = values || {};
+  const val = k => vals[k] == null ? '' : vals[k];
+  const linked = new Set([].concat(vals.evidence || []).map(String));
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const back = '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id + '/assessments/' + assessment.id;
+%>
+<%- include('tprm_client_nav', { tpClient, section: 'register', canManage, canSettings }) %>
+
+<div class="tpu-mb-10"><a class="text-xs tpu-back" href="<%= back %>/contract-review#clause-<%= row.clause_id %>">← Contract checklist · <%= thirdParty.name %></a></div>
+
+<div class="panel tpu-narrow tpu-mb-14" data-tprm-contract-finding-form="<%= row.clause_id %>">
+  <div class="panel-head"><h2>Raise finding</h2></div>
+  <form method="POST" action="<%= back %>/contract-review/<%= row.id %>/finding" class="panel-pad tprm-aw-finding-grid" data-tp-unsaved>
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input type="hidden" name="contract_row_version" value="<%= row.row_version %>">
+    <div class="callout tpu-span-all" role="status">
+      Raised from contract clause <strong><%= row.clause_id %></strong> (<%= cr.STATUS_LABELS[row.status] %>): check the filled-in fields before you add the finding.
+      <details class="tprm-how"><summary>How this works</summary>The control, severity (from the tier), title and description are filled in. Saving adds the finding and links it to the clause. The client sees the finding in the report, not the contract checklist.</details>
+    </div>
+    <% if (errors && errors.length) { %>
+      <div class="callout tprm-callout-error tpu-span-all" role="alert" data-tprm-form-errors>
+        <div class="callout-title">Nothing was saved</div>
+        <ul class="tpu-list"><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+      </div>
+    <% } %>
+    <div><label class="label" for="finding-control">ISO 27001 control</label>
+      <input class="input" id="finding-control" name="control_ref" value="<%= val('control_ref') %>" maxlength="<%= fd.LIMITS.controlRef %>"></div>
+    <div><label class="label" for="finding-severity">Severity</label>
+      <select class="select" id="finding-severity" name="severity" required>
+        <option value="">Choose</option>
+        <% fd.SEVERITIES.forEach(k => { %><option value="<%= k %>" <%= vals.severity === k ? 'selected' : '' %>><%= fd.SEVERITY_LABELS[k] %></option><% }) %>
+      </select></div>
+    <div><label class="label" for="finding-title">Title</label>
+      <input class="input" id="finding-title" name="title" value="<%= val('title') %>" maxlength="<%= fd.LIMITS.title %>" required></div>
+    <div class="tpu-span-all"><label class="label" for="finding-description">Description</label>
+      <textarea class="input" id="finding-description" name="description" rows="6" maxlength="<%= fd.LIMITS.description %>" aria-describedby="finding-printed"><%= val('description') %></textarea></div>
+    <div class="tpu-span-all"><label class="label" for="finding-impact">Why it matters <span class="meta text-xs">(optional)</span></label>
+      <textarea class="input" id="finding-impact" name="impact" rows="3" maxlength="<%= fd.LIMITS.impact %>" aria-describedby="finding-printed" placeholder="What this gap means for the client, for example the data or service it puts at risk" data-tprm-finding-impact><%= val('impact') %></textarea>
+      <div class="meta text-xs tpu-mt-4" id="finding-printed" data-tprm-finding-printed>The description and why it matters are printed in the client's report.</div></div>
+    <fieldset class="tpu-fieldset tpu-span-all">
+      <legend class="label">Evidence this finding cites</legend>
+      <% if (!evidenceList.length) { %>
+        <div class="meta">No files are uploaded on this assessment yet. You can link files later.</div>
+      <% } else { %>
+        <% evidenceList.forEach(e => { %>
+          <label class="tpu-row tpu-my-4">
+            <input type="checkbox" name="evidence" value="<%= e.id %>" <%= linked.has(String(e.id)) ? 'checked' : '' %>>
+            <span><%= e.original_name %></span><% if (e.source === 'vendor') { %> <span class="meta text-xs">from the third party</span><% } %>
+          </label>
+        <% }) %>
+      <% } %>
+    </fieldset>
+    <div class="tpu-span-all tprm-aw-actions-end">
+      <a class="btn btn-secondary" href="<%= back %>/contract-review#clause-<%= row.clause_id %>">Cancel</a>
+      <button class="btn btn-primary" type="submit" data-tprm-save-contract-finding>Add finding</button>
+    </div>
+  </form>
+</div>
+<%- include('partials/footer') %>

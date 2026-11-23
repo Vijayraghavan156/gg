@@ -1,0 +1,43 @@
+<%
+  const crp = contractReviewPanel;
+  Object.assign(actionLabels, contractReviewLabels);
+  const crBase = '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id + '/assessments/' + assessment.id + '/contract-review';
+  const crCsrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+%>
+<div class="panel" id="contract-review" data-tprm-contract-step>
+  <div class="panel-head">
+    <h2>Contract checklist</h2>
+    <% if (crp.started) { %><span class="meta" data-tprm-contract-progress><%= crp.reviewed %> of <%= crp.total %> clauses reviewed</span><% } %>
+  </div>
+  <div class="panel-pad meta tprm-divide-b">
+    Check the third party's contract against the question bank's contract clauses.
+    <details class="tprm-how"><summary>How this works</summary>Internal to the firm: it is never sent to the third party or shown to the client. A gap becomes visible to the client only through a finding you raise.</details>
+  </div>
+  <% if (!crp.started) { %>
+    <div class="panel-pad tprm-actions-split" data-tprm-contract-not-started>
+      <span class="meta"><%= crp.frozenMessage ? crp.frozenMessage + ' No contract checklist was recorded.' : 'Not started. Starting adds the clauses that apply to every client.' %></span>
+      <% if (crp.canStart) { %>
+        <form method="POST" action="<%= crBase %>/start" class="tpu-m-0">
+          <input type="hidden" name="_csrf" value="<%= crCsrf %>">
+          <button class="btn btn-secondary btn-xs" type="submit" data-tprm-contract-start>Start contract checklist</button>
+        </form>
+      <% } %>
+    </div>
+  <% } else { %>
+    <div class="panel-pad tprm-actions-split">
+      <span data-tprm-contract-counts>
+        <% cr.STATUSES.forEach((s, i) => { %><%= i ? ' · ' : '' %><% if (cr.GAP_STATUSES.includes(s) && crp.counts[s]) { %><%- include('partials/tprm_status', { text: cr.STATUS_LABELS[s] + ' ' + crp.counts[s], tone: 'problem' }) %><% } else { %><span class="meta"><%= cr.STATUS_LABELS[s] %> <%= crp.counts[s] %></span><% } %><% }) %>
+      </span>
+      <a class="btn btn-secondary btn-xs" href="<%= crBase %>" data-tprm-contract-open><%= crp.canEdit ? 'Open the contract checklist' : 'View the contract checklist' %></a>
+    </div>
+    <% if (crp.gaps.length) { %>
+      <div class="panel-pad tprm-divide" data-tprm-contract-gaps>
+        <div class="label">Gaps and missing clauses</div>
+        <% crp.gaps.forEach(g => { %>
+          <div class="text-sm tpu-my-4"><strong><%= g.clause_id %></strong> <%= g.category %> · <%= cr.STATUS_LABELS[g.status] %><% if (g.finding_id) { %> · <span class="meta">Finding: <%= g.finding_title %></span><% } else { %> · <span class="meta">No finding linked</span><% } %></div>
+        <% }) %>
+      </div>
+    <% } %>
+    <% if (crp.frozenMessage) { %><div class="panel-pad meta text-xs tprm-divide" data-tprm-contract-frozen><%= crp.frozenMessage %></div><% } %>
+  <% } %>
+</div>

@@ -1,0 +1,218 @@
+<%- include('partials/header', { title: thirdParty.name + ' · ' + tpClient.name, user, active }) %>
+<%
+  const t = thirdParty;
+  const dash = x => (x == null || x === '') ? '-' : x;
+  const due = t.status === 'in_use' && (!t.next_due_date || t.next_due_date <= today);
+  const actionLabels = {
+    'third_party.created': 'Added', 'third_party.updated': 'Updated', 'third_party.imported': 'Imported from CSV',
+    'service.added': 'Service added', 'service.updated': 'Service updated', 'service.removed': 'Service removed',
+    'third_party.placement_recalculated': 'Tier or due date recalculated after a client settings change',
+    'third_party.tier_assessed': 'Assessed tier confirmed',
+    'third_party.client_decision': 'Client decision recorded',
+    'service.material_changed': 'Material flag changed', 'exit_plan.saved': 'Exit plan saved',
+    'subprocessor.added': 'Subprocessor added', 'subprocessor.updated': 'Subprocessor updated', 'subprocessor.removed': 'Subprocessor removed',
+  };
+  const openAssessment = assessmentList.find(a => at.isOpen(a));
+  const startType = at.TYPE_FOR_STATUS[t.status];
+  const money = n => n == null ? '-' : Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const tpHref = '/tprm/clients/' + tpClient.id + '/third-parties/' + t.id;
+  const hasApproval = typeof approval !== 'undefined' && approval;
+  const hasExitPlans = typeof exitPlansPanel !== 'undefined' && exitPlansPanel;
+  const hasSubprocessors = typeof subprocessorsPanel !== 'undefined' && subprocessorsPanel;
+  const hasDataLocation = typeof dataLocationPanel !== 'undefined' && dataLocationPanel;
+  const materialCount = services.filter(s => s.material).length;
+  const nextDue = t.status === 'in_use' ? tpLabels.due({ nextDueDate: t.next_due_date, lastAssessmentDate: t.last_assessment_date, inProgress: !!openAssessment, today }) : null;
+
+  const tabs = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'assessments', label: 'Assessments', count: assessmentList.length },
+    { key: 'services', label: 'Services', count: services.length },
+  ];
+  if (hasExitPlans) tabs.push({ key: 'exit-plans', label: 'Exit plans', count: exitPlansPanel.services.filter(s => s.material).length });
+  if (hasSubprocessors) tabs.push({ key: 'subprocessors', label: 'Subprocessors', count: subprocessorsPanel.list.length });
+  if (hasDataLocation) tabs.push({ key: 'data-location', label: 'Data location' });
+  if (t.status === 'in_use') tabs.push({ key: 'early-reassessment', label: 'Early reassessment' });
+  tabs.push({ key: 'history', label: 'History' });
+  const askedTab = typeof tab !== 'undefined' && tab ? String(tab) : '';
+  const selectedTab = tabs.some(x => x.key === askedTab) ? askedTab : (serviceErrors.length ? 'services' : 'overview');
+  const tabAttrs = key => 'class="tprm-step" data-tprm-tab-panel="' + key + '"' + (key === selectedTab ? '' : ' hidden');
+%>
+
+<nav class="tprm-crumbs" aria-label="Breadcrumb" data-tprm-crumbs>
+  <a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span>
+  <a href="/tprm/clients/<%= tpClient.id %>"><%= tpClient.name %></a><span class="tprm-crumb-sep" aria-hidden="true">/</span>
+  <span aria-current="page"><%= t.name %></span>
+</nav>
+
+<div class="tprm-head" data-tprm-third-party="<%= t.id %>">
+  <div class="tprm-head-main">
+    <h1 class="page-title"><%= t.name %></h1>
+    <% const stg = typeof stage !== 'undefined' ? stage : null;
+       const position = [tp.STATUS_LABELS[t.status] + '.', t.current_tier ? 'Rated ' + tp.TIER_LABELS[t.current_tier] + '.' : 'No tier yet.',
+         stg && openAssessment ? at.TYPE_LABELS[openAssessment.type] + ' in progress: ' + stg.step.charAt(0).toLowerCase() + stg.step.slice(1) + ', waiting on ' + (stg.waitingName || stg.waitingLabel.toLowerCase()) + '.'
+           : (t.last_assessment_date ? 'Last assessed ' + tpf.day(t.last_assessment_date) + '.' : 'Not assessed yet.')].join(' '); %>
+    <p class="tprm-status-line" data-tprm-position><%= position %></p>
+    <div class="tprm-head-sub"><%= [t.category, t.country].filter(Boolean).join(' · ') %></div>
+    <div class="tprm-chips" data-tprm-status-chips>
+      <% if (t.current_tier) { %><span class="tprm-fact" data-tprm-tier><span class="tprm-fact-k">Tier</span><%= tp.TIER_LABELS[t.current_tier] %> <span class="meta text-xs"><%= tp.TIER_SOURCE_LABELS[t.tier_source] %></span></span>
+      <% } else { %><span class="tprm-fact"><%- include('partials/tprm_status', { text: tpLabels.TIER_NEEDED, tone: 'attention', attrs: 'data-tprm-tier' }) %></span><% } %>
+      <% if (hasApproval) { %>
+        <span class="tprm-fact"><span class="tprm-fact-k">Client decision</span><%- include('partials/tprm_status', { text: approval.label, tone: approval.tone, attrs: 'data-tprm-approval="' + approval.state + '"' }) %><% if (approval.pending && !openAssessment) { %><%- include('partials/tprm_status', { text: tpLabels.pending(approval.pending, 'firm'), tone: approval.pendingTone, attrs: 'data-tprm-pending="' + approval.pending + '"' }) %><% } %></span>
+      <% } %>
+      <%- include('tprm_third_party_conditions', { actionLabels }) %>
+      <% if ((due || t.next_due_date) && !(openAssessment && nextDue && /in progress/i.test(nextDue.label || ''))) { %><span class="tprm-fact" data-tprm-next-due><span class="tprm-fact-k">Next due</span><% if (nextDue && (due || nextDue.label)) { %><%- include('partials/tprm_status', { text: nextDue.label || 'No due date', tone: nextDue.tone, attrs: 'data-tprm-due-state="' + nextDue.key + '"' }) %><% } else { %><%= tpf.day(t.next_due_date) %><% } %></span><% } %>
+      <% if (materialCount) { %><span class="tprm-fact" data-tprm-material-chip><%= materialCount === 1 ? 'Material service' : materialCount + ' material services' %></span><% } %>
+    </div>
+  </div>
+  <div class="tprm-head-actions">
+    <% if (canManage) { %><a class="btn btn-secondary" href="<%= tpHref %>/edit">Edit</a><% } %>
+    <% if (openAssessment) { %>
+      <a class="btn btn-primary" href="<%= tpHref %>/assessments/<%= openAssessment.id %>" data-tprm-open-assessment>Continue <%= at.TYPE_LABELS[openAssessment.type].toLowerCase() %></a>
+    <% } else if (canManage && startType) { %>
+      <form method="POST" action="<%= tpHref %>/assessments" data-tprm-start-assessment>
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <button class="btn btn-primary" type="submit"><%= startType === 'onboarding' ? 'Start onboarding assessment' : 'Start reassessment' %></button>
+      </form>
+    <% } %>
+  </div>
+</div>
+
+<% if (duplicates.length) { %>
+  <div class="callout tprm-dup" data-tprm-duplicate-note>
+    <%- include('partials/tprm_status', { text: 'Same name as', tone: 'attention' }) %>
+    <% duplicates.forEach((d, i) => { %><%= i ? ', ' : '' %><a href="/tprm/clients/<%= tpClient.id %>/third-parties/<%= d.id %>"><%= d.name %> (<%= tp.STATUS_LABELS[d.status] %>)</a><% }) %>. Check they are not the same third party.
+  </div>
+<% } %>
+
+<nav class="subtabs tprm-tabs" aria-label="Third-party sections" data-tprm-third-party-tabs>
+  <% tabs.forEach(x => { %>
+    <a href="<%= tpHref %>?tab=<%= x.key %>" class="subtab <%= x.key === selectedTab ? 'is-active' : '' %>" data-tprm-tab="<%= x.key %>"<%- x.key === selectedTab ? ' aria-current="page"' : '' %>><%= x.label %><% if (typeof x.count === 'number') { %><span class="tprm-count"><%= x.count %></span><% } %></a>
+  <% }) %>
+</nav>
+
+<div class="tprm-steps">
+
+<section <%- tabAttrs('overview') %> id="overview">
+  <div class="tprm-stack">
+    <div class="panel" data-tprm-facts>
+      <div class="panel-head"><h2>Details</h2></div>
+      <dl class="tprm-dl">
+        <div><dt>Status</dt><dd><%= tp.STATUS_LABELS[t.status] %></dd></div>
+        <div><dt>Last assessment</dt><dd><%= dash(tpf.day(t.last_assessment_date)) %></dd></div>
+        <div><dt>Legal name</dt><dd><%= dash(t.legal_name) %></dd></div>
+        <div><dt>Registration number</dt><dd><%= dash(t.registration_number) %></dd></div>
+        <div><dt>Category</dt><dd><%= dash(t.category) %></dd></div>
+        <div><dt>Client's label</dt><dd><%= dash(t.client_label) %></dd></div>
+        <div><dt>Country</dt><dd><%= dash(t.country) %></dd></div>
+        <div><dt>Website</dt><dd><%= dash(t.website) %></dd></div>
+        <div><dt>Primary contact</dt><dd><% if (!t.primary_contact_name && !t.primary_contact_email) { %>-<% } %><%= t.primary_contact_name || '' %><% if (t.primary_contact_email) { %><span class="meta"><%= t.primary_contact_email %></span><% } %></dd></div>
+        <div><dt>Client designation</dt><dd><%= t.client_designated_critical ? 'The client designates it as Critical' : 'None' %></dd></div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section <%- tabAttrs('assessments') %> id="assessments">
+<div class="panel" data-tprm-assessments>
+  <div class="panel-head"><h2>Assessments</h2><span class="meta"><%= assessmentList.length %></span></div>
+  <% if (!assessmentList.length) { %>
+    <div class="panel-pad meta" data-tprm-assessments-empty>
+      <% if (!startType) { %>Exited third parties are not assessed.<% } else { %>No assessment yet.<% if (canManage) { %> <%= startType === 'onboarding' ? 'A proposed third party gets an onboarding assessment.' : 'A third party in use gets a reassessment.' %> Start it with the button at the top of the page.<% } %><% } %>
+    </div>
+  <% } else { %>
+    <div class="table-scroll"><table class="t">
+      <thead><tr><th>Assessment</th><th>Stage</th><th>Tier</th><th>Started</th></tr></thead>
+      <tbody>
+      <% assessmentList.forEach(a => { %>
+        <tr data-tprm-assessment-row="<%= a.id %>">
+          <td><a href="<%= tpHref %>/assessments/<%= a.id %>"><%= at.TYPE_LABELS[a.type] %></a></td>
+          <td><%- include('partials/tprm_status', { text: a.status === 'tier_confirmed' ? 'Tier confirmed, assessment in progress' : at.STATUS_LABELS[a.status], tone: ['tier_proposed', 'recommendation_issued', 'information_requested'].includes(a.status) ? 'attention' : 'quiet' }) %></td>
+          <td><%= a.final_tier && a.status !== 'scoping' ? tp.TIER_LABELS[a.final_tier] : '-' %></td>
+          <td class="meta"><%= tpf.day(a.created_at) %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+</div>
+</section>
+
+<section <%- tabAttrs('services') %> id="services">
+<div class="panel" data-tprm-services>
+  <div class="panel-head"><h2>Services</h2><span class="meta"><%= services.length %></span></div>
+  <% if (!services.length) { %>
+    <div class="panel-pad meta" data-tprm-services-empty>No services recorded yet. An assessment scopes the third party's services, so add what it provides to this client below.</div>
+  <% } else { %>
+    <div class="table-scroll"><table class="t">
+      <thead><tr><th>Service</th><th>Hosting</th><th>Contract</th><th>Notice</th><th class="tprm-right">Annual spend</th><th>Sole source</th><% if (canManage) { %><th></th><% } %></tr></thead>
+      <tbody>
+      <% services.forEach(s => { %>
+        <tr data-tprm-service="<%= s.id %>">
+          <td><strong><%= s.description %></strong><% if (s.material) { %> <span class="meta text-xs">Material</span><% } %><% if (s.data_access) { %><div class="meta text-xs">Data: <%= s.data_access %></div><% } %></td>
+          <td><%= dash(s.hosting_countries) %></td>
+          <td><%= s.contract_start || s.contract_end ? dash(tpf.day(s.contract_start)) + ' to ' + dash(tpf.day(s.contract_end)) : '-' %></td>
+          <td class="tprm-nowrap"><%= s.notice_period_days == null ? '-' : s.notice_period_days + ' days' %></td>
+          <td class="num tprm-right"><%= money(s.annual_spend) %></td>
+          <td><%= s.sole_source ? 'Yes' : 'No' %></td>
+          <% if (canManage) { %><td class="tprm-nowrap">
+            <a class="btn btn-ghost btn-xs" href="<%= tpHref %>/services/<%= s.id %>/edit">Edit</a>
+            <form method="POST" action="<%= tpHref %>/services/<%= s.id %>/remove" class="tpu-inline">
+              <input type="hidden" name="_csrf" value="<%= csrf %>"><%- include('partials/tprm_confirm_fields', { title: 'Remove this service?', body: 'The service is removed from this third party. The removal is recorded in the history.', action: 'Remove service' }) %>
+              <input type="hidden" name="row_version" value="<%= s.row_version %>">
+              <button class="btn btn-ghost btn-xs" type="submit">Remove</button>
+            </form></td><% } %>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+  <% if (canManage) { %>
+    <details class="panel-pad tprm-divide" <%= serviceErrors.length ? 'open' : '' %> data-tprm-add-service>
+      <summary class="tprm-summary"><%= services.length ? 'Add another service' : 'Add a service' %></summary>
+      <div class="meta text-xs tprm-mt" data-tprm-add-service-help><%= services.length ? 'Add each further service this third party provides to this client. Edit or remove a service in the list above.' : 'Record the service it provides to this client. Add each further service here too.' %></div>
+      <form method="POST" action="<%= tpHref %>/services" class="tprm-form-grid tprm-form-2">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <% if (serviceErrors.length) { %>
+          <div class="callout tprm-callout-error tprm-full" role="alert" data-tprm-form-errors>
+            <div class="callout-title">The service was not added</div>
+            <ul class="tprm-list"><% serviceErrors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+          </div>
+        <% } %>
+        <%- include('tprm_service_fields', { v: serviceValues }) %>
+        <div class="tprm-full tprm-actions"><button class="btn btn-secondary" type="submit">Add service</button></div>
+      </form>
+    </details>
+  <% } %>
+</div>
+</section>
+
+<% if (hasExitPlans) { %><section <%- tabAttrs('exit-plans') %>><%- include('tprm_third_party_exit_plans') %></section><% } %>
+<% if (hasSubprocessors) { %><section <%- tabAttrs('subprocessors') %>><%- include('tprm_third_party_subprocessors') %></section><% } %>
+<% if (hasDataLocation) { %><section <%- tabAttrs('data-location') %>><%- include('tprm_data_location', { dataLocationBase: null }) %></section><% } %>
+
+<% if (t.status === 'in_use') { %><section <%- tabAttrs('early-reassessment') %>>
+  <div class="tprm-stack">
+    <%- include('tprm_third_party_trigger', { actionLabels, open: true }) %>
+    <div class="panel panel-pad meta" data-tprm-trigger-events-link>Every trigger event recorded for this third party, with the due date it set: <a href="<%= tpHref %>/triggers">Trigger events</a>.</div>
+  </div>
+</section><% } %>
+
+<section <%- tabAttrs('history') %> id="history">
+<div class="panel" data-tprm-history>
+  <div class="panel-head"><h2>History</h2><span class="meta">Latest <%= history.length %></span></div>
+  <% history.forEach(e => { %>
+    <div class="tprm-history-row">
+      <span><strong class="tprm-strong"><%= actionLabels[e.action] || e.action %></strong>
+        <% const changed = e.after_state ? Object.keys(e.after_state).filter(k => !['service_id', 'import_batch_id', 'file_line'].includes(k)) : []; %>
+        <% if (e.action === 'third_party.client_decision' && e.after_state) { %><span class="meta"> · <%= e.after_state.outcome_label %></span><% } %>
+        <% if ((e.action.endsWith('.updated') || e.action === 'third_party.placement_recalculated') && changed.length) { %><span class="meta"> · <%= changed.map(k => k.replace(/_/g, ' ')).join(', ') %></span><% } %></span>
+      <span class="meta"><%= e.actor_name || 'Unknown user' %> · <%= tpf.dayTime(e.created_at) %></span>
+    </div>
+  <% }) %>
+</div>
+</section>
+
+</div>
+<%- include('tprm_hash_sync', { panelAttr: 'data-tprm-tab-panel', linkAttr: 'data-tprm-tab' }) %>
+<%- include('partials/footer') %>

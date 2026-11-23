@@ -1,0 +1,89 @@
+<%- include('partials/header', { title: 'Import third parties · ' + tpClient.name, user, active }) %>
+<%- include('tprm_client_nav', { tpClient, section: 'import', canManage, canSettings }) %>
+
+<% if (mode === 'upload') { %>
+  <div class="panel tpu-mb-14 tpu-narrow" data-tprm-import-upload>
+    <div class="panel-head"><h2>Import third parties from a CSV file</h2></div>
+    <div class="panel-pad">
+      <div class="meta tpu-mb-14">Upload the client's list.
+        <details class="tprm-how"><summary>How this works</summary>
+          <p class="tpu-my-4">Every row is checked and shown with its provisional tier and next due date before anything is saved. If any row has an error, nothing is imported: fix the file and upload it again.</p>
+          <p class="tpu-my-4" data-tprm-import-service-hint>Add a <span class="mono">service_description</span> column to record what each third party provides for this client: it becomes the third party's first service, which an assessment scopes. Rows without one get their service on the Services tab.</p>
+        </details></div>
+      <% if (typeof uploadError !== 'undefined' && uploadError) { %><div class="callout tpu-problem-edge tprm-mb-12" role="alert"><%= uploadError %></div><% } %>
+      <form method="POST" action="/tprm/clients/<%= tpClient.id %>/import/preview" enctype="multipart/form-data" class="tprm-upload-row">
+        <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+        <div data-tp-file><label class="sr-only" for="tprm-import-file">The CSV file of third parties</label>
+        <input type="file" id="tprm-import-file" name="file" accept=".csv,text/csv" required></div>
+        <button class="btn btn-primary" type="submit">Preview</button>
+        <a class="btn btn-ghost btn-xs" href="/tprm/clients/<%= tpClient.id %>/import/template" data-tprm-template>Download the CSV template</a>
+      </form>
+      <div class="meta text-xs tpu-mt-8">UTF-8 CSV, headers in the first row, up to 5 MB and <%= maxRows %> rows.</div>
+    </div>
+  </div>
+  <div class="panel tpu-narrow">
+    <div class="panel-head"><h2>Columns</h2></div>
+    <div class="table-scroll"><table class="t">
+      <thead><tr><th>Column</th><th></th><th>What to enter</th></tr></thead>
+      <tbody><% columns.forEach(c => { %>
+        <tr><td class="mono"><%= c.label %></td><td><%= c.required ? 'Required' : 'Optional' %></td><td><%= c.hint %></td></tr>
+      <% }) %></tbody>
+    </table></div>
+  </div>
+<% } else { %>
+  <% const a = analysis; %>
+  <div class="panel tpu-mb-14" data-tprm-import-preview data-tprm-import-ok="<%= a.ok && !alreadyImported ? '1' : '0' %>">
+    <div class="panel-head"><h2>Preview of <%= filename %></h2><span class="meta"><%= a.summary.total %> row<%= a.summary.total === 1 ? '' : 's' %></span></div>
+    <div class="panel-pad">
+      <% if (alreadyImported) { %>
+        <div class="callout tpu-attention-edge" role="alert" data-tprm-import-already>This exact file was already imported for this client on <%= tpf.day(alreadyImported.committed_at) %> (<%= alreadyImported.imported_count %> third parties). Importing it again would add nothing.</div>
+      <% } else if (a.fileErrors.length) { %>
+        <div class="callout tpu-problem-edge" role="alert" data-tprm-import-file-errors>
+          <div class="callout-title tpu-problem-text">This file cannot be imported</div>
+          <ul class="tpu-list"><% a.fileErrors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+        </div>
+      <% } else if (a.summary.invalid) { %>
+        <div class="callout tpu-problem-edge" role="alert" data-tprm-import-blocked>
+          <div class="callout-title tpu-problem-text">Nothing can be imported yet</div>
+          <%= a.summary.invalid %> row<%= a.summary.invalid === 1 ? ' has an error' : 's have errors' %>. One bad row blocks the whole file: fix the rows marked below and upload the file again.
+        </div>
+      <% } else { %>
+        <div class="meta">All rows are valid. <%= a.summary.tierNeeded %> need a tier, <%= a.summary.dueNow %> to assess now, <%= a.summary.warnings %> have warnings<% if (a.summary.services) { %>, <%= a.summary.services %> get a first service<% } %>. Nothing is saved until you import.</div>
+      <% } %>
+      <% if (a.unknownColumns.length) { %><div class="meta text-xs tpu-mt-8">Ignored columns: <%= a.unknownColumns.join(', ') %></div><% } %>
+    </div>
+    <% if (a.rows.length) { %>
+    <div class="table-scroll"><table class="t" data-tprm-import-rows>
+      <thead><tr><th class="tprm-w-60">Row</th><th>Name</th><th>Status</th><th>Last assessed</th><th>Client label</th><th>Provisional tier</th><th>Next due</th><% if (a.summary.services) { %><th>First service</th><% } %><th>Checks</th></tr></thead>
+      <tbody>
+      <% a.rows.forEach(r => { const p = r.placement; %>
+        <tr data-tprm-import-row="<%= r.line %>" data-tprm-row-state="<%= r.errors.length ? 'error' : r.warnings.length ? 'warning' : 'ok' %>">
+          <td class="num"><%= r.line %></td>
+          <td><%= r.values.name || '-' %></td>
+          <td><%= r.values.status ? tp.STATUS_LABELS[r.values.status] : '-' %></td>
+          <td><%= tpf.day(r.values.last_assessment_date) || r.values.last_assessment_date || '-' %></td>
+          <td><%= r.values.client_label || '-' %></td>
+          <td><% if (p) { %><% if (p.tier) { %><%= tp.TIER_LABELS[p.tier] %><% } else { %><%- include('partials/tprm_status', { text: tpLabels.TIER_NEEDED, tone: 'attention' }) %><% } %><% } else { %>-<% } %></td>
+          <td><% if (p && p.nextDueDate) { const d = tpLabels.due({ nextDueDate: p.nextDueDate, lastAssessmentDate: r.values.last_assessment_date || null, inProgress: false, today: a.today }); %><%- include('partials/tprm_status', { text: d.label, tone: d.tone, attrs: 'data-tprm-import-due="' + d.key + '"' }) %><% } else { %>-<% } %></td>
+          <% if (a.summary.services) { %><td data-tprm-import-service><%= r.service ? r.service.description : '-' %></td><% } %>
+          <td><% r.errors.forEach(e => { %><div class="text-danger text-xs"><%= e %></div><% }) %><% r.warnings.forEach(w => { %><div class="text-warn text-xs"><%= w %></div><% }) %><% if (!r.errors.length && !r.warnings.length) { %><span class="meta">OK</span><% } %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+    <% } %>
+    <div class="panel-pad tprm-form-foot">
+      <a class="btn btn-ghost" href="/tprm/clients/<%= tpClient.id %>/import">Upload another file</a>
+      <% if (batch) { %>
+        <form method="POST" action="/tprm/clients/<%= tpClient.id %>/import/commit" class="tpu-m-0" data-tprm-import-commit>
+          <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+          <input type="hidden" name="batch_id" value="<%= batch.id %>">
+          <textarea name="csv" hidden aria-hidden="true">
+<%= a.text %></textarea>
+          <button class="btn btn-primary" type="submit">Import <%= a.rows.length %> third part<%= a.rows.length === 1 ? 'y' : 'ies' %></button>
+        </form>
+      <% } %>
+    </div>
+  </div>
+<% } %>
+<%- include('partials/footer') %>

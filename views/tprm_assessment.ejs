@@ -1,0 +1,568 @@
+<%- include('partials/header', { title: at.TYPE_LABELS[assessment.type] + ' · ' + thirdParty.name + ' · ' + tpClient.name, user, active }) %>
+<%
+  const a = assessment;
+  const t = thirdParty;
+  const dash = x => (x == null || x === '') ? '-' : x;
+  const when = d => tpf.dayTime(d) || '-';
+  const day = d => tpf.day(d) || '-';
+  const tierLabel = k => k ? tp.TIER_LABELS[k] : '-';
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const tpHref = '/tprm/clients/' + tpClient.id + '/third-parties/' + t.id;
+  const base = tpHref + '/assessments/' + a.id;
+  const criticalityQs = model.questions.filter(q => q.kind === 'criticality');
+  const describeQs = model.questions.filter(q => q.kind === 'service_description');
+  const answerLabel = (q, id) => { const x = (q.answers || []).find(y => y.id === id); return x ? x.label : null; };
+  const v = values;
+  const vAnswers = v.answers && typeof v.answers === 'object' ? v.answers : {};
+  const vServices = new Set([].concat(v.services || []).map(String));
+  const isOpen = at.isOpen(a);
+  const editable = a.status === 'scoping' && canManage;
+  const actionLabels = {
+    'assessment.started': 'Assessment started', 'assessment.scope_saved': 'Scope and answers saved',
+    'assessment.tier_proposed': 'Tier proposed', 'assessment.tier_returned': 'Sent back', 'assessment.tier_confirmed': 'Tier confirmed',
+    'assessment.cancelled': 'Cancelled', 'assessment.details_updated': 'Details updated',
+  };
+  const designationText = { keep_client_designation: "Kept the client's designation (Critical)", use_scored_tier: 'Used the scored tier' };
+
+  const qp = typeof questionnairePanel !== 'undefined' ? questionnairePanel : null;
+  const qq = qp ? qp.questionnaire : null;
+  const rv = qp && qq ? qp.review : null;
+  const ep = evidencePanel;
+  const crp = typeof contractReviewPanel !== 'undefined' ? contractReviewPanel : null;
+  const rd = typeof recommendation !== 'undefined' ? recommendation : null;
+  const dp = typeof decisionPanel !== 'undefined' ? decisionPanel : null;
+  const ap = typeof aiPanel !== 'undefined' ? aiPanel : null;
+  if (qp && qp.eventLabels) Object.assign(actionLabels, qp.eventLabels);
+  if (ep && ep.actionLabels) Object.assign(actionLabels, ep.actionLabels);
+  if (crp && typeof contractReviewLabels !== 'undefined') Object.assign(actionLabels, contractReviewLabels);
+  if (ap && typeof aiEventLabels !== 'undefined') Object.assign(actionLabels, aiEventLabels);
+  if (rd) Object.assign(actionLabels, rd.eventLabels || {}, { 'recommendation.report_generated': 'Recommendation report downloaded' });
+  if (dp && typeof decisionEventLabels !== 'undefined') Object.assign(actionLabels, decisionEventLabels);
+  if (dp && dp.conditions) Object.assign(actionLabels, dp.conditions.eventLabels || {});
+  const st = a.status;
+  const tierConfirmed = !!a.confirmed_at && !['scoping', 'tier_proposed'].includes(st);
+  const frozen = at.isFrozen(a);
+  const plural = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');
+  const qSubmitted = !!qq && ['submitted', 'under_review', 'closed'].includes(qq.status) && !qq.not_returned;
+
+  const steps = [];
+  const addStep = (key, label, state, note) => steps.push({ key, n: steps.length + 1, label, state, note });
+
+  if (st === 'scoping') addStep('scope', 'Scope and tier', 'active', a.return_comment ? 'Sent back for changes' : 'In progress');
+  else if (st === 'tier_proposed') addStep('scope', 'Scope and tier', 'waiting', 'Tier ' + tierLabel(a.final_tier) + ', waiting for confirmation');
+  else if (tierConfirmed) addStep('scope', 'Scope and tier', 'done', 'Tier ' + tierLabel(a.final_tier));
+  else addStep('scope', 'Scope and tier', 'na', 'Cancelled before the tier was confirmed');
+
+  if (!tierConfirmed) addStep('questionnaire', 'Questionnaire', st === 'cancelled' ? 'na' : 'todo', st === 'cancelled' ? 'Not prepared' : 'After the tier is confirmed');
+  else if (!qq) addStep('questionnaire', 'Questionnaire', qp && qp.canPrepare ? 'active' : (qp && qp.blocked ? 'na' : 'todo'), qp && qp.blocked ? 'Not prepared' : 'Not prepared yet');
+  else if (qq.status === 'draft') addStep('questionnaire', 'Questionnaire', 'active', 'Drafted, not sent');
+  else if (['sent', 'in_progress'].includes(qq.status)) addStep('questionnaire', 'Questionnaire', 'waiting', 'With the third party' + (rv ? ', ' + rv.answered + ' of ' + rv.total + ' answered' : ''));
+  else if (qq.not_returned) addStep('questionnaire', 'Questionnaire', 'done', 'Not returned');
+  else addStep('questionnaire', 'Questionnaire', 'done', 'Submitted' + (qq.submitted_at ? ' ' + day(qq.submitted_at) : ''));
+
+  const aiNote = ap && ap.latest && ap.pendingCount ? ', ' + plural(ap.pendingCount, 'AI suggestion') + ' to decide' : '';
+  if (qq && qq.not_returned) addStep('review', 'Review of answers', 'na', 'No answers to review');
+  else if (!qSubmitted) addStep('review', 'Review of answers', (!tierConfirmed && st === 'cancelled') || (frozen && !qq) ? 'na' : 'todo', qq && rv && ['sent', 'in_progress'].includes(qq.status) ? 'After the third party submits' : 'After the answers come in');
+  else if (qq.status === 'closed') addStep('review', 'Review of answers', 'done', 'Review closed' + aiNote);
+  else addStep('review', 'Review of answers', 'active', (rv && rv.blockers ? plural(rv.blockers.unreviewed, 'answer') + ' without a conclusion' : 'In progress') + aiNote);
+
+  const evNote = plural(ep.evidence.length, 'file') + ', ' + plural(ep.findings.length, 'finding');
+  if (frozen) addStep('evidence', 'Evidence and findings', 'done', evNote);
+  else if (st === 'cancelled') addStep('evidence', 'Evidence and findings', 'na', evNote);
+  else addStep('evidence', 'Evidence and findings', ep.evidence.length || ep.findings.length ? 'active' : 'todo', ep.evidence.length || ep.findings.length ? evNote : 'Nothing recorded yet');
+
+  if (!crp) addStep('contract', 'Contract', 'na', 'Not available');
+  else if (crp.started) addStep('contract', 'Contract', crp.reviewed >= crp.total || frozen ? 'done' : 'active', crp.reviewed + ' of ' + crp.total + ' clauses reviewed');
+  else addStep('contract', 'Contract', frozen || st === 'cancelled' ? 'na' : 'todo', frozen || st === 'cancelled' ? 'Not recorded' : 'Not started');
+
+  const recOpen = rd ? rd.open : null;
+  const recIssued = rd ? rd.issued : null;
+  if (recOpen && recOpen.status === 'in_review') addStep('recommendation', 'Recommendation', 'waiting', 'Version ' + recOpen.version + ' in review');
+  else if (recOpen && recOpen.status === 'changes_requested') addStep('recommendation', 'Recommendation', 'active', 'Changes requested on version ' + recOpen.version);
+  else if (recOpen) addStep('recommendation', 'Recommendation', 'active', 'Version ' + recOpen.version + ' being drafted');
+  else if (recIssued) addStep('recommendation', 'Recommendation', 'done', 'Version ' + recIssued.version + ' issued ' + day(recIssued.issued_at));
+  else addStep('recommendation', 'Recommendation', st === 'cancelled' ? 'na' : 'todo', st === 'cancelled' ? 'None issued' : (tierConfirmed ? 'Not started' : 'After the tier is confirmed'));
+
+  const latestDecision = dp && dp.decisions.length ? dp.decisions[0] : null;
+  const condSummary = dp && dp.conditions && dp.conditions.summary ? dp.conditions.summary : null;
+  if (st === 'recommendation_issued') addStep('decision', 'Client decision', 'waiting', 'With the client decision owner');
+  else if (st === 'information_requested') addStep('decision', 'Client decision', 'active', 'The client asked for more information');
+  else if (st === 'completed' && latestDecision) addStep('decision', 'Client decision', 'done', dp.labels[latestDecision.outcome] + (condSummary ? ', ' + condSummary.label.toLowerCase() : ''));
+  else if (st === 'completed') addStep('decision', 'Client decision', 'done', 'Completed');
+  else addStep('decision', 'Client decision', st === 'cancelled' ? 'na' : 'todo', st === 'cancelled' ? 'Not decided' : 'After the recommendation is issued');
+
+  let currentKey = 'scope';
+  if (['scoping', 'tier_proposed', 'cancelled'].includes(st)) currentKey = 'scope';
+  else if (st === 'tier_confirmed') currentKey = !qq || ['draft', 'sent', 'in_progress'].includes(qq.status) ? 'questionnaire' : (['submitted', 'under_review'].includes(qq.status) ? 'review' : 'recommendation');
+  else if (['recommendation_draft', 'recommendation_in_review'].includes(st)) currentKey = 'recommendation';
+  else currentKey = 'decision';
+
+  const QS = qp ? qp.Q.STATUS_LABELS : {};
+  let statusText = at.STATUS_LABELS[st] || st;
+  let statusTone = 'quiet';
+  if (st === 'scoping') statusText = a.return_comment ? 'Scope and tier, sent back for changes' : 'Scope and tier in progress';
+  else if (st === 'tier_proposed') statusTone = 'attention';
+  else if (st === 'tier_confirmed') {
+    if (!qq) statusText = 'Tier confirmed, questionnaire not prepared yet';
+    else if (qq.status === 'draft') statusText = 'Questionnaire drafted, not sent';
+    else if (qq.status === 'sent') { statusText = 'Questionnaire ' + QS.sent.toLowerCase() + ', not opened yet'; statusTone = 'attention'; }
+    else if (qq.status === 'in_progress') { statusText = 'Questionnaire with the third party' + (rv ? ' (' + rv.answered + ' of ' + rv.total + ' answered)' : ''); statusTone = 'attention'; }
+    else if (qq.status === 'submitted') statusText = 'Questionnaire ' + QS.submitted.toLowerCase() + ', review not started';
+    else if (qq.status === 'under_review') statusText = 'Questionnaire ' + QS.under_review.toLowerCase();
+    else statusText = (qq.not_returned ? 'Questionnaire not returned' : 'Questionnaire reviewed') + ', ready for a recommendation';
+  }
+  else if (st === 'recommendation_draft' && recOpen && recOpen.status === 'changes_requested') statusText = 'Recommendation: changes requested';
+  else if (st === 'recommendation_in_review') { statusText = 'Recommendation in review, waiting for a second person'; statusTone = 'attention'; }
+  else if (st === 'recommendation_issued') { statusText = 'Recommendation issued, waiting for the client'; statusTone = 'attention'; }
+  else if (st === 'information_requested') statusTone = 'attention';
+  else if (st === 'completed') { statusText = 'Completed' + (latestDecision ? ': ' + dp.labels[latestDecision.outcome] : ''); statusTone = 'good'; }
+  else if (st === 'cancelled') statusTone = 'quiet';
+
+  const extraSteps = [{ key: 'details', label: 'Assessment details' }, { key: 'history', label: 'History' }];
+  const allKeys = steps.map(s => s.key).concat(extraSteps.map(s => s.key));
+  const askedStep = typeof step !== 'undefined' && step ? String(step) : '';
+  const selected = allKeys.includes(askedStep) ? askedStep
+    : (typeof newLink !== 'undefined' && newLink) ? 'questionnaire'
+    : (errors && errors.length) ? 'scope'
+    : currentKey;
+  const stepAttrs = key => 'class="tprm-step" id="step-' + key + '" data-tprm-step-panel="' + key + '"' + (key === selected ? '' : ' hidden');
+  const stepHref = key => base + '?step=' + key;
+  const stepHead = key => { const s = steps.find(x => x.key === key); return s; };
+  const nextOf = key => { const i = steps.findIndex(x => x.key === key); return i >= 0 && i < steps.length - 1 ? steps[i + 1] : null; };
+  const prevOf = key => { const i = steps.findIndex(x => x.key === key); return i > 0 ? steps[i - 1] : null; };
+  const stateWords = { done: 'Done', active: 'In progress', waiting: 'Waiting', todo: 'Not started', na: 'Not applicable' };
+  const stateTone = { done: 'good', active: 'quiet', waiting: 'attention', todo: 'quiet', na: 'quiet' };
+%>
+<% function stepTitle(key) { const s = stepHead(key); %>
+  <div class="tprm-step-head" data-tprm-step-head="<%= key %>" data-tprm-step-head-state="<%= s.state %>">
+    <h2><%= s.n %>. <%= s.label %></h2>
+  </div>
+<% } %>
+<% function stepFoot(key) { const p = prevOf(key); const n = nextOf(key); %>
+  <nav class="tprm-step-next" aria-label="Steps">
+    <span><% if (p) { %><a href="<%= stepHref(p.key) %>">Back: <%= p.n %>. <%= p.label %></a><% } %></span>
+    <span><% if (n) { %><a href="<%= stepHref(n.key) %>">Next: <%= n.n %>. <%= n.label %></a><% } %></span>
+  </nav>
+<% } %>
+
+<nav class="tprm-crumbs" aria-label="Breadcrumb" data-tprm-crumbs>
+  <a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span>
+  <a href="/tprm/clients/<%= tpClient.id %>"><%= tpClient.name %></a><span class="tprm-crumb-sep" aria-hidden="true">/</span>
+  <a href="<%= tpHref %>"><%= t.name %></a><span class="tprm-crumb-sep" aria-hidden="true">/</span>
+  <span aria-current="page"><%= at.TYPE_LABELS[a.type] %></span>
+</nav>
+
+<% const sl = typeof statusLine !== 'undefined' && statusLine ? statusLine : { key: st, text: statusText, tone: statusTone, action: null }; %>
+<div class="tprm-head tprm-head--line" data-tprm-assessment="<%= a.id %>" data-tprm-assessment-status="<%= a.status %>">
+  <div class="tprm-head-main">
+    <h1 class="page-title"><%= t.name %></h1>
+    <p class="tprm-asmt-facts"><%= [at.TYPE_LABELS[a.type], a.final_tier && tierConfirmed ? 'Tier ' + tierLabel(a.final_tier) : null, a.due_date ? 'Due ' + day(a.due_date) : null].filter(Boolean).join(' · ') %></p>
+    <p class="tprm-status-line" data-tprm-status-line="<%= sl.key %>" data-tprm-stage><%- include('partials/tprm_status', { text: sl.text, tone: sl.tone }) %></p>
+  </div>
+  <div class="tprm-head-actions">
+    <% if (sl.action && sl.action.step !== selected) { %><a class="btn btn-primary" href="<%= sl.action.href %>" data-tprm-status-action><%= sl.action.label %></a><% } else if (!sl.action && selected !== currentKey) { const cur = stepHead(currentKey); %><a class="btn btn-secondary" href="<%= stepHref(currentKey) %>" data-tprm-current-step-link>Go to the current step: <%= cur.label %></a><% } %>
+  </div>
+</div>
+
+<div class="tprm-workspace">
+  <nav class="tprm-rail" aria-label="Assessment steps" data-tprm-steps>
+    <div class="tprm-rail-group">
+    <% steps.forEach(s => { %>
+      <a class="tprm-rail-item is-<%= s.state %><%= s.key === currentKey && s.state !== 'done' ? ' is-now' : '' %><%= s.key === selected ? ' is-selected' : '' %>" href="<%= stepHref(s.key) %>" data-tprm-step="<%= s.key %>" data-tprm-step-state="<%= s.state %>"<%- s.key === selected ? ' aria-current="step"' : '' %>>
+        <span class="tprm-rail-mark" aria-hidden="true"><span><%= s.n %></span></span>
+        <span class="tprm-rail-name"><%= s.label %></span>
+        <span class="tprm-rail-state"><span class="sr-only"><%= stateWords[s.state] %>: </span><%= s.note %></span>
+      </a>
+    <% }) %>
+    </div>
+    <div class="tprm-rail-group">
+    <% extraSteps.forEach(s => { %>
+      <a class="tprm-rail-item is-extra<%= s.key === selected ? ' is-selected' : '' %>" href="<%= stepHref(s.key) %>" data-tprm-step="<%= s.key %>"<%- s.key === selected ? ' aria-current="step"' : '' %>><span class="tprm-rail-name"><%= s.label %><% if (s.key === 'history') { %> <span class="meta">(<%= typeof historyView !== 'undefined' ? historyView.total : history.length %>)</span><% } %></span></a>
+    <% }) %>
+    </div>
+  </nav>
+
+<div class="tprm-steps">
+
+<section <%- stepAttrs('scope') %>>
+<% if (selected === 'scope') { %>
+<% stepTitle('scope') %>
+<div class="tprm-stack">
+<% if (a.status === 'scoping' && a.return_comment) { %>
+  <div class="callout" role="status" data-tprm-returned>
+    <div class="callout-title">Sent back by <%= dash(a.returned_by_name) %> · <%= when(a.returned_at) %></div>
+    <div class="tprm-pre"><%= a.return_comment %></div>
+  </div>
+<% } %>
+
+<% if (editable) { %>
+<form method="POST" action="<%= base %>/scope" class="tprm-stack" data-tprm-scope-form>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <input type="hidden" name="row_version" value="<%= a.row_version %>">
+  <% if (errors && errors.length) { %>
+    <div class="callout tprm-callout-error" role="alert" data-tprm-form-errors>
+      <div class="callout-title">Nothing was saved</div>
+      <ul class="tprm-list"><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+    </div>
+  <% } %>
+
+  <div class="panel" data-tprm-scope-services>
+    <div class="panel-head"><h2>Services in scope</h2></div>
+    <% if (!services.length) { %>
+      <div class="panel-pad meta">No services are recorded for this third party. <a href="<%= tpHref %>?tab=services#services">Add a service</a> first: an assessment covers at least one.</div>
+    <% } else { %>
+      <div class="panel-pad">
+        <% services.forEach(s => { %>
+          <label class="tprm-check">
+            <input type="checkbox" name="services" value="<%= s.id %>" <%= vServices.has(String(s.id)) ? 'checked' : '' %>>
+            <span><%= s.description %><% if (s.data_access) { %><span class="meta text-xs"> · Data: <%= s.data_access %></span><% } %></span>
+          </label>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+
+  <div class="panel" data-tprm-questions>
+    <div class="panel-head"><h2>Criticality questions</h2><span class="meta">Model version <%= a.criticality_model_version %></span></div>
+    <div class="panel-pad meta">Answer every question here.
+      <details class="tprm-how"><summary>How this works</summary>The tier is the most serious tier among the answers.</details></div>
+    <% criticalityQs.forEach(q => { %>
+      <fieldset class="panel-pad tprm-fieldset tprm-divide" data-tprm-question="<%= q.id %>">
+        <legend><%= q.text %></legend>
+        <% q.answers.forEach(ans => { %>
+          <label class="tprm-check">
+            <input type="radio" name="answers[<%= q.id %>]" value="<%= ans.id %>" data-tier="<%= ans.tier %>" <%= vAnswers[q.id] === ans.id ? 'checked' : '' %>>
+            <span><%= ans.label %> <span class="meta text-xs"><%= ans.tier %></span></span>
+          </label>
+        <% }) %>
+      </fieldset>
+    <% }) %>
+    <% if (describeQs.length) { %>
+      <div class="panel-pad meta tprm-divide"><strong>About the service</strong> (optional). These answers describe the service; they never change the tier.</div>
+      <% describeQs.forEach(q => { %>
+        <fieldset class="panel-pad tprm-fieldset tprm-divide" data-tprm-question="<%= q.id %>">
+          <legend><%= q.text %></legend>
+          <% q.answers.forEach(ans => { %>
+            <label class="tprm-check">
+              <input type="radio" name="answers[<%= q.id %>]" value="<%= ans.id %>" <%= vAnswers[q.id] === ans.id ? 'checked' : '' %>>
+              <span><%= ans.label %></span>
+            </label>
+          <% }) %>
+        </fieldset>
+      <% }) %>
+    <% } %>
+  </div>
+
+  <div class="panel" data-tprm-tier-step>
+    <div class="panel-head"><h2>Tier</h2></div>
+    <div class="panel-pad tprm-actions-split tprm-asmt-start">
+      <span class="label tpu-m-0">Scored tier</span>
+      <span class="tpu-medium" data-tprm-scored-tier><%= preview.score ? preview.score.tierLabel : 'Not scored yet' %></span>
+      <span data-tprm-explanation><%= preview.score ? preview.score.explanation : 'Answer every criticality question to see the tier.' %></span>
+    </div>
+
+    <% if (a.type === 'reassessment' && clientSaysCritical) { %>
+      <div class="panel-pad tprm-divide"<%= preview.score && !preview.designationRequired ? ' hidden' : '' %> data-tprm-designation>
+        <div class="tprm-sub tpu-mb-4">The client designates this third party as Critical</div>
+        <div class="meta tpu-mb-8">The answers score it lower. Choose which tier to propose; your choice is recorded.</div>
+        <label class="tprm-check"><input type="radio" name="designation_choice" value="keep_client_designation" <%= v.designation_choice === 'keep_client_designation' ? 'checked' : '' %>> <span>Keep the client's designation (Critical)</span></label>
+        <label class="tprm-check"><input type="radio" name="designation_choice" value="use_scored_tier" <%= v.designation_choice === 'use_scored_tier' ? 'checked' : '' %>> <span>Use the scored tier</span></label>
+      </div>
+    <% } %>
+
+    <div class="panel-pad tprm-divide" data-tprm-override>
+      <div class="tprm-sub">Override (optional)</div>
+      <div class="tprm-choices tpu-mb-8">
+        <label class="tprm-check"><input type="radio" name="override_direction" value="none" <%= !v.override_direction || v.override_direction === 'none' ? 'checked' : '' %>> <span>Use the scored tier</span></label>
+        <label class="tprm-check"><input type="radio" name="override_direction" value="raise" <%= v.override_direction === 'raise' ? 'checked' : '' %>> <span>Raise it</span></label>
+        <label class="tprm-check <%= isManager ? '' : 'tprm-muted' %>"><input type="radio" name="override_direction" value="lower" <%= v.override_direction === 'lower' ? 'checked' : '' %> <%= isManager ? '' : 'disabled' %>> <span>Lower it<% if (!isManager) { %> <span class="meta text-xs">(managers only)</span><% } %></span></label>
+      </div>
+      <div class="tprm-override-grid">
+        <div><label class="label" for="override-tier">To</label>
+          <select class="select" id="override-tier" name="override_tier">
+            <option value="">-</option>
+            <% tp.TIERS.forEach(k => { %><option value="<%= k %>" <%= v.override_tier === k ? 'selected' : '' %>><%= tp.TIER_LABELS[k] %></option><% }) %>
+          </select></div>
+        <div><label class="label" for="override-reason">Reason</label>
+          <textarea class="input" id="override-reason" name="override_reason" rows="2" maxlength="<%= at.LIMITS.reason %>"><%= v.override_reason || '' %></textarea>
+          <button class="btn btn-ghost btn-xs tpu-mt-4" type="button" data-tprm-designation-reason>Client designates as Critical</button></div>
+      </div>
+      <div class="meta text-xs tpu-mt-6">Anyone can raise the tier with a reason. Only a manager can lower it, also with a reason.</div>
+    </div>
+  </div>
+
+  <div class="tprm-actions">
+    <button class="btn btn-secondary" type="submit" name="intent" value="save" data-tprm-save>Save</button>
+    <button class="btn btn-primary" type="submit" name="intent" value="propose" data-tprm-propose>Propose tier</button>
+  </div>
+</form>
+<script type="application/json" data-tprm-model><%- jsonForScript({ questions: criticalityQs, reassessment: a.type === 'reassessment', clientCritical: clientSaysCritical, reason: at.DESIGNATION_REASON }) %></script>
+<script>
+(function () {
+  var form = document.querySelector('[data-tprm-scope-form]');
+  var source = document.querySelector('[data-tprm-model]');
+  if (!form || !source) return;
+  var model = JSON.parse(source.textContent);
+  var rank = { Low: 1, Medium: 2, High: 3, Critical: 4 };
+  var tierEl = form.querySelector('[data-tprm-scored-tier]');
+  var whyEl = form.querySelector('[data-tprm-explanation]');
+  var designation = form.querySelector('[data-tprm-designation]');
+  function update() {
+    var best = null, missing = 0;
+    model.questions.forEach(function (q) {
+      var checked = form.querySelector('input[name="answers[' + q.id + ']"]:checked');
+      var answer = checked && q.answers.filter(function (x) { return x.id === checked.value; })[0];
+      if (!answer) { missing += 1; return; }
+      if (!best || rank[answer.tier] > rank[best.tier]) best = answer;
+    });
+    if (missing || !best) {
+      tierEl.textContent = 'Not scored yet';
+      whyEl.textContent = 'Answer every criticality question to see the tier (' + missing + ' unanswered).';
+    } else {
+      tierEl.textContent = best.tier;
+      whyEl.textContent = best.tier + ' because: ' + best.label;
+    }
+    if (designation) designation.hidden = !!(!missing && best && best.tier === 'Critical');
+  }
+  form.addEventListener('change', update);
+  var button = form.querySelector('[data-tprm-designation-reason]');
+  if (button) button.addEventListener('click', function () {
+    var raise = form.querySelector('input[name="override_direction"][value="raise"]');
+    if (raise) raise.checked = true;
+    form.querySelector('[name="override_tier"]').value = 'critical';
+    form.querySelector('[name="override_reason"]').value = model.reason;
+  });
+  update();
+})();
+</script>
+<% } else { %>
+<% if (a.status === 'tier_proposed') { %>
+  <div class="panel" data-tprm-confirmation>
+    <div class="panel-head"><h2>Confirmation</h2></div>
+    <% if (canReview && !isProposer) { %>
+      <form method="POST" action="<%= base %>/confirm" class="panel-pad tprm-actions-split" data-tprm-confirm-form>
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <input type="hidden" name="row_version" value="<%= a.row_version %>">
+        <span class="meta">Confirming makes <%= tierLabel(a.final_tier) %> this third party's assessed tier.</span>
+        <button class="btn btn-primary" type="submit" data-tprm-confirm>Confirm <%= tierLabel(a.final_tier) %></button>
+      </form>
+      <details class="panel-pad tprm-divide" data-tprm-return>
+        <summary class="tprm-summary">Send back to the consultant</summary>
+        <form method="POST" action="<%= base %>/return" class="tprm-form-stack tpu-mt-10">
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <input type="hidden" name="row_version" value="<%= a.row_version %>">
+          <label class="label" for="return-comment">What needs to change</label>
+          <textarea class="input" id="return-comment" name="comment" rows="3" maxlength="<%= at.LIMITS.comment %>" required></textarea>
+          <div class="tprm-actions"><button class="btn btn-secondary" type="submit">Send back</button></div>
+        </form>
+      </details>
+    <% } else if (isProposer && canReview && isManager && typeof selfApproveTiers !== 'undefined' && selfApproveTiers) { %>
+      <form method="POST" action="<%= base %>/confirm" class="panel-pad tprm-form-stack" data-tprm-self-confirm-form>
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <input type="hidden" name="row_version" value="<%= a.row_version %>">
+        <div class="meta">You proposed this tier: as a manager you may confirm it yourself, with a written reason.
+          <details class="tprm-how"><summary>How this works</summary>Your firm allows managers to self-approve tiers. The reason is recorded and shown in the history and the review queue. Otherwise a second person confirms it from the review queue.</details></div>
+        <label class="label" for="self-approval-reason">Self-approval reason</label>
+        <textarea class="input" id="self-approval-reason" name="self_approval_reason" rows="2" maxlength="1000" required></textarea>
+        <div class="tprm-actions"><button class="btn btn-primary" type="submit" data-tprm-self-confirm>Confirm my own tier</button></div>
+      </form>
+    <% } else if (isProposer) { %>
+      <div class="panel-pad meta" data-tprm-waiting>You proposed this tier. A second person (a senior consultant or a manager) confirms it from the review queue.</div>
+    <% } else { %>
+      <div class="panel-pad meta" data-tprm-waiting>Waiting for a senior consultant or a manager to confirm the tier.</div>
+    <% } %>
+  </div>
+<% } else if (a.status === 'tier_confirmed') { %>
+  <div class="callout" data-tprm-confirmed-note>
+    <%= tierLabel(a.final_tier) %> is this third party's assessed tier, confirmed by <%= dash(a.confirmed_by_name) %> on <%= when(a.confirmed_at) %>. Its next due date is set from this tier when the client approves it in the client portal.
+    <% if (a.self_approval_reason) { %><div data-tprm-self-approved>Self-approved by <%= a.confirmed_by_name || 'a manager' %>: <%= a.self_approval_reason %></div><% } %>
+  </div>
+<% } %>
+<div class="panel" data-tprm-tier-summary>
+  <div class="panel-head"><h2>Scope and tier</h2><% if (a.status !== 'scoping') { %><span class="tpu-medium" data-tprm-final-tier><%= tierLabel(a.final_tier) %></span><% } %></div>
+  <% if (a.status === 'scoping') { %>
+    <div class="panel-pad meta">The consultant is still scoping this assessment.</div>
+  <% } else { %>
+  <dl class="tprm-dl is-single">
+    <div><dt>Final tier</dt><dd><%= tierLabel(a.final_tier) %></dd></div>
+    <div><dt>Scored tier</dt><dd data-tprm-scored-summary><%= tierLabel(a.scored_tier) %> <span class="meta text-xs"><%= dash(a.tier_explanation) %></span></dd></div>
+    <div><dt>Override</dt><dd data-tprm-override-summary><% if (a.override_direction === 'none') { %>None<% } else { %><%= a.override_direction === 'raise' ? 'Raised' : 'Lowered' %> to <%= tierLabel(a.final_tier) %>: <%= a.override_reason %><% } %></dd></div>
+    <% if (a.client_designation_choice) { %><div><dt>Client's designation</dt><dd data-tprm-designation-summary><%= designationText[a.client_designation_choice] %></dd></div><% } %>
+    <div><dt>Services in scope</dt><dd><ul class="tprm-list tpu-mt-0"><% (a.services_in_scope || []).forEach(s => { %><li><%= s.description %></li><% }) %></ul></dd></div>
+  </dl>
+  <div class="tprm-divide">
+    <div class="panel-pad tprm-group-title">Answers <span class="meta text-xs">(model version <%= a.criticality_model_version %>)</span></div>
+    <div class="table-scroll"><table class="t">
+      <thead><tr><th>Question</th><th>Answer</th></tr></thead>
+      <tbody>
+      <% model.questions.forEach(q => { const ans = answerLabel(q, (a.answers || {})[q.id]); if (!ans && q.kind !== 'criticality') return; %>
+        <tr><td><%= q.text %><% if (q.kind !== 'criticality') { %> <span class="meta text-xs">(about the service)</span><% } %></td><td><%= dash(ans) %><% if (q.id === a.deciding_question_id) { %> <span class="meta text-xs">Sets the tier</span><% } %></td></tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  </div>
+  <% } %>
+</div>
+
+<% } %>
+</div>
+<% stepFoot('scope') %>
+<% } %>
+</section>
+
+<section <%- stepAttrs('questionnaire') %>>
+<% if (selected === 'questionnaire') { %>
+<% stepTitle('questionnaire') %>
+<% if (qp) { %><%- include('tprm_assessment_questionnaire', { actionLabels, newLink: typeof newLink !== 'undefined' ? newLink : null }) %><% } %>
+<% stepFoot('questionnaire') %>
+<% } %>
+</section>
+
+<section <%- stepAttrs('review') %>>
+<% if (selected === 'review') { %>
+<% stepTitle('review') %>
+<div class="tprm-stack">
+  <% if (qq) { %>
+    <div class="panel tprm-answers-panel">
+      <div class="panel-head"><h2>The third party's answers</h2><% if (rv && rv.submitted) { %><span class="meta"><%= rv.allCount %> answers</span><% } %></div>
+      <% if (!rv || (!rv.submitted && !['sent', 'in_progress'].includes(qq.status))) { %>
+        <div class="panel-pad meta"><%= qq.not_returned ? 'The questionnaire was closed as not returned, so there are no answers to review.' : 'The answers show here once the questionnaire is sent.' %></div>
+      <% } %>
+      <%- include('tprm_assessment_answers', { qp, qq, qBase: base + '/questionnaire', qCsrf: csrf, qWhen: when, qDay: day }) %>
+    </div>
+  <% } else { %>
+    <div class="panel panel-pad meta" data-tprm-review-empty>The answers are reviewed here once the questionnaire is prepared, sent and returned by the third party.</div>
+  <% } %>
+  <% if (ap) { Object.assign(actionLabels, aiEventLabels); %><%- include('tprm_assessment_ai') %><% } %>
+</div>
+<% stepFoot('review') %>
+<% } %>
+</section>
+
+<section <%- stepAttrs('evidence') %>>
+<% if (selected === 'evidence') { %>
+<% stepTitle('evidence') %>
+<div class="tprm-stack">
+  <%- include('tprm_assessment_evidence', { actionLabels }) %>
+  <% if (typeof dataLocationPanel !== 'undefined' && dataLocationPanel) { %><%- include('tprm_data_location', { dataLocationBase: base }) %><% } %>
+</div>
+<% stepFoot('evidence') %>
+<% } %>
+</section>
+
+<section <%- stepAttrs('contract') %>>
+<% if (selected === 'contract') { %>
+<% stepTitle('contract') %>
+<% if (crp) { %><%- include('tprm_assessment_contract', { actionLabels }) %><% } else { %><div class="panel panel-pad meta">The contract checklist is not available for this assessment.</div><% } %>
+<% stepFoot('contract') %>
+<% } %>
+</section>
+
+<section <%- stepAttrs('recommendation') %>>
+<% if (selected === 'recommendation') { %>
+<% stepTitle('recommendation') %>
+<div class="tprm-stack">
+<% if (rd) { Object.assign(actionLabels, recommendation.eventLabels); %><%- include('tprm_assessment_recommendation') %><% } %>
+<% if (rd) { %><%- include('tprm_assessment_report', { actionLabels }) %><% } %>
+</div>
+<% stepFoot('recommendation') %>
+<% } %>
+</section>
+
+<section <%- stepAttrs('decision') %>>
+<% if (selected === 'decision') { %>
+<% stepTitle('decision') %>
+<div class="tprm-stack">
+<% if (dp) { Object.assign(actionLabels, decisionEventLabels); %><%- include('tprm_assessment_decision') %><% } %>
+<% if (dp && dp.conditions) { Object.assign(actionLabels, dp.conditions.eventLabels); %><%- include('tprm_assessment_conditions') %><% } %>
+</div>
+<% stepFoot('decision') %>
+<% } %>
+</section>
+
+<section <%- stepAttrs('details') %>>
+<% if (selected === 'details') { %>
+<div class="tprm-step-head"><h2>Assessment details</h2></div>
+<div class="tprm-stack">
+<div class="panel" data-tprm-assessment-facts>
+  <dl class="tprm-dl">
+    <div><dt>Assessment</dt><dd><%= at.TYPE_LABELS[a.type] %></dd></div>
+    <div><dt>Status</dt><dd><%= statusText %></dd></div>
+    <div><dt>Third party</dt><dd><%= tp.STATUS_LABELS[t.status] %><% if (t.current_tier) { %> · <%= tp.TIER_LABELS[t.current_tier] %> <span class="meta text-xs"><%= tp.TIER_SOURCE_LABELS[t.tier_source] %></span><% } %></dd></div>
+    <div><dt>Criticality model</dt><dd data-tprm-model-version>Version <%= a.criticality_model_version %><% if (!modelIsActive) { %> <span class="meta text-xs">(the firm has activated a newer version; this assessment keeps the version it started under)</span><% } %></dd></div>
+    <div><dt>Lead consultant</dt><dd><%= dash(a.lead_consultant_name) %></dd></div>
+    <div><dt>Due date</dt><dd><%= day(a.due_date) %></dd></div>
+    <div><dt>Client decision owner</dt><dd><%= a.client_decision_owner_name || 'Not named yet' %></dd></div>
+    <div><dt>Started</dt><dd><%= when(a.created_at) %></dd></div>
+    <% if (a.proposed_by) { %><div><dt>Tier proposed by</dt><dd><%= dash(a.proposed_by_name) %> <span class="meta text-xs"><%= when(a.proposed_at) %></span></dd></div><% } %>
+    <% if (a.confirmed_by) { %><div><dt>Tier confirmed by</dt><dd><%= dash(a.confirmed_by_name) %> <span class="meta text-xs"><%= when(a.confirmed_at) %></span></dd></div><% } %>
+  </dl>
+</div>
+
+<% if (isOpen && canManage) { %>
+<div class="panel" id="details" data-tprm-assessment-details>
+  <div class="panel-head"><h2>Change the details</h2></div>
+  <form method="POST" action="<%= base %>/details" class="panel-pad tprm-form-grid">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input type="hidden" name="row_version" value="<%= a.row_version %>">
+    <div><label class="label" for="due-date">Due date</label><input class="input" id="due-date" type="date" name="due_date" value="<%= tpf.ymd(a.due_date) %>"></div>
+    <div><label class="label" for="decision-owner">Client decision owner</label>
+      <select class="select" id="decision-owner" name="client_decision_owner_id">
+        <option value="">Not named yet</option>
+        <% owners.forEach(o => { %><option value="<%= o.id %>" <%= Number(a.client_decision_owner_id) === Number(o.id) ? 'selected' : '' %>><%= o.name %> (<%= rbac.ROLE_LABELS[rbac.normalizeRole(o.role)] || o.role %>)</option><% }) %>
+      </select>
+      <% if (!owners.length) { %><div class="meta text-xs tpu-mt-4">No client sponsor or coordinator has a login for this client yet.</div><% } %></div>
+    <div><button class="btn btn-secondary" type="submit">Save details</button></div>
+  </form>
+  <% if (typeof canCancel !== 'undefined' && !canCancel) { %>
+  <div class="panel-pad meta tprm-divide" data-tprm-cancel-blocked>A recommendation has been issued on this assessment, so it can no longer be cancelled. The client decides on it in the client portal.</div>
+  <% } else { %>
+  <details class="panel-pad tprm-divide" data-tprm-cancel>
+    <summary class="tprm-summary meta">Cancel this assessment</summary>
+    <form method="POST" action="<%= base %>/cancel" class="tprm-form-stack tpu-mt-10">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <input type="hidden" name="row_version" value="<%= a.row_version %>">
+      <label class="label" for="cancel-reason">Reason</label>
+      <textarea class="input" id="cancel-reason" name="reason" rows="2" maxlength="<%= at.LIMITS.reason %>" required></textarea>
+      <div class="meta text-xs">The assessment and its history are kept. <% if (a.confirmed_at) { %>The confirmed tier stays on the third party.<% } %> <% if (['recommendation_draft', 'recommendation_in_review'].includes(a.status)) { %>The recommendation that is not issued yet is withdrawn with it.<% } %></div>
+      <div class="tprm-actions"><button class="btn btn-secondary" type="submit">Cancel assessment</button></div>
+    </form>
+  </details>
+  <% } %>
+</div>
+<% } %>
+</div>
+<% } %>
+</section>
+
+<section <%- stepAttrs('history') %>>
+<% if (selected === 'history') { const hv = historyView; const hq = typeof historyQuery !== 'undefined' ? historyQuery : ''; %>
+<div class="tprm-step-head"><h2>History</h2></div>
+<div class="tpa tph" data-tprm-assessment-history>
+  <form method="GET" action="<%= base %>" class="tph-search" role="search" data-tp-list-controls>
+    <input type="hidden" name="step" value="history">
+    <label class="sr-only" for="history-q">Search the history</label>
+    <input class="tpa-input" id="history-q" type="search" name="q" value="<%= hq %>" placeholder="Search, for example GOV-02, a name or issued" data-tp-list-search>
+    <button class="tpa-btn" type="submit">Search</button>
+  </form>
+  <p class="tpa-meta" data-tp-list-count data-tp-total="<%= hv.matched %>"><% if (hv.searched) { %><%= hv.matched %> of <%= hv.total %> entries match. <a href="<%= base %>?step=history" data-tp-list-clear>Show all</a><% } else { %><%= hv.total %> entr<%= hv.total === 1 ? 'y' : 'ies' %>, newest first<% if (hv.shown < hv.matched) { %>; the latest <%= hv.shown %> are shown, search to find older ones<% } %>.<% } %></p>
+  <% if (!hv.list.length) { %>
+    <p class="tpa-empty" data-tprm-history-empty><%= hv.searched ? 'Nothing in the history matches.' : 'Nothing has happened on this assessment yet.' %></p>
+  <% } else { %>
+  <ol class="tph-list" data-tp-list>
+    <% hv.list.forEach(e => { %>
+      <li class="tph-row"<% if (e.extra.decision) { %> data-tprm-history-decision="<%= e.extra.decision %>"<% } %> data-tp-row data-tp-text="<%= (e.text + ' ' + Object.values(e.extra).join(' ')).toLowerCase() %>" data-tprm-history-action="<%= e.action %>">
+        <span class="tph-when"><%= when(e.at) %></span>
+        <span class="tph-text"><% if (e.thirdParty && e.text.indexOf('The third party') === 0) { %><span data-tprm-history-third-party>The third party</span><%= e.text.slice('The third party'.length) %><% } else { %><%= e.text %><% } %><%= /[.!?]$/.test(e.text) ? '' : '.' %><% if (e.extra.selfApproved) { %> <span data-tprm-history-self-approved><%= e.extra.selfApproved %></span><% } %><% if (e.extra.selfIssued) { %> <span data-tprm-history-self-issued><%= e.extra.selfIssued %></span><% } %></span>
+      </li>
+    <% }) %>
+  </ol>
+  <% } %>
+</div>
+<% } %>
+</section>
+
+</div>
+</div>
+<%- include('tprm_hash_sync', { panelAttr: 'data-tprm-step-panel', linkAttr: 'data-tprm-step', anchorSteps: at.STEP_OF_ANCHOR }) %>
+<%- include('partials/footer') %>

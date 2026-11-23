@@ -1,0 +1,153 @@
+<%- include('partials/header', { title: 'Review queue · Third-party risk', user, active }) %>
+<%
+  const L = locals.lq || { rows: l => l || [], th: (k, t) => '<th>' + t + '</th>', row: () => '', form: () => '' };
+  const txt = r => [r.third_party_name, r.client_name, r.proposed_by_name, r.author_name, r.decided_by_name, r.pending_by_name, r.description].filter(Boolean).join(' ');
+  const lists = [typeof queue !== 'undefined' ? queue : [], typeof recommendationQueue !== 'undefined' ? recommendationQueue : [], typeof informationQueue !== 'undefined' ? informationQueue : [],
+    typeof questionnaireQueue !== 'undefined' ? questionnaireQueue : [], typeof conditionProofQueue !== 'undefined' ? conditionProofQueue : []];
+  const allRows = lists.reduce((n, l) => n + l.length, 0);
+  const shownRows = lists.reduce((n, l) => n + L.rows(l, txt).length, 0);
+%>
+<div class="page-head" data-tprm-review-queue>
+  <div>
+    <h1 class="page-title">Review queue</h1>
+    <% if (typeof readOnly !== 'undefined' && readOnly) { %>
+    <div class="page-subtitle" data-tprm-review-readonly>Review the questionnaires below; the tiers and recommendations are listed for information only.
+      <details class="tprm-how"><summary>How this works</summary>Questionnaires the third party has submitted, for the clients you are assigned to, and, for information, the proposed tiers and recommendations waiting for a senior consultant or a manager. They confirm and issue those: nothing in those two lists is waiting for you.</details></div>
+    <% } else { %>
+    <div class="page-subtitle">Confirm the tiers, and review the recommendations and questionnaires waiting below.
+      <details class="tprm-how"><summary>How this works</summary>Proposed tiers and recommendations waiting for a second person, and questionnaires the third party has submitted, across the clients you can reach. Your own tiers and recommendations are listed only where your firm lets managers confirm or issue their own, with a reason; otherwise someone else confirms or issues them.</details></div>
+    <% } %>
+  </div>
+</div>
+<%- include('partials/tprm_home_tabs', { current: 'review' }) %>
+<% if (allRows) { %><%- L.form({ placeholder: 'Search a third party, client or person', shown: shownRows, total: allRows }) %><% } %>
+
+<div class="panel">
+  <div class="panel-head"><h2><%= typeof readOnly !== 'undefined' && readOnly ? 'Tiers waiting for confirmation' : 'Tiers to confirm' %></h2><span class="meta"><%= queue.length %></span></div>
+  <% if (!queue.length) { %>
+    <div class="empty-state" data-tprm-review-empty>
+      <div class="text-lg tpu-label-strong">Nothing is waiting for you</div>
+      <div class="meta">Proposed tiers from other consultants appear here.</div>
+    </div>
+  <% } else { %>
+    <div class="table-scroll"><table class="t" data-tp-list>
+      <thead><tr><%- L.th('third_party', 'Third party') %><%- L.th('client', 'Client') %><th>Assessment</th><th>Proposed tier</th><th>Proposed by</th><%- L.th('due', 'Due') %></tr></thead>
+      <tbody>
+      <% L.rows(queue, txt).forEach(r => { %>
+        <tr <%- L.row(r, txt) %> data-tprm-review-item="<%= r.id %>">
+          <td><a href="/tprm/clients/<%= r.workspace_id %>/third-parties/<%= r.third_party_id %>/assessments/<%= r.id %>"><strong><%= r.third_party_name %></strong></a></td>
+          <td><%= r.client_name %></td>
+          <td><%= at.TYPE_LABELS[r.type] %></td>
+          <td><%= tp.TIER_LABELS[r.final_tier] %><% if (r.override_direction !== 'none') { %> <span class="meta text-xs">(<%= r.override_direction === 'raise' ? 'raised' : 'lowered' %> from <%= tp.TIER_LABELS[r.scored_tier] %>)</span><% } %></td>
+          <td><%= r.proposed_by_name || '-' %> <span class="meta text-xs"><%= tpf.day(r.proposed_at) %></span><% if (r.own && !(typeof readOnly !== 'undefined' && readOnly)) { %> <span class="meta text-xs" data-tprm-review-own>Yours: you may confirm it with a reason</span><% } %></td>
+          <td><%= tpf.day(r.due_date) || '-' %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+</div>
+
+<% if (typeof selfApproved !== 'undefined' && selfApproved.length) { %>
+<div class="panel tpu-mt-14" data-tprm-review-self-approved>
+  <div class="panel-head"><h2>Tiers self-approved by a manager (last 30 days)</h2><span class="meta"><%= selfApproved.length %></span></div>
+  <div class="table-scroll"><table class="t" data-tp-list>
+    <thead><tr><%- L.th('third_party', 'Third party') %><%- L.th('client', 'Client') %><th>Tier</th><th>Self-approval</th></tr></thead>
+    <tbody>
+    <% L.rows(selfApproved, txt).forEach(r => { %>
+      <tr <%- L.row(r, txt) %> data-tprm-review-self-approved-item="<%= r.id %>">
+        <td><a href="/tprm/clients/<%= r.workspace_id %>/third-parties/<%= r.third_party_id %>/assessments/<%= r.id %>"><strong><%= r.third_party_name %></strong></a></td>
+        <td><%= r.client_name %></td>
+        <td><%= tp.TIER_LABELS[r.final_tier] %></td>
+        <td>Self-approved by <%= r.confirmed_by_name || 'a manager' %>: <%= r.self_approval_reason %> <span class="meta text-xs"><%= tpf.day(r.confirmed_at) %></span></td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table></div>
+</div>
+<% } %>
+
+<% if (typeof recommendationQueue !== 'undefined') { %>
+<div class="panel tpu-mt-14" data-tprm-review-recommendations>
+  <div class="panel-head"><h2><%= typeof readOnly !== 'undefined' && readOnly ? 'Recommendations waiting for review' : 'Recommendations to review' %></h2><span class="meta"><%= recommendationQueue.length %></span></div>
+  <% if (!recommendationQueue.length) { %>
+    <div class="empty-state" data-tprm-review-recommendations-empty>
+      <div class="text-lg tpu-label-strong">Nothing is waiting for you</div>
+      <div class="meta">Recommendations submitted by other consultants appear here. Recommendations you wrote are not listed: someone else issues them.</div>
+    </div>
+  <% } else { %>
+    <div class="table-scroll"><table class="t" data-tp-list>
+      <thead><tr><%- L.th('third_party', 'Third party') %><%- L.th('client', 'Client') %><th>Assessment</th><th>Recommendation</th><th>Residual risk</th><th>Written by</th><%- L.th('due', 'Due') %></tr></thead>
+      <tbody>
+      <% L.rows(recommendationQueue, txt).forEach(r => { %>
+        <tr <%- L.row(r, txt) %> data-tprm-review-recommendation="<%= r.id %>">
+          <td><a href="/tprm/clients/<%= r.workspace_id %>/third-parties/<%= r.third_party_id %>/assessments/<%= r.assessment_id %>?step=recommendation#recommendation"><strong><%= r.third_party_name %></strong></a></td>
+          <td><%= r.client_name %></td>
+          <td><%= at.TYPE_LABELS[r.type] %> <span class="meta text-xs">version <%= r.version %></span></td>
+          <td><%= r.outcome_label %></td>
+          <td><%= rec.RESIDUAL_LABELS[r.residual_rating] %></td>
+          <td><%= r.author_name || '-' %> <span class="meta text-xs"><%= tpf.day(r.submitted_at) %></span><% if (r.own && !(typeof readOnly !== 'undefined' && readOnly)) { %> <span class="meta text-xs" data-tprm-review-own-recommendation>Yours: you may issue it with a reason</span><% } %></td>
+          <td><%= tpf.day(r.due_date) || '-' %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+</div>
+<% } %>
+<% if (typeof informationQueue !== 'undefined') { %>
+<div class="panel tpu-mt-14" data-tprm-review-information>
+  <div class="panel-head"><h2>Client requested more information</h2><span class="meta"><%= informationQueue.length %></span></div>
+  <% if (!informationQueue.length) { %>
+    <div class="empty-state" data-tprm-review-information-empty>
+      <div class="text-lg tpu-label-strong">No client is waiting for more information</div>
+      <div class="meta">When a client decision owner chooses "Need more information", the assessment appears here until a consultant starts a revised recommendation.</div>
+    </div>
+  <% } else { %>
+    <div class="table-scroll"><table class="t" data-tp-list>
+      <thead><tr><%- L.th('third_party', 'Third party') %><%- L.th('client', 'Client') %><th>Assessment</th><th>Request</th><th>Asked by</th></tr></thead>
+      <tbody>
+      <% L.rows(informationQueue, txt).forEach(r => { %>
+        <tr <%- L.row(r, txt) %> data-tprm-review-information-row="<%= r.assessment_id %>">
+          <td><a href="/tprm/clients/<%= r.workspace_id %>/third-parties/<%= r.third_party_id %>/assessments/<%= r.assessment_id %>#client-decision"><strong><%= r.third_party_name %></strong></a></td>
+          <td><%= r.client_name %></td>
+          <td><%= at.TYPE_LABELS[r.type] %> <span class="meta text-xs">version <%= r.version %></span></td>
+          <td class="tpu-pre"><%= r.rationale %></td>
+          <td><%= r.decided_by_name || '-' %> <span class="meta text-xs"><%= tpf.day(r.decided_at) %></span></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+</div>
+<% } %>
+<% if (typeof questionnaireQueue !== 'undefined') { %>
+<div class="panel tpu-mt-14" data-tprm-review-questionnaires>
+  <div class="panel-head"><h2>Questionnaires to review</h2><span class="meta"><%= questionnaireQueue.length %></span></div>
+  <% if (!questionnaireQueue.length) { %>
+    <div class="empty-state" data-tprm-review-questionnaires-empty>
+      <div class="text-lg tpu-label-strong">No submitted questionnaire is waiting</div>
+      <div class="meta">When a third party submits its questionnaire, it appears here until the review of the answers is closed. The recommendation goes to review only after that.</div>
+    </div>
+  <% } else { %>
+    <div class="table-scroll"><table class="t" data-tp-list>
+      <thead><tr><%- L.th('third_party', 'Third party') %><%- L.th('client', 'Client') %><th>Assessment</th><th>Status</th><th>Not reviewed</th><th>Open clarifications</th><th>Submitted</th></tr></thead>
+      <tbody>
+      <% L.rows(questionnaireQueue, txt).forEach(r => { %>
+        <tr <%- L.row(r, txt) %> data-tprm-review-questionnaire="<%= r.id %>">
+          <td><a href="/tprm/clients/<%= r.workspace_id %>/third-parties/<%= r.third_party_id %>/assessments/<%= r.assessment_id %>?step=review#questionnaire-answers"><strong><%= r.third_party_name %></strong></a></td>
+          <td><%= r.client_name %></td>
+          <td><%= at.TYPE_LABELS[r.type] %><% if (r.final_tier) { %> <span class="meta text-xs"><%= tp.TIER_LABELS[r.final_tier] %></span><% } %></td>
+          <td><%- include('partials/tprm_status', { text: qStatusLabels[r.status] }) %></td>
+          <td data-tprm-review-questionnaire-unreviewed><%= r.unreviewed %> of <%= r.vendor_question_count %></td>
+          <td data-tprm-review-questionnaire-clarifications><%= r.open_clarifications %></td>
+          <td><span class="meta text-xs"><%= tpf.day(r.submitted_at) %></span></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+</div>
+<% } %>
+<% if (typeof conditionProofQueue !== 'undefined') { %><%- include('tprm_review_conditions') %><% } %>
+<%- include('partials/footer') %>

@@ -1,0 +1,35 @@
+<script>
+(function () {
+  var panelAttr = <%- JSON.stringify(panelAttr) %>, linkAttr = <%- JSON.stringify(linkAttr) %>;
+  var anchorSteps = <%- JSON.stringify(locals.anchorSteps || {}) %>;
+  function sync() {
+    var id = decodeURIComponent(location.hash.slice(1));
+    var target = id && document.getElementById(id);
+    var wanted = id && !target ? (anchorSteps[id] || (/^answer-\d+$/.test(id) ? anchorSteps['questionnaire-answers'] : null)) : null;
+    if (wanted) {
+      var url = new URL(location.href);
+      if (url.searchParams.get('step') !== wanted) { url.searchParams.set('step', wanted); location.replace(url.pathname + url.search + url.hash); return; }
+    }
+    var panel = target && target.closest('[' + panelAttr + ']');
+    if (!panel || !panel.hidden) return;
+    var key = panel.getAttribute(panelAttr);
+    document.querySelectorAll('[' + panelAttr + ']').forEach(function (p) { p.hidden = p !== panel; });
+    document.querySelectorAll('[' + linkAttr + ']').forEach(function (a) {
+      var on = a.getAttribute(linkAttr) === key;
+      a.classList.toggle('is-selected', on);
+      a.classList.toggle('is-active', on && a.classList.contains('subtab'));
+      if (on) a.setAttribute('aria-current', a.classList.contains('subtab') ? 'page' : 'step'); else a.removeAttribute('aria-current');
+    });
+    target.scrollIntoView();
+  }
+  // On a narrow screen the rail and the tabs scroll sideways: bring the selected one into view.
+  function reveal() {
+    var link = document.querySelector('[' + linkAttr + '][aria-current]');
+    var box = link && link.closest('.tprm-rail, .subtabs');
+    if (box && box.scrollWidth > box.clientWidth) box.scrollLeft += link.getBoundingClientRect().left - box.getBoundingClientRect().left - 12;
+  }
+  sync();
+  reveal();
+  window.addEventListener('hashchange', function () { sync(); reveal(); });
+})();
+</script>

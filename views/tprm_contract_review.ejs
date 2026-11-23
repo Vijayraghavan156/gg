@@ -1,0 +1,108 @@
+<%- include('partials/header', { title: 'Contract checklist · ' + thirdParty.name + ' · ' + tpClient.name, user, active }) %>
+<%
+  const p = panel;
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const back = '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id + '/assessments/' + assessment.id;
+  const posted = values || {};
+  const v = (row, k) => { const x = posted['r' + row.id]; return x && x[k] != null ? x[k] : row[k]; };
+  const sevLabel = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low' };
+%>
+<%- include('tprm_client_nav', { tpClient, section: 'register', canManage, canSettings }) %>
+
+<div class="tpu-mb-10"><a class="text-xs tpu-back" href="<%= back %>?step=contract#contract-review">← <%= at.TYPE_LABELS[assessment.type] %> · <%= thirdParty.name %></a></div>
+
+<div class="panel tpu-mb-14" data-tprm-contract-review>
+  <div class="panel-head">
+    <h2>Contract checklist</h2>
+    <% if (p.started) { %><span class="meta"><%= p.reviewed %> of <%= p.total %> clauses reviewed · question bank version <%= p.bank.version %></span><% } %>
+  </div>
+  <div class="panel-pad meta tpu-rule-bottom">
+    <% if (p.canEdit) { %>Check each clause against the contract, then save the checklist.<% } %>
+    <% if (p.hiddenCount) { %><span data-tprm-contract-hidden="<%= p.hiddenCount %>"><%= p.hiddenCount %> clause<%= p.hiddenCount === 1 ? ' is' : 's are' %> not shown: <%= p.hidden.map(h => h.clause_id + ' (' + (h.module || h.applies_to) + ')').join(', ') %>.</span><% } %>
+    <details class="tprm-how"><summary>How this works</summary>
+    Internal to the firm: never sent to the third party and never shown in the client portal.
+    Clauses for every client are listed, with the clauses of the client's rulebooks<% if (p.rulebooks) { %> <span data-tprm-contract-rulebooks="<%= p.rulebooks.source %>">(<%= p.rulebooks.names.length ? p.rulebooks.names.join(', ') : 'none' %>; <%= p.rulebooks.source === 'questionnaire' ? 'pinned when the questionnaire was prepared' : 'the client\'s rulebooks now: they are pinned when the questionnaire is prepared' %>)</span><% } %>.
+    <% if (p.questionnaire) { %>Conditional clauses show when their module is in the questionnaire (<%= p.questionnaire.modules.length ? p.questionnaire.modules.join(', ') : 'no modules' %>).<% } else { %>The assessment has no questionnaire yet, so every conditional clause is listed.<% } %>
+    </details>
+  </div>
+  <% if (errors && errors.length) { %>
+    <div class="callout tprm-callout-error tprm-inset" role="alert" data-tprm-form-errors>
+      <div class="callout-title">Nothing was saved</div>
+      <ul class="tpu-list"><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+    </div>
+  <% } %>
+  <% if (p.frozenMessage) { %>
+    <div class="callout tprm-inset" role="status" data-tprm-contract-frozen>
+      <div class="callout-title">The contract checklist is frozen</div>
+      <div><%= p.frozenMessage %></div>
+    </div>
+  <% } %>
+
+  <% if (!p.started) { %>
+    <div class="empty-state" data-tprm-contract-not-started>
+      <div class="text-lg tpu-medium tpu-mb-6">The contract checklist is not started</div>
+      <% if (p.canStart) { %>
+        <form method="POST" action="<%= back %>/contract-review/start" class="tpu-mt-10">
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <button class="btn btn-primary" type="submit" data-tprm-contract-start>Start contract checklist</button>
+        </form>
+      <% } %>
+    </div>
+  <% } else { %>
+  <% if (p.canEdit) { %><form method="POST" action="<%= back %>/contract-review" class="tpu-m-0" data-tprm-contract-form>
+    <input type="hidden" name="_csrf" value="<%= csrf %>"><% } else { %><div data-tprm-contract-readonly><% } %>
+    <div class="table-scroll">
+    <table class="t" data-tprm-contract-table>
+      <thead><tr><th class="tprm-cr-col-clause">Clause</th><th class="tpu-w-170">Status</th><th class="tprm-cr-col-ref">Contract reference and comment</th><th class="tpu-w-210">Finding</th></tr></thead>
+      <tbody>
+      <% p.rows.forEach(r => { %>
+        <tr id="clause-<%= r.clause_id %>" data-tprm-clause="<%= r.clause_id %>" data-tprm-clause-status="<%= r.status %>">
+          <td>
+            <strong><%= r.clause_id %></strong> <span class="meta text-xs"><%= r.category %></span>
+            <% if (r.conditional) { %><span class="meta text-xs" data-tprm-clause-module><%= r.module %></span><% } %>
+            <div class="text-sm tpu-mt-4"><%= r.requirement %></div>
+            <% if (r.basis) { %><div class="meta text-xs">Basis: <%= r.basis %></div><% } %>
+            <% if (r.reviewed_by_name) { %><div class="meta text-xs">Reviewed by <%= r.reviewed_by_name %>, <%= tpf.day(r.reviewed_at) %></div><% } %>
+          </td>
+          <% if (p.canEdit) { %>
+          <td>
+            <input type="hidden" name="rows[r<%= r.id %>][row_version]" value="<%= r.row_version %>">
+            <label class="sr-only" for="cr-status-<%= r.id %>">Status of <%= r.clause_id %></label>
+            <select class="select" id="cr-status-<%= r.id %>" name="rows[r<%= r.id %>][status]">
+              <% cr.STATUSES.forEach(s => { %><option value="<%= s %>" <%= v(r, 'status') === s ? 'selected' : '' %>><%= cr.STATUS_LABELS[s] %></option><% }) %>
+            </select>
+          </td>
+          <td>
+            <label class="sr-only" for="cr-ref-<%= r.id %>">Contract reference for <%= r.clause_id %></label>
+            <input class="input tprm-cr-field" id="cr-ref-<%= r.id %>" name="rows[r<%= r.id %>][contract_reference]" value="<%= v(r, 'contract_reference') || '' %>" maxlength="<%= cr.LIMITS.reference %>" placeholder="Contract reference, e.g. MSA clause 12.3">
+            <label class="sr-only" for="cr-comment-<%= r.id %>">Comment on <%= r.clause_id %></label>
+            <textarea class="input tprm-cr-field tpu-mt-6" id="cr-comment-<%= r.id %>" name="rows[r<%= r.id %>][comment]" rows="2" maxlength="<%= cr.LIMITS.comment %>" placeholder="Reviewer comment"><%= v(r, 'comment') || '' %></textarea>
+          </td>
+          <td>
+            <label class="sr-only" for="cr-finding-<%= r.id %>">Finding linked to <%= r.clause_id %></label>
+            <select class="select" id="cr-finding-<%= r.id %>" name="rows[r<%= r.id %>][finding_id]">
+              <option value="">No finding</option>
+              <% p.findings.forEach(f => { %><option value="<%= f.id %>" <%= String(v(r, 'finding_id') || '') === String(f.id) ? 'selected' : '' %>><%= f.title %> (<%= sevLabel[f.severity] %>)</option><% }) %>
+            </select>
+            <% if (!r.finding_id) { %><div class="tpu-mt-6"><a class="text-xs" href="<%= back %>/contract-review/<%= r.id %>/finding" data-tprm-raise-contract-finding="<%= r.clause_id %>">Raise finding</a></div><% } %>
+          </td>
+          <% } else { %>
+          <td><%- include('partials/tprm_status', { text: cr.STATUS_LABELS[r.status], tone: cr.GAP_STATUSES.includes(r.status) ? 'problem' : 'quiet' }) %></td>
+          <td><% if (r.contract_reference) { %><div><%= r.contract_reference %></div><% } %><% if (r.comment) { %><div class="meta text-sm tpu-pre"><%= r.comment %></div><% } %><% if (!r.contract_reference && !r.comment) { %><span class="meta">-</span><% } %></td>
+          <td><%= r.finding_id ? r.finding_title : '-' %></td>
+          <% } %>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+    </div>
+    <% if (p.canEdit) { %>
+      <div class="panel-pad tprm-aw-between tpu-rule-top">
+        <span class="meta text-xs">Save before you raise a finding: the finding is filled in from the saved status, reference and comment.</span>
+        <button class="btn btn-primary" type="submit" data-tprm-contract-save>Save checklist</button>
+      </div>
+    <% } %>
+  <% if (p.canEdit) { %></form><% } else { %></div><% } %>
+  <% } %>
+</div>
+<%- include('partials/footer') %>

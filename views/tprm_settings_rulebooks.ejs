@@ -1,0 +1,42 @@
+<%- include('partials/header', { title: 'Rulebooks · Third-party risk', user, active }) %>
+<%
+  const countryName = c => c ? (rb.countryName(c) || c) : '-';
+  const stateTag = r => r.status !== 'active' ? ['quiet', rb.STATUS_LABELS[r.status]] : r.enabled ? ['good', 'On'] : ['quiet', 'Off'];
+  const L = locals.lq || { rows: l => l || [], th: (k, t) => '<th>' + t + '</th>', row: () => '', form: () => '' };
+  const txt = r => [r.name, r.applies_to, countryName(r.data_country), (r.contract_tags || []).join(' ')].filter(Boolean).join(' ');
+  const shown = L.rows(list, txt);
+%>
+<div class="page-head" data-tprm-rulebooks-settings>
+  <div>
+    <a class="text-xs tpu-back" href="/tprm">← Third-party risk clients</a>
+    <h1 class="page-title tpu-mt-6">Rulebooks</h1>
+    <div class="page-subtitle">Set up the rules of regulated clients once for the firm; a manager then ticks the rulebooks that apply to each client on the client's settings page.</div>
+    <details class="tprm-how"><summary>How this works</summary>
+      <p>Each rulebook adds its questions to the client's questionnaires, the matching clauses to the contract checklist and, where it names a country, a check that the data stays there.</p>
+      <p>A change applies from each client's next questionnaire: questionnaires already prepared keep the version they were prepared with.</p>
+    </details>
+  </div>
+</div>
+
+<div class="panel tpu-mb-14">
+  <div class="panel-head"><h2>Rulebooks of the firm</h2><span class="meta"><%= list.length %></span></div>
+  <div class="panel-pad"><%- L.form({ placeholder: 'Search a rulebook, country or clause', shown: shown.length, total: list.length, label: 'Search the rulebooks' }) %></div>
+  <div class="table-scroll"><table class="t" data-tprm-rulebook-list data-tp-list>
+    <thead><tr><%- L.th('name', 'Rulebook') %><th>State</th><th class="num">Questions</th><th>Exit plans</th><th>Data stays in</th><th>Contract clauses</th><th class="num">Version</th></tr></thead>
+    <tbody>
+    <% shown.forEach(r => { const st = stateTag(r); %>
+      <tr <%- L.row(r, txt) %> data-tprm-rulebook="<%= r.key %>">
+        <td><a href="/tprm/settings/rulebooks/<%= r.id %>"><strong><%= r.name %></strong></a><% if (r.applies_to) { %><div class="meta text-xs"><%= r.applies_to %></div><% } %></td>
+        <td><%- include('partials/tprm_status', { text: st[1], tone: st[0], attrs: 'data-tprm-rulebook-state' }) %></td>
+        <td class="num"><%= (r.question_ids || []).length %></td>
+        <td><%= r.exit_plan_required ? 'Required' : '-' %></td>
+        <td data-tprm-rulebook-country><%= countryName(r.data_country) %></td>
+        <td class="text-xs"><%= (r.contract_tags || []).length ? r.contract_tags.join('; ') : '-' %></td>
+        <td class="num"><%= r.version %></td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table></div>
+  <div class="panel-pad meta text-xs tpu-rule-top">Rulebooks on the watch list or pending cannot be ticked for a client until their rules are binding. "Off" rulebooks cannot be ticked either; clients that already have one ticked stop getting it with their next questionnaire.</div>
+</div>
+<%- include('partials/footer') %>

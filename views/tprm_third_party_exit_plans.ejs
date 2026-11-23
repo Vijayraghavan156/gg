@@ -1,0 +1,47 @@
+<% const ep = exitPlansPanel; const epBase = '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id + '/services/'; const epCsrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; %>
+<div class="panel" id="exit-plans" data-tprm-exit-plans>
+  <div class="panel-head"><h2>Material services and exit plans</h2><span class="meta"><%= ep.services.filter(s => s.material).length %> material</span></div>
+  <div class="panel-pad meta tprm-divide-b">
+    <% if (ep.exitPlanRulebooks.length) { %>
+      <span data-tprm-exit-plans-required>Record a complete exit plan for every material service: <%= ep.exitPlanRulebooks.join(', ') %> require<%= ep.exitPlanRulebooks.length === 1 ? 's' : '' %> one.</span>
+      <details class="tprm-how"><summary>How this works</summary>This client's rulebooks: <%= ep.rulebookNames.join(', ') %>. Without a complete exit plan, a recommendation to onboard or continue carries an automatic condition for the client.</details>
+    <% } else { %>
+      This client's rulebooks: <%= ep.rulebookNames.join(', ') %>.
+      <details class="tprm-how"><summary>How this works</summary>None of them requires exit plans, so no automatic condition is raised; the material flag and exit plans are kept for the record.</details>
+    <% } %>
+  </div>
+  <% if (!ep.services.length) { %>
+    <div class="panel-pad meta">No services recorded yet.</div>
+  <% } else { %>
+    <div class="table-scroll"><table class="t">
+      <thead><tr><th>Service</th><th class="tprm-w-150">Material</th><th class="tpu-w-220">Exit plan</th><% if (ep.canManage) { %><th class="tprm-w-280"></th><% } %></tr></thead>
+      <tbody>
+      <% ep.services.forEach(s => { %>
+        <tr data-tprm-material-service="<%= s.id %>" data-tprm-material="<%= s.material ? 'yes' : 'no' %>">
+          <td><strong><%= s.description %></strong>
+            <% if (s.material_at) { %><div class="meta text-xs"><%= s.material ? 'Marked material' : 'Marked not material' %> by <%= s.material_by_name || 'a firm user' %> on <%= tpf.day(s.material_at) %>: <%= s.material_reason %></div><% } %></td>
+          <td><% if (s.material) { %>Material<% } else { %><span class="meta">Not material</span><% } %></td>
+          <td data-tprm-exit-plan-status="<%= s.plan ? s.plan.status : 'none' %>">
+            <% if (s.complete) { %><%- include('partials/tprm_status', { text: 'Complete', tone: 'good' }) %>
+            <% } else if (s.plan) { %><%- include('partials/tprm_status', { text: 'Incomplete', tone: 'attention' }) %><div class="meta text-xs">Missing: <%= s.missing.join(', ').toLowerCase() %></div>
+            <% } else { %><span class="meta"><%= s.material ? 'None recorded' : '-' %></span><% } %>
+            <div><a class="text-xs" href="<%= epBase + s.id %>/exit-plan" data-tprm-exit-plan-link><%= ep.canManage ? (s.plan ? 'Edit exit plan' : 'Record exit plan') : (s.plan ? 'View exit plan' : '') %></a></div>
+          </td>
+          <% if (ep.canManage) { %><td>
+            <% if (s.material && !ep.canUnmark) { %>
+            <span class="meta text-xs" data-tprm-unmark-manager-only>A manager can mark it not material.</span>
+            <% } else { %>
+            <form method="POST" action="<%= epBase + s.id %>/material" class="tprm-material-form" data-tprm-material-form>
+              <input type="hidden" name="_csrf" value="<%= epCsrf %>">
+              <input type="hidden" name="row_version" value="<%= s.row_version %>">
+              <% if (!s.material) { %><input type="hidden" name="material" value="1"><% } %>
+              <input class="input" name="reason" maxlength="1000" required placeholder="<%= s.material ? 'Why it is no longer material' : 'Why it is material' %>" aria-label="Reason">
+              <button class="btn btn-secondary btn-xs" type="submit"<% if (s.material) { %> data-tprm-unmark-material<% } %>><%= s.material ? 'Mark not material' : 'Mark material' %></button>
+            </form>
+            <% } %></td><% } %>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+</div>

@@ -1,0 +1,5 @@
+<footer class="vq-footer" data-vendor-footer>
+  <div class="vq-wrap vq-footer-inner">
+    <p class="vq-foot"><% if (firm && firm.name) { %><span class="vq-footer-firm"><%= firm.name %></span>. <% } %>Private and confidential. <%= note %><% if (expiresAt) { %> This link stops working after <%= expiresAt %>.<% } %></p>
+  </div>
+</footer>

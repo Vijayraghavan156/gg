@@ -1,0 +1,12 @@
+<%- include('partials/header', { title: confirm.title, user, active: 'tprm-portfolio' }) %>
+<div class="tp-confirm-page" data-tprm-confirm-page>
+  <h1 class="tp-confirm-title"><%= confirm.title %></h1>
+  <% if (confirm.body) { %><p class="tp-confirm-body"><%= confirm.body %></p><% } %>
+  <form method="POST" action="<%= confirm.url %>" class="tp-confirm-actions">
+    <% confirm.fields.forEach(([name, value]) => { %><input type="hidden" name="<%= name %>" value="<%= value %>"><% }) %>
+    <input type="hidden" name="_tp_confirmed" value="1">
+    <a class="tp-btn" href="<%= confirm.back %>">Cancel</a>
+    <button class="tp-btn <%= confirm.tone === 'problem' ? 'tp-btn--problem' : 'tp-btn--primary' %>" type="submit" data-tprm-confirm-yes><%= confirm.action %></button>
+  </form>
+</div>
+<%- include('partials/footer') %>

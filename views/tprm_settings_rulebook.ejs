@@ -1,0 +1,99 @@
+<%- include('partials/header', { title: rulebook.name + ' · Rulebooks · Third-party risk', user, active }) %>
+<%
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const v = values || {};
+  const on = k => v[k] === true || ['1', 'on', 'true'].includes(String(v[k]));
+  const when = d => (d && tpf.dayTime(d)) || '-';
+  const b = rulebook.bank_entry || {};
+  const countryName = c => c ? (rb.countryName(c) || c) : 'None';
+%>
+<div class="page-head" data-tprm-rulebook-settings="<%= rulebook.key %>">
+  <div>
+    <a class="text-xs tpu-back" href="/tprm/settings/rulebooks">← Rulebooks</a>
+    <h1 class="page-title tpu-mt-6"><%= rulebook.name %></h1>
+    <div class="page-subtitle">Version <%= rulebook.version %> · <%= rb.STATUS_LABELS[rulebook.status] %><% if (rulebook.status === 'active') { %> · <%= rulebook.enabled ? 'On' : 'Off' %><% } %> · ticked for <%= clientCount %> client<%= clientCount === 1 ? '' : 's' %>.</div>
+    <details class="tprm-how"><summary>How this works</summary>
+      <p>Saving a change creates version <%= rulebook.version + 1 %> (the research note alone keeps the version); clients get it from their next questionnaire.</p>
+    </details>
+  </div>
+</div>
+
+<% if (errors && errors.length) { %>
+  <div class="callout tpu-narrow tpu-mb-14 tpu-problem-edge" role="alert" data-tprm-form-errors>
+    <div class="callout-title tpu-problem-text">Nothing was saved</div>
+    <ul class="tpu-list-6"><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+  </div>
+<% } %>
+
+<div class="panel tpu-narrow tpu-mb-14">
+  <div class="panel-head"><h2>Settings</h2></div>
+  <form method="POST" action="/tprm/settings/rulebooks/<%= rulebook.id %>" class="panel-pad tpu-form" data-tprm-rulebook-form>
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input type="hidden" name="row_version" value="<%= rulebook.row_version %>">
+    <label class="tpu-row"><input type="checkbox" name="enabled" value="1" <%= on('enabled') ? 'checked' : '' %>> On: can be ticked for clients<% if (rulebook.status !== 'active') { %> <span class="meta text-xs">(<%= rb.STATUS_LABELS[rulebook.status] %>: cannot be ticked until its rules are binding)</span><% } %></label>
+    <div>
+      <label class="label" for="rb-questions">Question pack</label>
+      <% const picked = new Set((Array.isArray(v.question_ids) ? v.question_ids : String(v.question_ids || '').split(/[,\s]+/)).map(x => String(x).trim()).filter(Boolean)); %>
+      <div class="tprm-pack-picker" id="rb-questions" data-tprm-rulebook-questions>
+        <% (typeof packOptions !== 'undefined' ? packOptions : []).forEach(p => { const n = p.questions.filter(q => picked.has(q.id)).length; %>
+          <details class="tprm-pack"<%= n ? ' open' : '' %>><summary><%= p.pack %> <span class="meta text-xs"><%= n ? n + ' of ' + p.questions.length + ' chosen' : p.questions.length + ' questions' %></span></summary>
+            <% p.questions.forEach(q => { %><label class="tprm-check tprm-pack-q"><input type="checkbox" name="question_ids" value="<%= q.id %>"<%= picked.has(q.id) ? ' checked' : '' %>> <span><span class="meta text-xs"><%= q.id %></span> <%= q.question %></span></label><% }) %>
+          </details>
+        <% }) %>
+      </div>
+      <div class="meta text-xs">Tick the bank's rulebook questions this rulebook adds to a questionnaire. Only rulebook-pack questions are added to a questionnaire; a question already asked by another rulebook is asked once. In the bank: <%= b.question_ids || '-' %></div>
+    </div>
+    <label class="tpu-row"><input type="checkbox" name="exit_plan_required" value="1" <%= on('exit_plan_required') ? 'checked' : '' %>> Exit plans required for material services <span class="meta text-xs">(in the bank: <%= b.exit_plan || '-' %>)</span></label>
+    <div>
+      <label class="label" for="rb-country">Data must stay in</label>
+      <select class="select" id="rb-country" name="data_country" data-tprm-rulebook-country-select>
+        <option value="">None</option>
+        <% countries.forEach(c => { %><option value="<%= c.code %>" <%= (v.data_country || '') === c.code ? 'selected' : '' %>><%= c.name %> (<%= c.code %>)</option><% }) %>
+      </select>
+      <div class="meta text-xs">Services hosted elsewhere, and answers saying the data is kept elsewhere, are flagged on the third party's and the assessment's pages. In the bank: <%= b.data_location || '-' %></div>
+    </div>
+    <div>
+      <label class="label" for="rb-reference">Reference text (client-facing)</label>
+      <textarea class="input" id="rb-reference" name="reference_text" rows="3" maxlength="<%= rb.LIMITS.referenceText %>" data-tprm-rulebook-reference><%= v.reference_text || '' %></textarea>
+      <div class="meta text-xs">Quoted in the automatic conditions this rulebook raises, which the client reads in the portal and the report. Write a clean citation as a sentence, for example "Required under ...". No links or research remarks: put those in the research note.</div>
+    </div>
+    <div>
+      <label class="label" for="rb-research-note">Research note (firm-only)</label>
+      <textarea class="input" id="rb-research-note" name="research_note" rows="4" maxlength="<%= rb.LIMITS.researchNote %>" data-tprm-rulebook-research-note><%= v.research_note || '' %></textarea>
+      <div class="meta text-xs">Verification notes, links and open questions. Shown on this page only, never to clients or third parties. Changing only the note keeps the version.</div>
+    </div>
+    <div class="meta text-xs">Contract clauses: <%= (rulebook.contract_tags || []).length ? rulebook.contract_tags.join('; ') : 'none' %> (set by the firm's rulebook table).</div>
+    <div class="tpu-end"><button class="btn btn-primary" type="submit">Save</button></div>
+  </form>
+</div>
+
+<div class="panel tpu-narrow tpu-mb-14" data-tprm-rulebook-bank>
+  <div class="panel-head"><h2>In the question bank</h2></div>
+  <div class="panel-pad tprm-rulebook-bank-grid">
+    <div class="label">Applies to</div><div><%= b.applies_to || '-' %></div>
+    <div class="label">Incident timeline</div><div><%= b.incident_timeline || '-' %></div>
+    <div class="label">Other</div><div><%= b.other || '-' %></div>
+    <div class="label">Status</div><div><%= b.status || '-' %></div>
+    <div class="label">Source</div><div class="text-xs"><%= b.source || '-' %></div>
+  </div>
+</div>
+
+<div class="panel tpu-narrow" data-tprm-rulebook-versions>
+  <div class="panel-head"><h2>Versions</h2><span class="meta"><%= versions.length %></span></div>
+  <div class="table-scroll"><table class="t">
+    <thead><tr><th class="num">Version</th><th>Saved</th><th>State</th><th class="num">Questions</th><th>Exit plans</th><th>Data stays in</th></tr></thead>
+    <tbody>
+    <% versions.forEach(x => { %>
+      <tr data-tprm-rulebook-version="<%= x.version %>">
+        <td class="num"><%= x.version %></td>
+        <td><%= x.version === 1 && !x.created_by ? 'From the question bank' : (x.created_by_name || 'Unknown user') %> <span class="meta text-xs"><%= when(x.created_at) %></span></td>
+        <td><%= x.enabled ? 'On' : 'Off' %></td>
+        <td class="num" title="<%= (x.question_ids || []).join(', ') %>"><%= (x.question_ids || []).length %></td>
+        <td><%= x.exit_plan_required ? 'Required' : '-' %></td>
+        <td><%= countryName(x.data_country) %></td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table></div>
+</div>
+<%- include('partials/footer') %>

@@ -1,0 +1,53 @@
+<%
+  const ct = page.conditionTracking;
+  const ctBase = '/workspaces/' + ws.id + '/client-portal/third-party-risk/conditions';
+  const ctCsrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const ctDay = d => d ? tpf.day(d) : '-';
+  const ctSize = n => tpf.fileSize(Number(n) || 0);
+  const ctTone = s => ({ proof_submitted: 'attention', changes_requested: 'attention', waiver_expired: 'problem' })[s] || 'quiet';
+  const ctReview = { pending: 'Waiting for your consultants to verify it', verified: 'Verified', changes_requested: 'Changes requested' };
+%>
+<div class="panel tpu-mb-14" id="conditions" data-tprm-portal-conditions-tracking>
+  <div class="panel-head"><h2>Conditions</h2>
+    <%- include('partials/tprm_status', { text: ct.summary.label, tone: ct.summary.state === 'overdue' ? 'problem' : 'quiet', attrs: 'data-tprm-portal-conditions-summary="' + escapeHtml(ct.summary.state) + '"' }) %></div>
+  <div class="panel-pad meta tpu-rule-bottom">
+    Send proof here for the conditions your organisation owns; your consultants verify each one.
+  </div>
+  <% ct.conditions.forEach(c => { const s = c.state; %>
+    <div class="panel-pad tpu-rule-top" data-tprm-portal-tracked-condition="<%= c.id %>" data-tprm-condition-status="<%= s.status %>">
+      <div class="tprm-portal-cond-head">
+        <div class="tpu-grow"><strong>Condition <%= c.position %></strong>
+          <div class="tpu-pre tpu-mt-4"><%= c.description %></div></div>
+        <div class="tprm-portal-cond-states">
+          <%- include('partials/tprm_status', { text: s.label, tone: ctTone(s.status) }) %>
+          <% if (s.overdue) { %><%- include('partials/tprm_status', { text: 'Overdue', tone: 'problem', attrs: 'data-tprm-portal-condition-overdue' }) %><% } %>
+        </div>
+      </div>
+      <div class="meta text-xs tpu-mt-6">Owner: <%= ct.ownerLabels[c.owner] || '-' %> · Due <%= ctDay(c.due_date) %>
+        <% if (c.status === 'waived' && c.waive_until) { %> · Waived until <%= ctDay(c.waive_until) %><% } %>
+        <% if (c.status === 'verified') { %> · Verified <%= ctDay(c.verified_at) %><% } %></div>
+      <% if (c.owner !== 'client') { %>
+        <div class="meta text-xs tpu-mt-4">Your consultants collect the proof for this condition from the third party.</div>
+      <% } %>
+      <% c.proofs.forEach(p => { %>
+        <div class="tprm-portal-proof" data-tprm-portal-proof="<%= p.id %>">
+          <div class="text-xs"><strong><%= p.submitted_by_name || 'Your organisation' %></strong> · <%= ctDay(p.submitted_at) %></div>
+          <% if (p.note) { %><div class="tpu-pre tpu-mt-2"><%= p.note %></div><% } %>
+          <% if (p.files.length) { %><div class="text-xs tpu-mt-2"><% p.files.forEach((f, i) => { %><%= i ? ' · ' : '' %><a href="<%= ctBase %>/files/<%= f.id %>/download" data-tprm-portal-proof-file="<%= f.id %>"><%= f.original_name %></a> <span class="meta">(<%= ctSize(f.size_bytes) %>)</span><% }) %></div><% } %>
+          <div class="meta text-xs tpu-mt-2" data-tprm-portal-proof-review="<%= p.review_status %>"><%= ctReview[p.review_status] %><% if (p.changes_comment) { %>: <span data-tprm-portal-changes-comment><%= p.changes_comment %></span><% } %></div>
+        </div>
+      <% }) %>
+      <% if (c.canSubmit) { %>
+        <form method="POST" action="<%= ctBase %>/<%= c.id %>/proofs" enctype="multipart/form-data" class="tprm-portal-proof-form" data-tprm-portal-proof-form>
+          <input type="hidden" name="_csrf" value="<%= ctCsrf %>">
+          <input type="hidden" name="row_version" value="<%= c.row_version %>">
+          <div data-tp-file><label class="label" for="ct-files-<%= c.id %>">Files <span class="meta text-xs">(up to <%= ct.limits.filesPerProof %>, 50 MB each)</span></label>
+            <input class="input" id="ct-files-<%= c.id %>" type="file" name="files" multiple></div>
+          <div><label class="label" for="ct-note-<%= c.id %>">Note</label>
+            <textarea class="input" id="ct-note-<%= c.id %>" name="note" rows="2" maxlength="<%= ct.limits.note %>"></textarea></div>
+          <div class="tpu-end"><button class="btn btn-primary btn-xs" type="submit" data-tprm-portal-proof-submit>Send proof</button></div>
+        </form>
+      <% } %>
+    </div>
+  <% }) %>
+</div>

@@ -1,0 +1,11 @@
+-- Third-party risk (TPRM), premium upgrade Phase 7: messages (docs/tprm-v2-spec.md
+-- section 4u). Migrations 088-122 are applied and frozen; this one adds one column.
+--
+--   tp_client_settings.vendor_reminders  whether the third parties of this
+--                                         client get the questionnaire
+--                                         reminders (7 days and 1 day before
+--                                         the link stops working, and once
+--                                         after it has stopped unanswered).
+--                                         On unless a manager switches it off
+--                                         in the client's settings.
+ALTER TABLE tp_client_settings ADD COLUMN IF NOT EXISTS vendor_reminders boolean NOT NULL DEFAULT true;

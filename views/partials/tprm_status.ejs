@@ -1,0 +1,2 @@
+<% const tpTone = ['attention', 'problem', 'good'].includes(locals.tone) ? locals.tone : 'quiet';
+   const tpAs = ['p', 'div'].includes(locals.as) ? locals.as : 'span'; %><<%= tpAs %> class="tp-status tp-status--<%= tpTone %>"<%- locals.attrs ? ' ' + locals.attrs : '' %>><%= locals.text %></<%= tpAs %>>

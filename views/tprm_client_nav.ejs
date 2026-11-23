@@ -1,0 +1,27 @@
+<div class="page-head" data-tprm-client-home="<%= tpClient.id %>">
+  <div>
+    <nav class="tprm-crumbs" aria-label="Breadcrumb"><a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><span aria-current="page"><%= tpClient.name %></span></nav>
+    <h1 class="page-title"><%= tpClient.name %></h1>
+    <div class="page-subtitle">Third-party risk<% if (tpClient.sector) { %> · <%= tpClient.sector %><% } %></div>
+    <% if (typeof clientRulebooks !== 'undefined' && Array.isArray(clientRulebooks)) { %>
+      <div class="tprm-chips tprm-rulebooks-line" data-tprm-rulebooks-line data-tprm-rulebooks-count="<%= clientRulebooks.length %>">
+        <span class="tprm-chips-label">Rulebooks</span>
+        <% if (clientRulebooks.length) { %>
+          <span class="tprm-rulebook-names"><% clientRulebooks.forEach((r, i) => { %><%= i ? ', ' : '' %><span data-tprm-rulebook-chip="<%= r.key %>"><%= r.name %></span><% }) %></span>
+        <% } else { %>
+          <span class="meta" data-tprm-rulebooks-none>No rulebooks ticked</span>
+        <% } %>
+        <% if (canSettings) { %><a class="tprm-link" href="/tprm/clients/<%= tpClient.id %>/settings#rulebooks" data-tprm-rulebooks-change><%= clientRulebooks.length ? 'Change' : 'Tick rulebooks' %></a><% } %>
+      </div>
+    <% } %>
+  </div>
+  <% if (typeof primaryAction !== 'undefined' && primaryAction) { %>
+    <a class="btn btn-primary" href="<%= primaryAction.href %>" data-tprm-primary><%= primaryAction.label %></a>
+  <% } %>
+</div>
+<div class="subtabs" data-tprm-tabs>
+  <a href="/tprm/clients/<%= tpClient.id %>" class="subtab <%= section === 'register' ? 'is-active' : '' %>">Register</a>
+  <a href="/tprm/clients/<%= tpClient.id %>?view=due" class="subtab <%= section === 'due' ? 'is-active' : '' %>">Due for reassessment<% if (typeof dueCount === 'number') { %> (<%= dueCount %>)<% } %></a>
+  <% if (canManage) { %><a href="/tprm/clients/<%= tpClient.id %>/import" class="subtab <%= section === 'import' ? 'is-active' : '' %>">Import CSV</a><% } %>
+  <% if (canSettings) { %><a href="/tprm/clients/<%= tpClient.id %>/settings" class="subtab <%= section === 'settings' ? 'is-active' : '' %>">Settings</a><% } %>
+</div>

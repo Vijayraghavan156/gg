@@ -1,0 +1,58 @@
+@font-face {
+  font-family: "TPRM Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/inter/font-files/InterVariable.woff2") format("woff2");
+}
+
+:root {
+  --tp-font: "TPRM Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+
+  --tp-size-xs: 12px;
+  --tp-size-sm: 13px;
+  --tp-size-md: 14px;
+  --tp-size-lg: 16px;
+  --tp-size-xl: 20px;
+  --tp-size-xxl: 28px;
+  --tp-weight-regular: 400;
+  --tp-weight-medium: 500;
+  --tp-weight-bold: 600;
+  --tp-leading: 1.55;
+  --tp-leading-tight: 1.3;
+
+  --tp-ink: #1b1f24;
+  --tp-grey: #5c636c;
+  --tp-rule: #d9dce0;
+  --tp-paper: #ffffff;
+  --tp-accent: #1f3a5f;
+  --tp-on-accent: #ffffff;
+  --tp-good: #1d6a48;
+  --tp-attention: #8a5200;
+  --tp-problem: #b42318;
+
+  --tp-radius: 4px;
+  --tp-hairline: 1px solid var(--tp-rule);
+
+  --tp-space-1: 4px;
+  --tp-space-2: 8px;
+  --tp-space-3: 12px;
+  --tp-space-4: 16px;
+  --tp-space-5: 24px;
+  --tp-space-6: 32px;
+  --tp-space-7: 48px;
+
+  --tp-measure: 720px;
+}
+
+:root[data-theme="dark"] {
+  --tp-ink: #e8ebee;
+  --tp-grey: #a7afb8;
+  --tp-rule: #353c43;
+  --tp-paper: #1c2023;
+  --tp-accent: #9db8da;
+  --tp-on-accent: #10161d;
+  --tp-good: #74c69d;
+  --tp-attention: #e0b05c;
+  --tp-problem: #f08c84;
+}

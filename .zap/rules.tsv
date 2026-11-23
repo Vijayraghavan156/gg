@@ -1,0 +1,2 @@
+# OWASP ZAP baseline rule overrides: <rule-id><TAB><IGNORE|WARN|FAIL><TAB>(optional name)
+# Intentionally empty: every rule keeps its default action. Add overrides here only with a written reason.

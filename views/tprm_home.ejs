@@ -1,0 +1,131 @@
+<%- include('partials/header', { title: 'Third-party risk', user, active }) %>
+<%
+  const pl = typeof pipelineView !== 'undefined' && pipelineView ? pipelineView : { rows: [], all: 0, counts: { waitingForMe: 0, late: 0, dueSoon: 0, mine: 0, total: 0 }, filters: { who: 'all', waiting: '', late: false, due30: false, sort: 'due', dir: 'asc', q: '' } };
+  const f = pl.filters;
+  const plural = (n, one, many) => n + ' ' + (n === 1 ? one : (many || one + 's'));
+  const qs = over => { const p = Object.assign({ who: f.who !== 'all' ? f.who : '', waiting: f.waiting, late: f.late ? '1' : '', due: f.due30 ? '30' : '', q: f.q, sort: f.sort !== 'due' ? f.sort : '', dir: f.dir !== 'asc' ? f.dir : '' }, over || {}); const s = Object.entries(p).filter(([, v]) => v).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&'); return '/tprm' + (s ? '?' + s : ''); };
+  const sortHref = k => qs({ sort: k === 'due' ? '' : k, dir: f.sort === k && f.dir === 'asc' ? 'desc' : '' });
+  const ariaSort = k => f.sort === k ? (f.dir === 'asc' ? 'ascending' : 'descending') : 'none';
+  const tierLabels = { low: 'Low', medium: 'Medium', high: 'High', critical: 'Critical' };
+  const day = d => (d ? tpf.day(d) : '');
+  const filtered = f.who !== 'all' || f.waiting || f.late || f.due30 || f.q;
+%>
+<div class="tprm-home" data-tprm-area>
+<div class="tprm-head tprm-head--line">
+  <div class="tprm-head-main">
+    <h1 class="page-title">Third-party risk</h1>
+    <p class="tprm-status-line" data-tprm-pipeline-summary><% if (!pl.all) { %>No assessment is open.<% } else { %><%= plural(pl.all, 'assessment') %> open<%= pl.clientCount > 1 ? ' across ' + plural(pl.clientCount, 'client') : '' %>.<% if (pl.counts.late) { %> <%= pl.counts.late %> <%= pl.counts.late === 1 ? 'is' : 'are' %> late.<% } %><% if (pl.counts.waitingForMe) { %> <%= pl.counts.waitingForMe %> <%= pl.counts.waitingForMe === 1 ? 'is' : 'are' %> waiting for you.<% } %><% } %></p>
+  </div>
+</div>
+
+<%- include('partials/tprm_home_tabs', { current: 'pipeline', reviewCount: typeof reviewCount === 'number' ? reviewCount : null }) %>
+
+<section class="tpa tprm-pipeline" aria-labelledby="pipeline-title" data-tprm-pipeline>
+  <h2 class="sr-only" id="pipeline-title">Open assessments</h2>
+  <p class="tprm-pipeline-counts" data-tprm-pipeline-counts>
+    <a href="<%= qs({ who: 'me', waiting: '', late: '', due: '' }) %>" data-tprm-count="me"><%= plural(pl.counts.waitingForMe, 'assessment') %> waiting for you</a>
+    · <a href="<%= qs({ late: '1', who: '', waiting: '', due: '' }) %>" data-tprm-count="late"><%= pl.counts.late %> late</a>
+    · <a href="<%= qs({ due: '30', who: '', waiting: '', late: '' }) %>" data-tprm-count="due"><%= pl.counts.dueSoon %> due in the next 30 days</a>
+    <% if (filtered) { %>· <a href="/tprm" data-tp-list-clear>Show all <%= pl.all %></a><% } %>
+  </p>
+  <form method="GET" action="/tprm" class="tprm-pipeline-filters" role="search" data-tp-list-controls>
+    <label class="sr-only" for="pl-q">Search the pipeline</label>
+    <input class="tpa-input" id="pl-q" type="search" name="q" value="<%= f.q %>" placeholder="Search a client, third party or person" data-tp-list-search>
+    <label class="sr-only" for="pl-who">Whose</label>
+    <select class="tpa-input" id="pl-who" name="who"><option value="">Everyone's</option><option value="mine"<%= f.who === 'mine' ? ' selected' : '' %>>Mine</option><option value="me"<%= f.who === 'me' ? ' selected' : '' %>>Waiting for me</option></select>
+    <label class="sr-only" for="pl-waiting">Waiting on</label>
+    <select class="tpa-input" id="pl-waiting" name="waiting"><option value="">Waiting on anyone</option><% waitingLabels && Object.entries(waitingLabels).forEach(([k, l]) => { %><option value="<%= k %>"<%= f.waiting === k ? ' selected' : '' %>>Waiting on: <%= l.toLowerCase() %></option><% }) %></select>
+    <label class="tpa-option"><input type="checkbox" name="late" value="1"<%= f.late ? ' checked' : '' %>> Late only</label>
+    <% if (f.sort !== 'due') { %><input type="hidden" name="sort" value="<%= f.sort %>"><% } %><% if (f.dir !== 'asc') { %><input type="hidden" name="dir" value="<%= f.dir %>"><% } %>
+    <button class="tpa-btn" type="submit">Show</button>
+  </form>
+  <p class="tpa-meta" data-tp-list-count data-tp-total="<%= pl.rows.length %>">Showing <%= pl.rows.length %> of <%= pl.all %></p>
+  <% if (!pl.rows.length) { %>
+    <p class="tpa-empty" data-tprm-pipeline-empty><%= pl.all ? 'Nothing matches these filters.' : 'No assessment is open. Start one from a third party in a client\'s register.' %></p>
+  <% } else { %>
+  <div class="table-scroll"><table class="t tprm-pipeline-table">
+    <thead><tr>
+      <th scope="col" aria-sort="<%= ariaSort('client') %>" data-tp-sort="client"><a href="<%= sortHref('client') %>">Third party</a></th>
+      <th scope="col" aria-sort="<%= ariaSort('step') %>" data-tp-sort="step"><a href="<%= sortHref('step') %>">Step</a></th>
+      <th scope="col" aria-sort="<%= ariaSort('waiting') %>" data-tp-sort="waiting"><a href="<%= sortHref('waiting') %>">Waiting on</a></th>
+      <th scope="col" class="tprm-right" aria-sort="<%= ariaSort('days') %>" data-tp-sort="days"><a href="<%= sortHref('days') %>">Days</a></th>
+      <th scope="col" aria-sort="<%= ariaSort('due') %>" data-tp-sort="due"><a href="<%= sortHref('due') %>">Due</a></th>
+    </tr></thead>
+    <tbody data-tp-list>
+    <% pl.rows.forEach(r => { %>
+      <tr data-tp-row data-tp-text="<%= (r.clientName + ' ' + r.thirdPartyName + ' ' + r.step + ' ' + r.waitingLabel + ' ' + (r.waitingName || '')).toLowerCase() %>"
+          data-tp-sort-client="<%= (r.clientName + ' ' + r.thirdPartyName).toLowerCase() %>" data-tp-sort-step="<%= r.step.toLowerCase() %>" data-tp-sort-waiting="<%= r.waitingLabel %>"
+          data-tp-sort-days="<%= String(r.days).padStart(5, '0') %>" data-tp-sort-due="<%= r.due || '9999' %>"
+          data-tprm-pipeline-row="<%= r.id %>" data-tprm-waiting="<%= r.waiting %>"<%- r.late ? ' data-tprm-late' : '' %>>
+        <td><a href="/tprm/clients/<%= r.workspaceId %>/third-parties/<%= r.thirdPartyId %>/assessments/<%= r.id %>"><%= r.thirdPartyName %></a>
+          <span class="tpa-meta tprm-block"><%= r.clientName %><% if (r.tier) { %> · <%= tierLabels[r.tier] || r.tier %><% } %><%= r.type === 'reassessment' ? ' · reassessment' : '' %></span></td>
+        <td><%= r.step %></td>
+        <td><%= r.waitingLabel %><% if (r.waitingName) { %><span class="tpa-meta tprm-block"><%= r.waitingName %></span><% } %><% if (r.forMe) { %><span class="tpa-meta tprm-block" data-tprm-for-me>You</span><% } %></td>
+        <td class="tprm-right" title="Days since the last change on this assessment"><%= r.days %></td>
+        <td><% if (r.due) { %><% if (r.late) { %><%- include('partials/tprm_status', { text: day(r.due) + ', late', tone: 'problem' }) %><% } else { %><%= day(r.due) %><% } %><% } else { %><span class="tpa-meta">Not set</span><% } %></td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table></div>
+  <% } %>
+</section>
+
+<div class="tprm-stack">
+<div class="panel">
+  <div class="panel-head"><h2>Clients</h2><span class="meta"><%= clients.length %></span></div>
+  <% if (!clients.length) { %>
+    <div class="empty-state" data-tprm-empty>
+      <div class="empty-title">No client has third-party risk switched on yet</div>
+      <div class="meta">Choose "Third-party risk" when you create a client<%= availableClients.length ? ', or switch it on for an existing client below' : '' %>.</div>
+    </div>
+  <% } else { %>
+    <div class="table-scroll" data-tprm-client-list><table class="t">
+      <thead><tr><th>Client</th><th>Sector</th><th></th></tr></thead>
+      <tbody>
+      <% clients.forEach(c => { %>
+        <tr data-tprm-client-row="<%= c.id %>">
+          <td><a href="/tprm/clients/<%= c.id %>"><%= c.name %></a></td>
+          <td class="meta"><%= c.sector || '-' %></td>
+          <td class="tprm-right"><a href="/tprm/clients/<%= c.id %>">Open register</a></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+</div>
+
+<% if (availableClients.length) { %>
+<div class="panel" data-tprm-available>
+  <div class="panel-head"><h2>Switch on third-party risk for an existing client</h2><span class="meta"><%= availableClients.length %></span></div>
+  <div class="panel-pad meta text-xs" data-tprm-switch-on-hint>After you switch it on, tick the rulebooks the client is regulated under (RBI, SEBI, DORA and others) from "Tick rulebooks" below its name, so its questionnaires include the regulatory questions.</div>
+  <% availableClients.forEach(c => { %>
+    <form method="POST" action="/tprm/clients/<%= c.id %>/enable" class="tprm-list-row">
+      <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+      <span><strong><%= c.name %></strong><% if (c.sector) { %><span class="meta"><%= c.sector %></span><% } %></span>
+      <button class="btn btn-secondary btn-xs" type="submit">Switch on</button>
+    </form>
+  <% }) %>
+</div>
+<% } %>
+
+<% const tprmSettingsLinks = (typeof canViewCriticality !== 'undefined' && canViewCriticality) || (typeof canAiSettings !== 'undefined' && canAiSettings); %>
+<% if (tprmSettingsLinks) { %>
+<div class="panel" data-tprm-firm-settings>
+  <div class="panel-head"><h2>Firm settings</h2><span class="meta">Apply to every third-party risk client</span></div>
+  <p class="panel-pad tprm-link-row">
+  <% if (typeof canViewCriticality !== 'undefined' && canViewCriticality) { %>
+    <a href="/tprm/settings/criticality" data-tprm-criticality-link>Criticality model</a>
+  <% } %>
+  <% if (typeof canAiSettings !== 'undefined' && canAiSettings) { %>
+    · <a href="/tprm/settings/ai-review" data-tprm-ai-settings-link>AI review</a>
+    · <a href="/tprm/settings/letterhead" data-tprm-letterhead-link>Letterhead</a>
+    · <a href="/tprm/settings/rulebooks" data-tprm-rulebooks-link>Rulebooks</a>
+    · <a href="/tprm/settings/two-person" data-tprm-two-person-link>Two-person rules</a>
+    · <a href="/tprm/concentration" data-tprm-firm-concentration-link>Concentration across clients</a>
+  <% } %>
+  </p>
+</div>
+<% } %>
+</div>
+</div>
+<%- include('partials/footer') %>

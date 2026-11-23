@@ -1,0 +1,21 @@
+<%- include('partials/header', { title: 'Edit service · ' + thirdParty.name, user, active }) %>
+<%- include('tprm_client_nav', { tpClient, section: 'register', canManage, canSettings }) %>
+<div class="panel tpu-narrow" data-tprm-service-form>
+  <div class="panel-head"><h2>Edit service of <%= thirdParty.name %></h2></div>
+  <form method="POST" action="/tprm/clients/<%= tpClient.id %>/third-parties/<%= thirdParty.id %>/services/<%= service.id %>" class="panel-pad tprm-form-cols">
+    <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+    <input type="hidden" name="row_version" value="<%= values.row_version != null ? values.row_version : service.row_version %>">
+    <% if (errors && errors.length) { %>
+      <div class="callout tpu-span-all tpu-problem-edge" role="alert" data-tprm-form-errors>
+        <div class="callout-title tpu-problem-text">Nothing was saved</div>
+        <ul class="tpu-list"><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+      </div>
+    <% } %>
+    <%- include('tprm_service_fields', { v: values }) %>
+    <div class="tpu-span-all tprm-form-end">
+      <a class="btn btn-ghost" href="/tprm/clients/<%= tpClient.id %>/third-parties/<%= thirdParty.id %>#services">Cancel</a>
+      <button class="btn btn-primary" type="submit">Save service</button>
+    </div>
+  </form>
+</div>
+<%- include('partials/footer') %>

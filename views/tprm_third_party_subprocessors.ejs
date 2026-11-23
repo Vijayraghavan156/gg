@@ -1,0 +1,43 @@
+<% const sp = subprocessorsPanel; const spBase = '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id + '/subprocessors'; const spCsrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; const spDash = x => (x == null || x === '') ? '-' : x; %>
+<div class="panel" id="subprocessors" data-tprm-subprocessors>
+  <div class="panel-head"><h2>Subprocessors</h2><span class="meta"><%= sp.list.length %></span></div>
+  <div class="panel-pad meta tprm-divide-b">Record the third party's own vendors that help deliver the service or handle the client's data.
+    <details class="tprm-how"><summary>How this works</summary>These are its subprocessors (ISO 27001 A.5.21). They feed the fourth-party view of <a href="/tprm/clients/<%= tpClient.id %>/concentration">Concentration</a>.</details></div>
+  <% if (!sp.list.length) { %>
+    <div class="panel-pad meta" data-tprm-subprocessors-empty>No subprocessors recorded.</div>
+  <% } else { %>
+    <div class="table-scroll"><table class="t">
+      <thead><tr><th>Subprocessor</th><th>What they do</th><th class="tpu-w-140">Country</th><th class="tpu-w-170">Source</th><% if (sp.canManage) { %><th class="tpu-w-140"></th><% } %></tr></thead>
+      <tbody>
+      <% sp.list.forEach(r => { %>
+        <tr data-tprm-subprocessor="<%= r.id %>">
+          <td><strong><%= r.name %></strong></td>
+          <td><%= spDash(r.service) %></td>
+          <td><%= spDash(r.country) %></td>
+          <td><%= sp.SOURCE_LABELS[r.source] %><% if (r.answer_question_id) { %> <span class="meta text-xs">(<%= r.answer_question_id %>)</span><% } %></td>
+          <% if (sp.canManage) { %><td class="tprm-nowrap">
+            <a class="btn btn-ghost btn-xs" href="<%= spBase %>/<%= r.id %>/edit">Edit</a>
+            <form method="POST" action="<%= spBase %>/<%= r.id %>/remove" class="tpu-inline">
+              <input type="hidden" name="_csrf" value="<%= spCsrf %>"><%- include('partials/tprm_confirm_fields', { title: 'Remove this subprocessor?', body: 'It is removed from the list. The removal is recorded in the history.', action: 'Remove subprocessor' }) %>
+              <input type="hidden" name="row_version" value="<%= r.row_version %>">
+              <button class="btn btn-ghost btn-xs" type="submit">Remove</button>
+            </form></td><% } %>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+  <% if (sp.canManage) { %>
+    <details class="panel-pad tprm-divide" data-tprm-add-subprocessor <%= sp.list.length ? '' : 'open' %>>
+      <summary class="tprm-summary">Add a subprocessor</summary>
+      <div class="tprm-sp-split is-spaced">
+        <form method="POST" action="<%= spBase %>" class="tprm-sp-form" data-tprm-subprocessor-form>
+          <input type="hidden" name="_csrf" value="<%= spCsrf %>">
+          <%- include('tprm_subprocessor_fields', { v: {}, helper: sp.helper, LIMITS: sp.LIMITS }) %>
+          <div class="tprm-actions"><button class="btn btn-secondary" type="submit">Add subprocessor</button></div>
+        </form>
+        <%- include('tprm_subprocessor_helper', { helper: sp.helper }) %>
+      </div>
+    </details>
+  <% } %>
+</div>

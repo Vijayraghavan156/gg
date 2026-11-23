@@ -1,0 +1,140 @@
+<%
+  const cp = decisionPanel.conditions;
+  const cCsrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const cWhen = d => tpf.dayTime(d) || '-';
+  const cDay = d => tpf.day(d) || '-';
+  const cSize = n => tpf.fileSize(Number(n) || 0);
+  const cBase = '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id + '/assessments/' + assessment.id + '/conditions/';
+  const cTone = s => ({ verified: 'good', proof_submitted: 'attention', changes_requested: 'attention', waiver_expired: 'problem' })[s] || 'quiet';
+  const reviewText = { pending: 'Waiting for verification', verified: 'Verified', changes_requested: 'Changes requested' };
+%>
+<div class="panel" id="conditions" data-tprm-conditions-step data-tprm-conditions-tracked="<%= cp.tracked ? 'yes' : 'no' %>">
+  <div class="panel-head"><h2>Conditions</h2>
+    <% if (cp.summary) { %><%- include('partials/tprm_status', { text: cp.summary.label, tone: cp.summary.state === 'overdue' ? 'problem' : cp.summary.state === 'met' ? 'good' : 'quiet', attrs: 'data-tprm-conditions-summary="' + cp.summary.state + '"' }) %><% } %></div>
+  <% if (!cp.tracked) { %>
+    <div class="panel-pad meta" data-tprm-conditions-not-tracked>
+      <% if (cp.waiting) { %>The conditions of version <%= cp.version %> are followed up here once the client decides "<%= decisionPanel.labels.approve_with_conditions %>".
+      <% } else { %>The client decided "<%= decisionPanel.labels[cp.decision.outcome] %>", so these conditions are not followed up.<% } %>
+    </div>
+  <% } else { %>
+    <div class="panel-pad meta tprm-divide-b">
+      The client decided "<%= decisionPanel.labels.approve_with_conditions %>" on version <%= cp.version %>.
+      <details class="tprm-how"><summary>How this works</summary>Proof for a client-owned condition comes from the client in the client portal; for a condition the third party owns, upload the proof it sent you. Someone other than the person who submitted the proof verifies it. Only a manager can waive a condition.</details>
+    </div>
+  <% } %>
+  <% if (cp.link && (cp.link.hasVendorConditions || cp.link.links.length)) { const cl = cp.link; const clBase = '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id + '/assessments/' + assessment.id + '/conditions-link'; %>
+    <div class="panel-pad tprm-divide-b" data-tprm-condition-link-panel>
+      <div class="label">Link for the third party</div>
+      <% if (cl.active) { %>
+        <div class="text-sm" data-tprm-condition-link-active="<%= cl.active.id %>">Active, for <%= cl.active.recipient_name %> (<%= cl.active.recipient_email %>), until <%= cDay(cl.active.expires_at) %>. It opens the <%= cl.scopeCount %> condition<%= cl.scopeCount === 1 ? '' : 's' %> the third party owns that <%= cl.scopeCount === 1 ? 'is' : 'are' %> not met.</div>
+        <% if (cl.canRevoke) { %>
+          <form method="POST" action="<%= clBase %>/<%= cl.active.id %>/revoke" class="tpu-mt-6" data-tprm-condition-link-revoke>
+            <input type="hidden" name="_csrf" value="<%= cCsrf %>"><%- include('partials/tprm_confirm_fields', { title: 'Revoke this link?', body: 'The third party can no longer send proof with it. Proof already sent is kept.', action: 'Revoke link' }) %>
+            <input type="hidden" name="row_version" value="<%= cl.active.row_version %>">
+            <button class="btn btn-ghost btn-xs" type="submit">Revoke link</button>
+          </form>
+        <% } %>
+      <% } else { %>
+        <div class="meta text-xs">No active link.
+          <details class="tprm-how"><summary>How this works</summary>The third party can send proof for the conditions it owns through a link: it sees only those conditions, their due dates and status, and your comment when you ask it for changes.</details></div>
+      <% } %>
+      <% if (cl.canCreate) { %>
+        <form method="POST" action="<%= clBase %>" class="tprm-cond-link-form" data-tprm-condition-link-create>
+          <input type="hidden" name="_csrf" value="<%= cCsrf %>">
+          <div><label class="label" for="cl-name">Person at the third party</label><input class="input" id="cl-name" name="recipient_name" maxlength="<%= cl.limits.name %>" required></div>
+          <div><label class="label" for="cl-email">Their email</label><input class="input" id="cl-email" type="email" name="recipient_email" maxlength="<%= cl.limits.email %>" required></div>
+          <div><label class="label" for="cl-days">Valid for (days)</label><input class="input" id="cl-days" type="number" name="expires_in_days" min="<%= cl.limits.expiryDaysMin %>" max="<%= cl.limits.expiryDaysMax %>" value="<%= cl.defaultDays %>"></div>
+          <div><label class="tprm-check"><input type="checkbox" name="send_email" value="1" data-tprm-condition-link-send-email> <span>Email the link to them</span></label></div>
+          <div><button class="btn btn-secondary btn-xs" type="submit"><%= cl.active ? 'Issue a new link' : 'Create link' %></button></div>
+        </form>
+      <% } %>
+      <% const past = cl.links.filter(l => !cl.active || l.id !== cl.active.id); if (past.length) { %>
+        <details class="tpu-mt-6"><summary class="meta text-xs">Earlier links (<%= past.length %>)</summary>
+          <ul class="text-xs meta tprm-list">
+            <% past.forEach(l => { %><li data-tprm-condition-link="<%= l.id %>" data-tprm-condition-link-status="<%= l.display_status %>"><%= cl.statusLabels[l.display_status] %> · <%= l.recipient_name %> · created <%= cDay(l.created_at) %><% if (l.revoke_reason) { %> · <%= l.revoke_reason %><% } %></li><% }) %>
+          </ul></details>
+      <% } %>
+    </div>
+  <% } %>
+  <% cp.conditions.forEach(c => { const s = c.state; %>
+    <div class="panel-pad tprm-divide" data-tprm-condition="<%= c.id %>" data-tprm-condition-status="<%= s.status %>">
+      <div class="tprm-cond-head">
+        <div class="tpu-grow"><strong>Condition <%= c.position %></strong>
+          <div class="tpu-pre tpu-mt-4"><%= c.description %></div></div>
+        <div class="tprm-aw-wrap-6">
+          <%- include('partials/tprm_status', { text: s.label, tone: cTone(s.status), attrs: 'data-tprm-condition-label' }) %>
+          <% if (cp.tracked && s.overdue) { %><%- include('partials/tprm_status', { text: 'Overdue', tone: 'problem', attrs: 'data-tprm-condition-overdue' }) %><% } %>
+        </div>
+      </div>
+      <div class="meta text-xs tpu-mt-6">Owner: <%= cp.ownerLabels[c.owner] || '-' %> · Due <%= cDay(c.due_date) %>
+        <% if (c.status === 'verified') { %> · Verified by <%= c.verified_by_name || 'a firm user' %>, <%= cWhen(c.verified_at) %><% } %></div>
+      <% if (c.status === 'waived') { %>
+        <div class="meta text-xs tpu-mt-4" data-tprm-condition-waiver>Waived by <%= c.waived_by_name || 'a manager' %>, <%= cWhen(c.waived_at) %><%= c.waive_until ? ' · until ' + cDay(c.waive_until) : ' · no expiry' %> · Reason: <%= c.waive_reason %></div>
+      <% } %>
+
+      <% if (c.proofs.length) { %>
+        <div class="tpu-mt-8" data-tprm-condition-proofs>
+          <div class="label">Proof submitted</div>
+          <% c.proofs.forEach(p => { %>
+            <div class="tprm-cond-proof" data-tprm-condition-proof="<%= p.id %>" data-tprm-proof-review="<%= p.review_status %>">
+              <div class="text-xs"><strong><%= cp.kindLabels[p.submitted_by_kind] %></strong><% if (p.submitted_by_kind !== 'vendor') { %> · <%= p.submitted_by_name || '-' %><% } %> · <%= cWhen(p.submitted_at) %></div>
+              <% if (p.note) { %><div class="tpu-pre tpu-mt-2"><%= p.note %></div><% } %>
+              <% if (p.files.length) { %><div class="text-xs tpu-mt-2"><% p.files.forEach((f, i) => { %><%= i ? ' · ' : '' %><a href="<%= cBase + c.id %>/files/<%= f.id %>/download" data-tprm-proof-file="<%= f.id %>"><%= f.original_name %></a> <span class="meta">(<%= cSize(f.size_bytes) %>)</span><% if (/\.(pdf|png|jpe?g|gif|webp)$/i.test(f.original_name || '')) { %> <a class="tprm-preview-link" href="<%= cBase + c.id %>/files/<%= f.id %>/download?inline=1" data-tp-preview="<%= cBase + c.id %>/files/<%= f.id %>/download?inline=1"<%- /\.pdf$/i.test(f.original_name) ? '' : ' data-tp-preview-kind="image"' %> aria-expanded="false" data-tprm-proof-preview>Preview</a><% } %><% }) %></div><% } %>
+              <div class="meta text-xs tpu-mt-2"><%= reviewText[p.review_status] %><% if (p.reviewed_at) { %> · <%= p.reviewed_by_name || '-' %>, <%= cWhen(p.reviewed_at) %><% } %><% if (p.review_comment) { %> · <%= p.review_comment %><% } %></div>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+
+      <% if (c.canReview) { %>
+        <div class="tprm-cond-review tpu-mt-10">
+          <form method="POST" action="<%= cBase + c.id %>/verify" class="tpu-stack-6 tpu-m-0" data-tprm-condition-verify>
+            <input type="hidden" name="_csrf" value="<%= cCsrf %>">
+            <input type="hidden" name="row_version" value="<%= c.row_version %>">
+            <label class="label" for="verify-<%= c.id %>">Verification note <span class="meta text-xs">(optional, firm only)</span></label>
+            <input class="input" id="verify-<%= c.id %>" name="comment" maxlength="<%= cp.limits.comment %>">
+            <div><button class="btn btn-primary btn-xs" type="submit">Verify</button></div>
+          </form>
+          <form method="POST" action="<%= cBase + c.id %>/request-changes" class="tpu-stack-6 tpu-m-0" data-tprm-condition-request-changes>
+            <input type="hidden" name="_csrf" value="<%= cCsrf %>">
+            <input type="hidden" name="row_version" value="<%= c.row_version %>">
+            <label class="label" for="changes-<%= c.id %>">What needs to change <span class="meta text-xs"><%= c.owner === 'client' ? '(shown to the client)' : c.changesVisibleToThirdParty ? '(shown to the third party on its conditions link)' : '(firm only)' %></span></label>
+            <input class="input" id="changes-<%= c.id %>" name="comment" maxlength="<%= cp.limits.comment %>" required>
+            <div><button class="btn btn-secondary btn-xs" type="submit">Request changes</button></div>
+          </form>
+        </div>
+      <% } else if (c.ownPending) { %>
+        <div class="meta text-xs tpu-mt-8" data-tprm-condition-own-proof>You submitted this proof, so someone else verifies it.</div>
+      <% } %>
+
+      <% if (c.canUpload) { %>
+        <form method="POST" action="<%= cBase + c.id %>/proofs" enctype="multipart/form-data" class="tprm-cond-upload" data-tprm-condition-upload>
+          <input type="hidden" name="_csrf" value="<%= cCsrf %>">
+          <input type="hidden" name="row_version" value="<%= c.row_version %>">
+          <div><label class="label" for="proof-files-<%= c.id %>">Proof from the third party <span class="meta text-xs">(up to <%= cp.limits.filesPerProof %> files, 50 MB each)</span></label>
+            <input class="input" id="proof-files-<%= c.id %>" type="file" name="files" multiple></div>
+          <div><label class="label" for="proof-note-<%= c.id %>">Note</label>
+            <input class="input" id="proof-note-<%= c.id %>" name="note" maxlength="<%= cp.limits.note %>"></div>
+          <div><button class="btn btn-secondary btn-xs" type="submit">Upload proof</button></div>
+        </form>
+      <% } else if (cp.tracked && c.owner === 'client' && s.canSubmit) { %>
+        <div class="meta text-xs tpu-mt-8">Waiting for the client to submit proof in the client portal.</div>
+      <% } %>
+
+      <% if (c.canWaive) { %>
+        <details class="tpu-mt-8" data-tprm-condition-waive>
+          <summary class="meta text-xs">Waive this condition</summary>
+          <form method="POST" action="<%= cBase + c.id %>/waive" class="tprm-cond-waive">
+            <input type="hidden" name="_csrf" value="<%= cCsrf %>">
+            <input type="hidden" name="row_version" value="<%= c.row_version %>">
+            <div><label class="label" for="waive-reason-<%= c.id %>">Reason <span class="meta text-xs">(firm only)</span></label>
+              <input class="input" id="waive-reason-<%= c.id %>" name="reason" maxlength="<%= cp.limits.reason %>" required></div>
+            <div><label class="label" for="waive-until-<%= c.id %>">Waived until <span class="meta text-xs">(optional)</span></label>
+              <input class="input" id="waive-until-<%= c.id %>" type="date" name="waive_until"></div>
+            <div><button class="btn btn-secondary btn-xs" type="submit">Waive</button></div>
+          </form>
+        </details>
+      <% } %>
+    </div>
+  <% }) %>
+</div>
