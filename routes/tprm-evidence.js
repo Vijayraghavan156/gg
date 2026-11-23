@@ -249,6 +249,58 @@ function registerRoutes(app, deps) {
     }
   }, { permission: 'tp.manage' }));
 
+  const issues = require('../lib/tprm/issues');
+  const issueMessages = () => require('../lib/tprm/messages');
+  async function renderShare(req, res, actor, { values = null, errors = [], status = 200 } = {}) {
+    const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+    const assessment = await assessments.getAssessment(db, actor, thirdParty.id, req.params.aid);
+    const finding = await findings.getFinding(db, actor, assessment, req.params.fid);
+    return res.status(status).render('tprm_issue_share', {
+      user: req.user, active: 'tprm-portfolio', tpClient: clientView(actor.ws),
+      canSettings: access.can(req.user, actor.perms, 'tp.settings'), at: assessments,
+      thirdParty, assessment, finding, errors,
+      values: values || { title: finding.title, body: finding.description || '' },
+    });
+  }
+  const issuesBack = (actor, req, id) => `${aUrl(actor, req.params.tpId, req.params.aid)}?step=evidence${id ? `#issue-${id}` : '#issues'}`;
+
+  app.get(`${BASE}/findings/:fid/share`, requireAuth, handler(async (req, res, actor) => {
+    const live = await issues.liveIssueFor(db, actor.ws.id, req.params.fid);
+    if (live) return res.redirect(withToast(issuesBack(actor, req, live), 'This finding is already shared with the third party.', 'error'));
+    return renderShare(req, res, actor);
+  }, { permission: 'tp.manage' }));
+
+  app.post(`${BASE}/findings/:fid/share`, requireAuth, handler(async (req, res, actor) => {
+    try {
+      const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+      const result = await issues.share(db, actor, thirdParty.id, req.params.aid, req.params.fid, req.body);
+      const sent = await issueMessages().issueShared(db, { workspaceId: actor.ws.id, assessmentId: Number(req.params.aid), issueId: result.issueId });
+      if (sent && sent.reason === 'no_recipient') {
+        return res.redirect(withToast(issuesBack(actor, req, result.issueId), 'Shared, but the third party has no main contact and no working link, so no one was emailed. Add a main contact on its People tab.', 'error'));
+      }
+      return res.redirect(withToast(issuesBack(actor, req, result.issueId), 'Shared with the third party'));
+    } catch (err) {
+      if (err instanceof TprmError && err.status === 400) return renderShare(req, res, actor, { values: req.body, errors: err.errors || [err.message], status: 400 });
+      if (err instanceof TprmError && err.status === 409) return res.redirect(withToast(issuesBack(actor, req), err.message, 'error'));
+      throw err;
+    }
+  }, { permission: 'tp.manage' }));
+
+  for (const [verb, fn, done] of [['reply', 'firmReply', 'Reply sent'], ['agree', 'agree', 'Fix agreed'], ['withdraw', 'withdraw', 'Issue withdrawn']]) {
+    app.post(`${BASE}/issues/:iid/${verb}`, requireAuth, handler(async (req, res, actor) => {
+      try {
+        const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+        const result = await issues[fn](db, actor, thirdParty.id, req.params.aid, req.params.iid, req.body);
+        if (verb !== 'withdraw') await issueMessages().issueFirmUpdate(db, { workspaceId: actor.ws.id, assessmentId: Number(req.params.aid), issueId: result.issueId, agreed: verb === 'agree' });
+        const message = verb === 'agree' && result.conditionAdded ? 'Fix agreed and added as a condition of the draft recommendation' : done;
+        return res.redirect(withToast(issuesBack(actor, req, result.issueId), message));
+      } catch (err) {
+        if (err instanceof TprmError && (err.status === 400 || err.status === 409)) return res.redirect(withToast(issuesBack(actor, req, req.params.iid), err.message, 'error'));
+        throw err;
+      }
+    }, { permission: 'tp.manage' }));
+  }
+
   app.post(`${BASE}/findings/:fid/remove`, requireAuth, handler(async (req, res, actor) => {
     const result = await findings.removeFinding(db, actor, req.params.tpId, req.params.aid, req.params.fid, req.body);
     return res.redirect(withToast(`${aUrl(actor, req.params.tpId, req.params.aid)}?step=evidence#findings`, `Finding removed: ${result.finding.title}`));

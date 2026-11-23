@@ -1,0 +1,7 @@
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/tprm-tokens.css">
+  <link rel="stylesheet" href="/tprm-vendor.css">
+  <% if (locals.frame && frame.brand) { %><style>:root { --tp-accent: <%= frame.brand.base %>; --vq-deep: <%= frame.brand.deep %>; }</style><% } %>
+  <% if (locals.withScript) { %><script src="/tprm-vendor.js" defer></script><% } %>

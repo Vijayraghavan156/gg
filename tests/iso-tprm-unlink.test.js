@@ -99,7 +99,7 @@ test('the third-party data stub is gone', () => {
   assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'third-party-data.js')), false);
 });
 
-const TP_TABLE = /\btp_(?:client_settings|events|third_parties|services|assessments|evidence|findings|recommendations|conditions|client_decisions|criticality_models|import_batches|question_bank_versions|questionnaires|vendor_requests|answers|answer_evidence|clarifications|firm_settings|ai_reviews|ai_suggestions|ai_suggestion_evidence|condition_proofs|condition_proof_files|trigger_events|contract_reviews|letterheads|rulebooks|rulebook_versions|client_rulebooks|assurance_reports)\b/;
+const TP_TABLE = /\btp_(?:client_settings|events|third_parties|services|assessments|evidence|findings|recommendations|conditions|client_decisions|criticality_models|import_batches|question_bank_versions|questionnaires|vendor_requests|answers|answer_evidence|clarifications|firm_settings|ai_reviews|ai_suggestions|ai_suggestion_evidence|condition_proofs|condition_proof_files|trigger_events|contract_reviews|letterheads|rulebooks|rulebook_versions|client_rulebooks|assurance_reports|issues|issue_messages|vendor_people|vendor_codes|vendor_sessions|vendor_assignments|answer_comments)\b/;
 
 function sourceFiles(dir) {
   const root = path.join(__dirname, '..', dir);

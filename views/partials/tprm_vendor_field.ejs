@@ -1,0 +1,11 @@
+<% const fid = 'f-' + q.id + '-' + f.key; %>
+<% if (f.kind === 'multi') { const chosen = String(fv || '').split(';').map(x => x.trim()); %>
+  <fieldset class="vq-field vq-field--wide vq-multi" data-vendor-multi="<%= f.key %>"><legend class="vq-label"><%= f.label %> <span class="vq-optional">tick all that apply</span></legend>
+    <input type="hidden" name="f[<%= q.id %>][<%= f.key %>][]" value="">
+    <div class="vq-ticks"><% f.options.forEach((o, oi) => { %><label class="vq-check"><input type="checkbox" id="<%= fid %>-<%= oi %>" name="f[<%= q.id %>][<%= f.key %>][]" value="<%= o %>"<%= chosen.includes(o) ? ' checked' : '' %>> <%= o %></label><% }) %></div>
+  </fieldset>
+<% } else { %>
+  <div class="vq-field<%= f.kind === 'long' ? ' vq-field--wide' : '' %>"><label class="vq-label" for="<%= fid %>"><%= f.label %><% if (f.optional) { %> <span class="vq-optional">optional</span><% } %></label>
+    <% if (f.kind === 'long') { %><textarea class="vq-input vq-textarea" id="<%= fid %>" name="f[<%= q.id %>][<%= f.key %>]" rows="3" maxlength="<%= f.max %>"><%= fv %></textarea>
+    <% } else { %><input class="vq-input" id="<%= fid %>" name="f[<%= q.id %>][<%= f.key %>]" type="<%= f.kind === 'date' ? 'date' : 'text' %>"<% if (f.kind === 'number') { %> inputmode="decimal"<% } %> maxlength="<%= f.max %>" value="<%= fv %>"><% } %></div>
+<% } %>

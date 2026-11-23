@@ -56,4 +56,12 @@
       xhr.send(data);
     });
   });
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-vendor-jump]'), function (box) {
+    var select = box.querySelector('select');
+    var go = box.querySelector('[data-vendor-jump-go]');
+    if (!select || !go) return;
+    box.classList.add('js-jump');
+    select.addEventListener('change', function () { go.click(); });
+  });
 })();

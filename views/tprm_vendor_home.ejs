@@ -1,0 +1,150 @@
+<%
+  const fmtDay = d => (d ? tpf.day(d) : '');
+  const pageKey = locals.pageKey || 'home';
+  const titles = { home: 'All reviews', issues: 'Issues', people: 'People' };
+  const v = locals.values || {};
+  const mine = id => Number(v.for || v.me) === Number(id);
+  const reviewHref = r => '/vendor/p/a/' + r.id;
+%><!doctype html>
+<html lang="en" class="page-standalone" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <link rel="stylesheet" href="/app.css">
+<%- include('tprm_portal_head', { title: titles[pageKey] + ' · ' + (h.firm.name || 'Third-party portal'), frame }) %>
+</head>
+<body class="vq-body">
+  <a class="vq-skip" href="#main">Skip to the content</a>
+  <%- include('partials/tprm_portal_top', { frame }) %>
+  <div class="vq-frame">
+    <%- include('partials/tprm_portal_side', { frame }) %>
+    <main class="vq-main" id="main" data-vendor-home data-vendor-page="<%= pageKey %>">
+      <header class="vq-top"><div class="vq-top-main"><h1 class="vq-title"><%= titles[pageKey] %></h1>
+</div></header>
+      <% if (notice) { %><p class="vq-notice" role="status" data-vendor-notice><%= notice %></p><% } %>
+      <% if (errors && errors.length) { %>
+        <div class="vq-errors" role="alert" data-vendor-errors>
+          <p class="vq-errors-title">Nothing was saved. Correct the following:</p>
+          <ul><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+        </div>
+      <% } %>
+      <% if (h.scoped) { %><p class="vq-lead" data-vendor-home-scoped>Opened from your questionnaire link: only this company is shown. <a href="/vendor/p/sign-in">Sign in with a code</a> to see everything for <%= h.email %>.</p><% } %>
+
+      <% if (pageKey === 'home') { %>
+        <section class="vq-page" data-vendor-todo>
+          <h2 class="vq-h2">To do</h2>
+          <% if (h.todo.length) { %>
+            <ul class="vq-todo">
+              <% h.todo.forEach(t => { %><li><a href="<%= t.href %>"><%= t.text %></a><% if (t.when) { %><span><%= t.whenLabel %> <%= fmtDay(t.when) %></span><% } %></li><% }) %>
+            </ul>
+          <% } else { %><p class="vq-muted" data-vendor-todo-empty>Nothing to do.</p><% } %>
+        </section>
+
+        <section class="vq-page vq-mt" data-vendor-home-reviews>
+          <h2 class="vq-h2">Reviews</h2>
+          <% if (!h.reviews.length) { %>
+            <p class="vq-muted" data-vendor-home-empty>No reviews yet.</p>
+          <% } else { %>
+            <div class="vq-panel"><table class="vq-table">
+              <thead><tr><th scope="col">Review</th><% if (h.manyOrgs) { %><th scope="col">Company</th><% } %><th scope="col">Client</th><th scope="col">Status</th><th scope="col" class="vq-num">Answered</th><th scope="col">Due</th><th scope="col">Answered by</th></tr></thead>
+              <tbody>
+                <% h.reviews.forEach(r => { const q = r.questionnaire; %>
+                  <tr data-vendor-home-review="<%= r.id %>">
+                    <td><% if (q && q.open) { %><a href="<%= reviewHref(r) %>"<%- q.state === 'answering' ? ' data-vendor-home-open' : '' %>><%= r.name %></a><% } else { %><%= r.name %><% } %></td>
+                    <% if (h.manyOrgs) { %><td><%= r.thirdPartyName %></td><% } %>
+                    <td><%= r.clientName %></td>
+                    <td data-vendor-review-status><%= r.status %></td>
+                    <td class="vq-num"><%= q ? q.answered + ' / ' + q.total : '-' %></td>
+                    <td><%= q && q.state === 'answering' ? fmtDay(q.until) : '-' %></td>
+                    <td><%= r.answeredBy || '-' %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table></div>
+            <p class="vq-under"><%= h.reviews.length %> <%= h.reviews.length === 1 ? 'review' : 'reviews' %></p>
+          <% } %>
+        </section>
+      <% } %>
+
+      <% if (pageKey === 'home' || pageKey === 'issues') { %>
+        <section class="vq-page<%= pageKey === 'home' ? ' vq-mt' : '' %>" data-vendor-home-issues>
+          <% if (pageKey === 'home') { %><h2 class="vq-h2">Issues</h2><% } %>
+          <% if (!h.issues.length) { %>
+            <p class="vq-muted" data-vendor-issues-empty>No issues.</p>
+          <% } else { %>
+            <div class="vq-panel"><table class="vq-table">
+              <thead><tr><th scope="col">Issue</th><th scope="col">Review</th><% if (h.manyOrgs) { %><th scope="col">Company</th><% } %><th scope="col">Status</th><th scope="col">Fix due</th></tr></thead>
+              <tbody>
+                <% h.issues.forEach(i => { %>
+                  <tr data-vendor-home-issue="<%= i.id %>">
+                    <td><a href="/vendor/p/a/<%= i.assessmentId %>/issues#issue-<%= i.id %>"><%= i.title %></a></td>
+                    <td><%= i.review %></td>
+                    <% if (h.manyOrgs) { %><td><%= i.thirdPartyName %></td><% } %>
+                    <td><%= i.label %></td>
+                    <td><%= i.agreedDate ? fmtDay(i.agreedDate) : '-' %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table></div>
+          <% } %>
+        </section>
+      <% } %>
+
+      <% if (pageKey === 'people') { %>
+        <% h.groups.forEach((g, gi) => { const isMain = g.person.role === 'main'; %>
+          <section class="vq-page<%= gi ? ' vq-mt-lg' : '' %>" id="people-<%= g.person.third_party_id %>" data-vendor-home-group="<%= g.person.third_party_id %>">
+            <% if (h.groups.length > 1) { %><h2 class="vq-h2"><%= h.manyOrgs ? g.thirdPartyName + ' for ' : 'For ' %><%= g.clientName %></h2><% } %>
+            <div class="vq-panel"><table class="vq-table" data-vendor-home-people>
+              <thead><tr><th scope="col">Name</th><th scope="col">Job title</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Role</th><% if (isMain && !h.scoped) { %><th scope="col"><span class="sr-only">Actions</span></th><% } %></tr></thead>
+              <tbody>
+              <% g.people.forEach(p => { const self = Number(p.id) === g.person.id; %>
+                <tr data-vendor-home-person="<%= p.id %>">
+                  <td><%= p.name %><%= self ? ' (you)' : '' %></td>
+                  <td><%= p.job_title || '' %></td>
+                  <td><%= p.email %></td>
+                  <td><%= p.phone || '' %></td>
+                  <td><%= h.roleLabels[p.role] %></td>
+                  <% if (isMain && !h.scoped) { %><td class="vq-people-actions"><% if (!self) { %>
+                      <form method="POST" action="/vendor/p/people/<%= p.id %>/main" class="vq-inline" data-vendor-hand-over="<%= p.id %>"><input type="hidden" name="_aft" value="<%= aft %>"><input type="hidden" name="me" value="<%= g.person.id %>"><button class="vq-linklike" type="submit">Make main contact</button></form>
+                      <form method="POST" action="/vendor/p/people/<%= p.id %>/remove" class="vq-inline" data-vendor-remove-person="<%= p.id %>"><input type="hidden" name="_aft" value="<%= aft %>"><input type="hidden" name="me" value="<%= g.person.id %>"><button class="vq-linklike" type="submit">Remove</button></form>
+                  <% } %></td><% } %>
+                </tr>
+              <% }) %>
+              </tbody>
+            </table></div>
+            <% if (h.scoped) { %><p class="vq-people-note" data-vendor-people-locked>To add colleagues, <a href="/vendor/p/sign-in">sign in with a code</a> sent to <%= h.email %>. A questionnaire link can be forwarded, so it cannot change who has access.</p><% } else if (!isMain) { const mainP = g.people.find(x => x.role === 'main'); %><p class="vq-people-note" data-vendor-people-locked>Only the main contact<%= mainP ? ', ' + mainP.name + ',' : '' %> can add colleagues.</p><% } %>
+            <div class="vq-people-tools">
+            <% if (isMain && !h.scoped) { const fv = mine(g.person.id) && v.email !== undefined ? v : {}; %>
+              <details class="vq-docs" <%= mine(g.person.id) && v.email !== undefined ? 'open' : '' %> data-vendor-invite>
+                <summary class="vq-btn vq-btn--secondary vq-summary-btn">Add a colleague</summary>
+                <form method="POST" action="/vendor/p/people" class="vq-form-grid">
+                  <input type="hidden" name="_aft" value="<%= aft %>"><input type="hidden" name="me" value="<%= g.person.id %>">
+                  <div class="vq-field"><label class="vq-label" for="inv-name-<%= g.person.id %>">Name</label><input class="vq-input" id="inv-name-<%= g.person.id %>" name="name" maxlength="200" value="<%= fv.name || '' %>" required></div>
+                  <div class="vq-field"><label class="vq-label" for="inv-email-<%= g.person.id %>">Email</label><input class="vq-input" id="inv-email-<%= g.person.id %>" type="email" name="email" maxlength="200" value="<%= fv.email || '' %>" required></div>
+                  <div class="vq-field"><label class="vq-label" for="inv-title-<%= g.person.id %>">Job title <span class="vq-optional">optional</span></label><input class="vq-input" id="inv-title-<%= g.person.id %>" name="job_title" maxlength="200" value="<%= fv.job_title || '' %>"></div>
+                  <div class="vq-field"><label class="vq-label" for="inv-phone-<%= g.person.id %>">Phone <span class="vq-optional">optional</span></label><input class="vq-input" id="inv-phone-<%= g.person.id %>" type="tel" name="phone" maxlength="60" value="<%= fv.phone || '' %>"></div>
+                  <div class="vq-form-foot"><button class="vq-btn vq-btn--secondary" type="submit" data-vendor-invite-send>Add and email them</button></div>
+                </form>
+              </details>
+            <% } %>
+            <% const sv = mine(g.person.id) && v.email === undefined && v.name !== undefined ? v : g.person; %>
+            <details class="vq-docs" <%= mine(g.person.id) && v.email === undefined && v.name !== undefined ? 'open' : '' %> data-vendor-my-details>
+              <summary class="vq-btn vq-btn--secondary vq-summary-btn">Your details</summary>
+              <form method="POST" action="/vendor/p/me" class="vq-form-grid">
+                <input type="hidden" name="_aft" value="<%= aft %>"><input type="hidden" name="me" value="<%= g.person.id %>">
+                <div class="vq-field"><label class="vq-label" for="me-name-<%= g.person.id %>">Name</label><input class="vq-input" id="me-name-<%= g.person.id %>" name="name" maxlength="200" value="<%= sv.name || '' %>" required></div>
+                <div class="vq-field"><label class="vq-label" for="me-title-<%= g.person.id %>">Job title <span class="vq-optional">optional</span></label><input class="vq-input" id="me-title-<%= g.person.id %>" name="job_title" maxlength="200" value="<%= sv.job_title || '' %>"></div>
+                <div class="vq-field"><label class="vq-label" for="me-phone-<%= g.person.id %>">Phone <span class="vq-optional">optional</span></label><input class="vq-input" id="me-phone-<%= g.person.id %>" type="tel" name="phone" maxlength="60" value="<%= sv.phone || '' %>"></div>
+                <div class="vq-form-foot"><button class="vq-btn vq-btn--secondary" type="submit">Save your details</button></div>
+              </form>
+            </details>
+            </div>
+          </section>
+        <% }) %>
+      <% } %>
+      <%- include('partials/tprm_vendor_footer', { firm: h.firm, expiresAt: null, note: '' }) %>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,14 @@
+<% const fr = locals.frame || null; const fm = fr && fr.firm && fr.firm.name ? fr.firm : null; %>
+<header class="vq-topbar vq-brandbar" data-vendor-brandbar="<%= fm ? 'firm' : 'plain' %>">
+  <div class="vq-topbar-brand">
+    <% if (fm && fm.logo) { %><img class="vq-brand-logo" src="<%= fm.logo %>" alt="<%= fm.name %>"><% } %>
+    <% if (fm) { %><span class="vq-brand-name<%= fm.logo ? ' sr-only' : '' %>" data-vendor-firm><%= fm.name %></span><% } %>
+    <span class="vq-brand-portal">Third-party portal</span>
+  </div>
+  <div class="vq-topbar-me">
+    <% if (fr && fr.me) { %>
+      <span class="vq-me-name" data-vendor-person><%= fr.me.name %></span>
+      <form method="POST" action="/vendor/p/sign-out" class="vq-inline" data-vendor-sign-out><input type="hidden" name="_aft" value="<%= fr.signOutAft %>"><button class="vq-linklike" type="submit">Sign out</button></form>
+    <% } %>
+  </div>
+</header>

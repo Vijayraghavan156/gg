@@ -244,7 +244,7 @@ function request(method, urlPath, { body = null, headers = {} } = {}) {
 }
 
 const vget = token => request('GET', `/vendor/q/${token}`);
-const aftOf = text => (String(text).match(/name="_aft" value="([^"]+)"/) || [])[1];
+const aftOf = text => (String(text).replace(/<form[^>]*data-vendor-sign-out[\s\S]*?<\/form>/g, '').match(/name="_aft" value="([^"]+)"/) || [])[1];
 
 function multipart(fields, files = []) {
   const boundary = '----tprmai' + crypto.randomBytes(8).toString('hex');

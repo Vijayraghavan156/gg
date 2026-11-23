@@ -9,6 +9,7 @@ const tpImport = require('../lib/tprm/import');
 const clientSettings = require('../lib/tprm/client-settings');
 const tpSettings = require('../lib/tprm/settings');
 const placement = require('../lib/tprm/placement');
+const vendorPeople = require('../lib/tprm/vendor-people');
 const { TprmError } = require('../lib/tprm/errors');
 
 const NOT_FOUND = 'This third-party risk client does not exist, or it is not available to your account.';
@@ -102,8 +103,7 @@ function registerRoutes(app, deps) {
   app.post('/tprm/clients/:wsId/third-parties', requireAuth, handler(async (req, res, actor) =>
     saveThirdParty(req, res, actor, null), { permission: 'tp.manage' }));
 
-  app.get('/tprm/clients/:wsId/third-parties/:tpId', requireAuth, handler(async (req, res, actor) => {
-    const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+  async function renderThirdParty(req, res, actor, thirdParty, extra = {}, status = 200) {
     const [services, history, duplicates] = await Promise.all([
       register.listServices(db, actor, thirdParty.id),
       register.recentEvents(db, actor, thirdParty.id),
@@ -116,8 +116,57 @@ function registerRoutes(app, deps) {
       approval: await decisions.currentApproval(db, actor.ws, thirdParty.id),
       stage: (await require('../lib/tprm/pipeline').stagesForClient(db, actor.ws.id)).get(Number(thirdParty.id)) || null,
       tab: req.query && typeof req.query.tab === 'string' ? req.query.tab : null,
-    });
+      ...extra,
+      peoplePanel: { list: await vendorPeople.list(db, actor.ws.id, thirdParty.id), labels: vendorPeople.ROLE_LABELS, errors: [], values: {}, editErrors: {}, ...(extra.peoplePanel || {}) },
+    }, status);
+  }
+
+  app.get('/tprm/clients/:wsId/third-parties/:tpId', requireAuth, handler(async (req, res, actor) => {
+    const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+    return renderThirdParty(req, res, actor, thirdParty);
   }));
+
+  const peopleBack = (actor, thirdParty) => `${base(actor)}/third-parties/${thirdParty.id}?tab=people#people`;
+
+  app.post('/tprm/clients/:wsId/third-parties/:tpId/people', requireAuth, handler(async (req, res, actor) => {
+    const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+    try {
+      const person = await vendorPeople.firmAdd(db, actor, thirdParty.id, req.body);
+      return res.redirect(withToast(peopleBack(actor, thirdParty), `${person.name} added${person.role === 'main' ? ' as the main contact' : ''}`));
+    } catch (err) {
+      if (err instanceof TprmError && (err.status === 400 || err.status === 409)) {
+        return renderThirdParty(req, res, actor, thirdParty, { tab: 'people', peoplePanel: { errors: err.errors || [err.message], values: req.body } }, 400);
+      }
+      throw err;
+    }
+  }, { permission: 'tp.manage' }));
+
+  app.post('/tprm/clients/:wsId/third-parties/:tpId/people/:pid', requireAuth, handler(async (req, res, actor) => {
+    const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+    try {
+      const person = await vendorPeople.firmUpdate(db, actor, thirdParty.id, req.params.pid, req.body);
+      return res.redirect(withToast(peopleBack(actor, thirdParty), `${person.name} updated`));
+    } catch (err) {
+      if (err instanceof TprmError && err.status === 400) {
+        return renderThirdParty(req, res, actor, thirdParty, { tab: 'people', peoplePanel: { editErrors: { [String(req.params.pid)]: { errors: err.errors || [err.message], values: req.body } } } }, 400);
+      }
+      if (err instanceof TprmError && err.status === 409) return res.redirect(withToast(peopleBack(actor, thirdParty), err.message, 'error'));
+      throw err;
+    }
+  }, { permission: 'tp.manage' }));
+
+  for (const [verb, fn, done] of [['remove', 'firmRemove', p => `${p.name} removed`], ['main', 'firmMakeMain', p => `${p.name} is now the main contact`]]) {
+    app.post(`/tprm/clients/:wsId/third-parties/:tpId/people/:pid/${verb}`, requireAuth, handler(async (req, res, actor) => {
+      const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+      try {
+        const person = await vendorPeople[fn](db, actor, thirdParty.id, req.params.pid);
+        return res.redirect(withToast(peopleBack(actor, thirdParty), done(person)));
+      } catch (err) {
+        if (err instanceof TprmError && (err.status === 409 || err.status === 404)) return res.redirect(withToast(peopleBack(actor, thirdParty), err.message, 'error'));
+        throw err;
+      }
+    }, { permission: 'tp.manage' }));
+  }
 
   app.get('/tprm/clients/:wsId/third-parties/:tpId/edit', requireAuth, handler(async (req, res, actor) => {
     const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
@@ -135,18 +184,7 @@ function registerRoutes(app, deps) {
       await register.addService(db, actor, thirdParty.id, req.body);
     } catch (err) {
       if (!(err instanceof TprmError) || err.status !== 400) throw err;
-      const [services, history, duplicates] = await Promise.all([
-        register.listServices(db, actor, thirdParty.id),
-        register.recentEvents(db, actor, thirdParty.id),
-        register.sameNamed(db, actor.ws.id, thirdParty.name, thirdParty.id),
-      ]);
-      return renderPage(req, res, 'tprm_third_party', actor, {
-        thirdParty, services, history, duplicates, today: register.today(actor),
-        serviceErrors: err.errors || [err.message], serviceValues: req.body,
-        assessmentList: await assessments.listForThirdParty(db, actor, thirdParty.id), at: assessments,
-        approval: await decisions.currentApproval(db, actor.ws, thirdParty.id),
-        stage: (await require('../lib/tprm/pipeline').stagesForClient(db, actor.ws.id)).get(Number(thirdParty.id)) || null,
-      }, 400);
+      return renderThirdParty(req, res, actor, thirdParty, { serviceErrors: err.errors || [err.message], serviceValues: req.body }, 400);
     }
     return res.redirect(withToast(`${base(actor)}/third-parties/${thirdParty.id}#services`, 'Service added'));
   }, { permission: 'tp.manage' }));

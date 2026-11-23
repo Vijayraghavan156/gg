@@ -1,0 +1,20 @@
+<% const fr = frame; const fid = locals.formId || null;
+   const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&#34;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+   const item = it => (fid
+     ? '<button type="submit" form="' + fid + '" name="go" value="' + esc(it.go) + '" formnovalidate class="vq-menu-item' + (it.current ? ' is-current' : '') + '" data-vendor-menu="' + esc(it.key) + '"' + (it.current ? ' aria-current="page"' : '') + '>'
+     : it.post ? '<form method="POST" action="' + esc(it.post.action) + '" class="vq-menu-form"><input type="hidden" name="_aft" value="' + esc(it.post.aft) + '"><input type="hidden" name="to" value="' + esc(it.post.to) + '"><button type="submit" class="vq-menu-item" data-vendor-menu="' + esc(it.key) + '">'
+     : '<a href="' + esc(it.href) + '" class="vq-menu-item' + (it.current ? ' is-current' : '') + '" data-vendor-menu="' + esc(it.key) + '"' + (it.current ? ' aria-current="page"' : '') + '>')
+     + '<span>' + esc(it.label) + '</span>' + (it.count ? '<span class="vq-menu-count">' + esc(it.count) + '<span class="sr-only"> waiting</span></span>' : '') + (fid ? '</button>' : it.post ? '</button></form>' : '</a>');
+   const subItems = fr.items.filter(it => it.sub);
+   const menu = fr.items.filter(it => !it.sub).map(item).join('')
+     + (subItems.length ? '<p class="vq-menu-group">' + esc(fr.group) + '</p><div class="vq-menu-sub">' + subItems.map(item).join('') + '</div>' : '')
+     + (locals.extraHtml || ''); %>
+<aside class="vq-side" aria-label="Portal menu">
+  <% if (fr.orgName) { %><p class="vq-side-org" data-vendor-org><%= fr.orgName %></p><% } %>
+  <nav class="vq-menu"><%- menu %></nav>
+  <% if (fr.reviewer) { %><p class="vq-side-reviewer" data-vendor-reviewer>Reviewer<span><%= fr.reviewer.name || fr.reviewer.email %></span><a href="mailto:<%= fr.reviewer.email %>"><%= fr.reviewer.email %></a></p><% } %>
+</aside>
+<details class="vq-picker">
+  <summary class="vq-picker-summary"><span class="vq-picker-now"><%= locals.pickerNow || (fr.items.find(i => i.current) || {}).label || 'Menu' %></span><span class="vq-picker-hint">Menu</span></summary>
+  <nav class="vq-menu" aria-label="Portal menu"><%- menu %></nav>
+</details>

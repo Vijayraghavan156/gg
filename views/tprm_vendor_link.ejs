@@ -6,19 +6,21 @@
   <meta name="robots" content="noindex, nofollow">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="light">
-  <title><%= state === 'submitted' ? 'Questionnaire submitted' : state === 'limited' ? 'Too many requests' : state === 'error' ? 'Something went wrong' : state === 'forbidden' ? 'This form has expired' : state === 'too_large' ? 'The upload is too large' : 'This link is not valid' %></title>
+  <title><%= state === 'submitted' ? 'Questionnaire submitted' : state === 'limited' ? 'Too many requests' : state === 'error' ? 'Something went wrong' : state === 'forbidden' ? 'This form has expired' : state === 'signed_out' ? 'You are signed out' : state === 'too_large' ? 'The upload is too large' : 'This link is not valid' %></title>
   <link rel="stylesheet" href="/app.css">
   <link rel="stylesheet" href="/tprm-tokens.css">
   <link rel="stylesheet" href="/tprm-vendor.css">
 </head>
 <body class="vq-body">
-  <%- include('partials/tprm_vendor_brandbar', { firm: null, label: 'Secure questionnaire' }) %>
+  <%- include('partials/tprm_portal_top', { frame: null }) %>
+  <div class="vq-state-page">
   <main class="vq-state">
     <% if (state === 'submitted') { %>
       <p class="vq-state-for" data-vendor-client><%= clientName %></p>
       <h1 class="vq-page-title">Thank you</h1>
       <p data-vendor-submitted>Submitted on <%= locals.tpf ? tpf.dayTime(submittedAt, { zone: true }) : '' %>.</p>
       <p>Your answers can no longer be changed. If more information is needed, you will receive a new link.</p>
+      <% if (locals.issuesHref) { %><p data-vendor-issues-link>The reviewers have shared issues with you. <a href="<%= issuesHref %>">Open the issues</a> to respond.</p><% } %>
       <p class="vq-muted">You can close this page.</p>
     <% } else if (state === 'limited') { %>
       <h1 class="vq-page-title">Too many requests</h1>
@@ -29,6 +31,9 @@
     <% } else if (state === 'forbidden') { %>
       <h1 class="vq-page-title">This form has expired</h1>
       <p data-vendor-link-forbidden>Nothing was saved. Open your link again and repeat your change.</p>
+    <% } else if (state === 'signed_out') { %>
+      <h1 class="vq-page-title">You are signed out</h1>
+      <p data-vendor-signed-out>Nothing was saved. <a href="/vendor/p/sign-in">Sign in again</a>, then repeat your change.</p>
     <% } else if (state === 'too_large') { %>
       <h1 class="vq-page-title">The upload is too large</h1>
       <p data-vendor-link-too-large>Nothing was saved. Open your link again and attach fewer or smaller files.</p>
@@ -37,6 +42,7 @@
       <p data-vendor-link-invalid>Ask the person who sent it to you for a new link.</p>
     <% } %>
   </main>
-  <%- include('partials/tprm_vendor_footer', { firm: null, expiresAt: null, note: 'This page is private to you. Do not share the link.' }) %>
+    <div class="vq-state"><%- include('partials/tprm_vendor_footer', { firm: null, expiresAt: null, note: 'This page is private to you. Do not share the link.' }) %></div>
+  </div>
 </body>
 </html>

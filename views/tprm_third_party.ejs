@@ -29,13 +29,15 @@
     { key: 'assessments', label: 'Assessments', count: assessmentList.length },
     { key: 'services', label: 'Services', count: services.length },
   ];
+  const pp = typeof peoplePanel !== 'undefined' && peoplePanel ? peoplePanel : null;
+  if (pp) tabs.splice(1, 0, { key: 'people', label: 'People', count: pp.list.length });
   if (hasExitPlans) tabs.push({ key: 'exit-plans', label: 'Exit plans', count: exitPlansPanel.services.filter(s => s.material).length });
   if (hasSubprocessors) tabs.push({ key: 'subprocessors', label: 'Subprocessors', count: subprocessorsPanel.list.length });
   if (hasDataLocation) tabs.push({ key: 'data-location', label: 'Data location' });
   if (t.status === 'in_use') tabs.push({ key: 'early-reassessment', label: 'Early reassessment' });
   tabs.push({ key: 'history', label: 'History' });
   const askedTab = typeof tab !== 'undefined' && tab ? String(tab) : '';
-  const selectedTab = tabs.some(x => x.key === askedTab) ? askedTab : (serviceErrors.length ? 'services' : 'overview');
+  const selectedTab = tabs.some(x => x.key === askedTab) ? askedTab : (serviceErrors.length ? 'services' : pp && (pp.errors.length || Object.keys(pp.editErrors).length) ? 'people' : 'overview');
   const tabAttrs = key => 'class="tprm-step" data-tprm-tab-panel="' + key + '"' + (key === selectedTab ? '' : ' hidden');
 %>
 
@@ -112,6 +114,70 @@
     </div>
   </div>
 </section>
+
+<% if (pp) { %>
+<section <%- tabAttrs('people') %> id="people">
+<div class="panel" data-tprm-people>
+  <div class="panel-head"><h2>People at <%= t.name %></h2><span class="meta"><%= pp.list.length %></span></div>
+  <div class="panel-pad meta text-xs" data-tprm-people-help>These people can sign in to the third-party portal with a code sent to their email. The main contact answers and submits questionnaires and can invite colleagues, who can help answer. The person a questionnaire link is sent to can also sign in with that address while the link works, and is added here when they first do. Revoking a link does not remove anyone: remove them here.</div>
+  <% if (!pp.list.length) { %>
+    <div class="panel-pad meta" data-tprm-people-empty>No one yet. Add the main contact below, or send a questionnaire link: the person it is sent to becomes the main contact.</div>
+  <% } else { %>
+    <div class="table-scroll"><table class="t">
+      <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><% if (canManage) { %><th></th><% } %></tr></thead>
+      <tbody>
+      <% pp.list.forEach(p => { const ee = pp.editErrors[String(p.id)]; const ev = ee ? ee.values : p; %>
+        <tr data-tprm-person="<%= p.id %>" data-tprm-person-role="<%= p.role %>">
+          <td><strong><%= p.name %></strong><% if (p.job_title) { %><div class="meta text-xs"><%= p.job_title %></div><% } %></td>
+          <td><%= p.email %></td>
+          <td><%= dash(p.phone) %></td>
+          <td><%= pp.labels[p.role] %></td>
+          <% if (canManage) { %><td class="tprm-nowrap">
+            <% if (p.role !== 'main') { %>
+              <form method="POST" action="<%= tpHref %>/people/<%= p.id %>/main" class="tpu-inline">
+                <input type="hidden" name="_csrf" value="<%= csrf %>"><%- include('partials/tprm_confirm_fields', { title: 'Make ' + p.name + ' the main contact?', body: 'Only the main contact submits questionnaires and invites colleagues. The current main contact becomes a colleague.', action: 'Make main contact' }) %>
+                <button class="btn btn-ghost btn-xs" type="submit">Make main contact</button>
+              </form>
+              <form method="POST" action="<%= tpHref %>/people/<%= p.id %>/remove" class="tpu-inline">
+                <input type="hidden" name="_csrf" value="<%= csrf %>"><%- include('partials/tprm_confirm_fields', { title: 'Remove ' + p.name + '?', body: 'They can no longer sign in to the third-party portal for ' + t.name + '. What they answered is kept.', action: 'Remove' }) %>
+                <button class="btn btn-ghost btn-xs" type="submit">Remove</button>
+              </form>
+            <% } %>
+            <details class="tpu-inline" <%= ee ? 'open' : '' %> data-tprm-person-edit="<%= p.id %>">
+              <summary class="btn btn-ghost btn-xs">Edit</summary>
+              <form method="POST" action="<%= tpHref %>/people/<%= p.id %>" class="tprm-form-grid tprm-form-2 tprm-mt">
+                <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= p.row_version %>">
+                <% if (ee) { %><div class="callout tprm-callout-error tprm-full" role="alert" data-tprm-form-errors><ul class="tprm-list"><% ee.errors.forEach(e => { %><li><%= e %></li><% }) %></ul></div><% } %>
+                <%- include('tprm_person_fields', { v: ev, idp: 'p' + p.id }) %>
+                <div class="tprm-full tprm-actions"><button class="btn btn-secondary btn-xs" type="submit">Save</button></div>
+              </form>
+            </details>
+          </td><% } %>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+  <% if (canManage) { %>
+    <details class="panel-pad tprm-divide" <%= pp.errors.length ? 'open' : '' %> data-tprm-add-person>
+      <summary class="tprm-summary"><%= pp.list.length ? 'Add a person' : 'Add the main contact' %></summary>
+      <form method="POST" action="<%= tpHref %>/people" class="tprm-form-grid tprm-form-2 tprm-mt">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <% if (pp.errors.length) { %>
+          <div class="callout tprm-callout-error tprm-full" role="alert" data-tprm-form-errors>
+            <div class="callout-title">The person was not added</div>
+            <ul class="tprm-list"><% pp.errors.forEach(e => { %><li><%= e %></li><% }) %></ul>
+          </div>
+        <% } %>
+        <%- include('tprm_person_fields', { v: pp.values, idp: 'new' }) %>
+        <% if (pp.list.length) { %><div class="tprm-full"><label class="tprm-checkline"><input type="checkbox" name="role" value="main"<%= pp.values.role === 'main' ? ' checked' : '' %>> Make them the main contact</label></div><% } %>
+        <div class="tprm-full tprm-actions"><button class="btn btn-secondary" type="submit">Add person</button></div>
+      </form>
+    </details>
+  <% } %>
+</div>
+</section>
+<% } %>
 
 <section <%- tabAttrs('assessments') %> id="assessments">
 <div class="panel" data-tprm-assessments>

@@ -178,7 +178,7 @@ function request(method, urlPath, { body = null, headers = {} } = {}) {
 }
 
 const vget = token => request('GET', `/vendor/q/${token}`);
-const aftOf = text => (String(text).match(/name="_aft" value="([^"]+)"/) || [])[1];
+const aftOf = text => (String(text).replace(/<form[^>]*data-vendor-sign-out[\s\S]*?<\/form>/g, '').match(/name="_aft" value="([^"]+)"/) || [])[1];
 
 function multipart(fields) {
   const boundary = '----tprmrb' + crypto.randomBytes(8).toString('hex');
@@ -676,7 +676,7 @@ test('preparing pins the ticked rulebooks; later ticks and edits change nothing 
   ]);
   assert.ok(q.consultant_check_ids.includes('RBI-08'));
   assert.ok(!idsOf(q).includes('RBI-08'));
-  assert.equal(q.vendor_question_count, 23 + 12 + 17, 'Low vendor-hosted base, Hosting Platform & Cloud Provider and 17 regulatory questions');
+  assert.equal(q.vendor_question_count, 24 + 12 + 17, 'Low vendor-hosted base with ASR-03 for the report, Hosting Platform & Cloud Provider and 17 regulatory questions');
   const ev = (await chain(ws, ctx.a)).find(e => e.action === 'questionnaire.prepared');
   assert.deepEqual(ev.after_state.rulebooks.map(r => r.key), ['india_baseline', 'rbi_commercial_banks']);
   assert.equal(ev.after_state.rulebook_question_count, 17);

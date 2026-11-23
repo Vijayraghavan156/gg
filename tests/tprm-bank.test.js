@@ -11,8 +11,8 @@ const Q = id => BANK.questions.find(q => q.id === id);
 const READ_BY_ID = ['AIS-01', 'FTP-01', 'FTP-02', 'FTP-03', 'FTP-04', 'FTP-05', 'FTP-06', 'FTP-07', 'PRM-06', 'GDP-04', 'FIN-03',
   'DOR-06', 'DOR-07', 'PFR-02', 'RBI-02', 'SEB-05', 'UAE-01', 'UAE-02', 'SAM-01'];
 
-test('bank version 5: every question once, the two answer types only, fields that fit their question', () => {
-  assert.match(BANK.version, /version 5/);
+test('bank version 6: every question once, the two answer types only, fields that fit their question', () => {
+  assert.match(BANK.version, /version 6/);
   const ids = BANK.questions.map(q => q.id);
   assert.equal(new Set(ids).size, ids.length, 'every id once');
   for (const q of BANK.questions) {
@@ -22,8 +22,15 @@ test('bank version 5: every question once, the two answer types only, fields tha
       assert.equal(new Set(q.fields.map(f => f.key)).size, q.fields.length, `${q.id}: field keys unique`);
       for (const f of q.fields) {
         assert.match(f.key, /^[a-z0-9_]{1,40}$/, `${q.id}: field key`);
-        assert.ok(['short', 'long', 'date', 'number'].includes(f.kind), `${q.id}: field kind`);
+        assert.ok(['short', 'long', 'date', 'number', 'multi'].includes(f.kind), `${q.id}: field kind`);
         assert.ok(f.label && f.label.length <= 80, `${q.id}: field label`);
+        if (f.kind === 'multi') {
+          assert.ok(Array.isArray(f.options) && f.options.length >= 2 && f.options.length <= 12, `${q.id}.${f.key}: two to twelve choices`);
+          assert.equal(new Set(f.options).size, f.options.length, `${q.id}.${f.key}: choices unique`);
+          for (const o of f.options) assert.ok(o && o.length <= 120 && !o.includes(';'), `${q.id}.${f.key}: choice "${o}"`);
+        } else {
+          assert.ok(!f.options, `${q.id}.${f.key}: choices only on tick boxes`);
+        }
       }
       assert.equal(q.fields_on, q.answer_type === 'free_text' ? 'answer' : 'yes', `${q.id}: fields on the answer of a written question, on Yes otherwise`);
       assert.ok(!q.details_on_yes, `${q.id}: fields or a Details box, not both`);
@@ -32,14 +39,14 @@ test('bank version 5: every question once, the two answer types only, fields tha
   }
 });
 
-test('bank version 5: a Yes/No question whose guidance lists what a good answer includes has somewhere to write it', () => {
+test('bank version 6: a Yes/No question whose guidance lists what a good answer includes has somewhere to write it', () => {
   for (const q of BANK.questions) {
     if (q.answer_type !== 'yes_no_na' || !/^A good answer includes:/.test(q.guidance || '')) continue;
     assert.ok(q.fields || q.details_on_yes, `${q.id}: fields or a Details box for its guidance`);
   }
 });
 
-test('bank version 5: the answers the app reads by id keep their shape', () => {
+test('bank version 6: the answers the app reads by id keep their shape', () => {
   for (const id of READ_BY_ID) {
     const q = Q(id);
     assert.ok(q, id);
@@ -49,7 +56,7 @@ test('bank version 5: the answers the app reads by id keep their shape', () => {
   assert.equal(Q('FTP-01').answer_type, 'free_text');
 });
 
-test('bank version 5: documents: no contract, no samples; one name for one real document', () => {
+test('bank version 6: documents: no contract, no samples; one name for one real document', () => {
   for (const q of BANK.questions) {
     if (!q.evidence) {
       assert.equal(q.evidence_mandatory, false, `${q.id}: no document asked, none required`);
@@ -63,7 +70,7 @@ test('bank version 5: documents: no contract, no samples; one name for one real 
   assert.ok(policy >= 20, 'the policy questions share one document');
 });
 
-test('bank version 5: every acronym has a plain meaning; no dashes anywhere', () => {
+test('bank version 6: every acronym has a plain meaning; no dashes anywhere', () => {
   for (const q of BANK.questions) for (const t of q.acronyms || []) assert.ok(BANK.glossary[t], `${q.id}: ${t} in the glossary`);
   assert.doesNotMatch(JSON.stringify(BANK), /[–—]/);
 });
@@ -134,4 +141,31 @@ test('answer fields: submission asks for every field; a reassessment copies fiel
     .filter(p => p.kind === 'fields').map(p => p.id), ['GOV-02', 'IAM-01'], 'the empty boxes are asked for at submission');
   const v4 = vendorAnswers.rulesMap(V4).get('GOV-01');
   assert.deepEqual([v4.fields, v4.fieldsOn], [[], null]);
+});
+
+test('bank version 6: tick boxes where the question has a fixed set of choices; version 5 kept as a fixture', () => {
+  const V5 = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'tprm-question-bank-v5.json'), 'utf8'));
+  assert.match(V5.version, /version 5/);
+  assert.deepEqual(BANK.questions.map(q => q.id), V5.questions.map(q => q.id), 'same questions in the same order');
+  const ticks = id => (Q(id).fields || []).filter(f => f.kind === 'multi').map(f => f.key);
+  const expected = { 'PHY-02': ['controls'], 'END-04': ['channels'], 'SSP-03': ['events', 'forwarding_methods'], 'CLD-01': ['models'], 'IAM-03': ['factors'],
+    'RBI-07': ['provided'], 'GDP-01': ['mechanisms'], 'UKG-01': ['tools'], 'DIF-02': ['mechanisms'], 'KSP-01': ['safeguards'], 'INC-02': ['channels'],
+    'PRV-06': ['channels'], 'PRM-04': ['channels'], 'CHS-04': ['delivery'], 'NET-07': ['auth_methods'], 'AIM-13': ['logged'] };
+  for (const [id, keys] of Object.entries(expected)) assert.deepEqual(ticks(id), keys, id);
+  const withTicks = BANK.questions.filter(q => (q.fields || []).some(f => f.kind === 'multi')).map(q => q.id).sort();
+  assert.deepEqual(withTicks, Object.keys(expected).sort(), 'no other question changed shape');
+  const V5_BY_ID = new Map(V5.questions.map(q => [q.id, q]));
+  for (const q of BANK.questions) {
+    if (expected[q.id]) {
+      assert.equal(q.question, V5_BY_ID.get(q.id).question, `${q.id}: question wording kept`);
+      const v5Keys = new Set((V5_BY_ID.get(q.id).fields || []).map(f => f.key));
+      for (const k of expected[q.id]) assert.ok(!v5Keys.has(k), `${q.id}.${k}: a new key, so a typed answer from version 5 is never read as ticks`);
+      continue;
+    }
+    assert.deepEqual(q, V5_BY_ID.get(q.id), `${q.id}: unchanged`);
+  }
+  for (const id of ['NIS-02', 'UKF-02']) assert.ok(!Q(id).fields, `${id}: one answer only, left as text`);
+  for (const id of ['GDP-01', 'UKG-01', 'DIF-02', 'KSP-01']) {
+    assert.ok(!Q(id).fields.find(f => f.kind === 'multi').options.includes('Other'), `${id}: the law's closed list, no Other`);
+  }
 });

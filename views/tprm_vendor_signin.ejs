@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en" class="page-standalone" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light">
+  <title><%= step === 'code' ? 'Enter your code' : step === 'choose' ? 'Choose a firm' : 'Sign in' %> · Third-party portal</title>
+  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/tprm-tokens.css">
+  <link rel="stylesheet" href="/tprm-vendor.css">
+</head>
+<body class="vq-body">
+  <%- include('partials/tprm_portal_top', { frame: null }) %>
+  <div class="vq-state-page">
+  <main class="vq-state" id="main" data-vendor-sign-in="<%= step %>">
+    <% if (notice) { %><p class="vq-notice" role="status" data-vendor-notice><%= notice %></p><% } %>
+    <% if (errors && errors.length) { %>
+      <div class="vq-errors" role="alert" data-vendor-errors><ul><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul></div>
+    <% } %>
+    <% if (step === 'code') { %>
+      <h1 class="vq-page-title">Enter your code</h1>
+      <p>If <strong><%= email %></strong> is one of the people a firm has added for a third party, we have emailed it a six-digit code. The code works once, for <%= minutes %> minutes.</p>
+      <form method="POST" action="/vendor/p/verify" class="vq-signin-form" data-vendor-code-form>
+        <input type="hidden" name="email" value="<%= email %>">
+        <div class="vq-field"><label class="vq-label" for="code">Code</label>
+          <input class="vq-input vq-input--code" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,8}" maxlength="8" required autofocus></div>
+        <div class="vq-form-foot"><button class="vq-btn vq-btn--primary" type="submit" data-vendor-code-send>Sign in</button></div>
+      </form>
+      <p class="vq-muted">No email? Check your spam folder, or <a href="/vendor/p/sign-in">ask for a new code</a>. If it still does not arrive, ask the firm that sent your questionnaire to add you.</p>
+    <% } else if (step === 'choose') { %>
+      <h1 class="vq-page-title">Choose a firm</h1>
+      <p>More than one firm works with you through this portal. Choose the one to open.</p>
+      <% firms.forEach(f => { %>
+        <form method="POST" action="/vendor/p/choose" class="vq-choose" data-vendor-choose="<%= f.id %>">
+          <input type="hidden" name="email" value="<%= email %>"><input type="hidden" name="code_id" value="<%= codeId %>">
+          <input type="hidden" name="choice" value="<%= choice %>"><input type="hidden" name="firm_id" value="<%= f.id %>">
+          <button class="vq-btn vq-btn--secondary" type="submit"><%= f.name %></button>
+        </form>
+      <% }) %>
+    <% } else { %>
+      <h1 class="vq-page-title">Sign in to the third-party portal</h1>
+      <p>Give the email address your questionnaire or invitation was sent to. We will email you a code to sign in. There is no password.</p>
+      <form method="POST" action="/vendor/p/sign-in" class="vq-signin-form" data-vendor-email-form>
+        <div class="vq-field"><label class="vq-label" for="email">Email address</label>
+          <input class="vq-input" id="email" name="email" type="email" autocomplete="email" maxlength="200" value="<%= email %>" required autofocus></div>
+        <div class="vq-form-foot"><button class="vq-btn vq-btn--primary" type="submit" data-vendor-email-send>Email me a code</button></div>
+      </form>
+      <p class="vq-muted">You can also open the questionnaire link you were emailed: it still works.</p>
+    <% } %>
+  </main>
+    <div class="vq-state"><%- include('partials/tprm_vendor_footer', { firm: null, expiresAt: null, note: 'Sign-in codes are personal. Do not share them.' }) %></div>
+  </div>
+</body>
+</html>

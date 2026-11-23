@@ -173,7 +173,7 @@ function request(method, urlPath, { body = null, headers = {} } = {}) {
     });
   });
 }
-const aftOf = text => (String(text).match(/name="_aft" value="([^"]+)"/) || [])[1];
+const aftOf = text => (String(text).replace(/<form[^>]*data-vendor-sign-out[\s\S]*?<\/form>/g, '').match(/name="_aft" value="([^"]+)"/) || [])[1];
 function multipart(fields, files = []) {
   const boundary = '----tprmmsg' + crypto.randomBytes(8).toString('hex');
   const parts = [];
@@ -204,7 +204,8 @@ test('1. every template renders in plain words, and the reminders to a third par
   const d = { toName: 'Priya', firmName: 'Northbridge Advisory', clientName: 'Acme Bank', thirdPartyName: 'Lumen Print', contact: { name: 'Casey', email: 'casey@firm.example' },
     until: '22 Dec 2026', sentDay: '22 Nov 2026', total: 66, answered: 28, files: 3, submittedDay: '1 Dec 2026', questionId: 'GOV-01', body: 'Who approves the policy?',
     url: 'https://app.example/x', response: 'The board.', outcomeLabel: 'Onboard with conditions', recommendedLabel: 'Onboard', version: 2, deciderName: 'Anita',
-    position: 1, conditionText: 'Encrypt the print servers', note: 'Done', issuedDay: '1 Dec 2026', dueDay: '31 Dec 2026', conditions: [{ text: 'Encrypt', due: '28 Feb 2027' }] };
+    position: 1, conditionText: 'Encrypt the print servers', note: 'Done', issuedDay: '1 Dec 2026', dueDay: '31 Dec 2026', conditions: [{ text: 'Encrypt', due: '28 Feb 2027' }],
+    issueTitle: 'Access reviews', issueBody: 'How is access reviewed?', proposedFix: 'Quarterly reviews', proposedDay: '31 Mar 2027', agreedFix: 'Quarterly reviews', agreedDay: '31 Mar 2027', code: '482913', minutes: 10, inviterName: 'Mira Das', sections: ['Access control'] };
   for (const kind of Object.keys(email.TPRM_TEMPLATES)) {
     const m = email.renderTprmEmail(kind, d);
     assert.ok(m.subject.length > 5, `${kind}: a subject`);

@@ -1,5 +1,5 @@
 <%
-  const base = '/vendor/c/' + token;
+  const base = locals.base || ('/vendor/c/' + token);
   const fmtDay = d => (d ? tpf.day(d) : '');
   const errorList = (errors || []).map(e => String(e && typeof e === 'object' ? e.message : e));
   const fileMb = p.limits.fileBytes / 1048576;
@@ -8,43 +8,35 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="robots" content="noindex, nofollow">
-  <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="light">
-  <title>Conditions for <%= p.clientName %></title>
   <link rel="stylesheet" href="/app.css">
-  <link rel="stylesheet" href="/tprm-tokens.css">
-  <link rel="stylesheet" href="/tprm-vendor.css">
-  <script src="/tprm-vendor.js" defer></script>
+<%- include('tprm_portal_head', { title: 'Conditions for ' + p.clientName, frame, withScript: true }) %>
 </head>
 <body class="vq-body">
-  <%- include('partials/tprm_vendor_brandbar', { firm: p.firm, label: 'Secure link' }) %>
-  <header class="vq-top">
-    <div class="vq-wrap">
-      <h1 class="vq-title">Conditions for <span data-vendor-client><%= p.clientName %></span></h1>
-      <p class="vq-top-meta"><span class="vq-due" data-vendor-deadline>This link works until <strong><%= fmtDay(p.expiresAt) %></strong>.</span></p>
-    </div>
-  </header>
-
-  <div class="vq-shell vq-shell--single">
+  <a class="vq-skip" href="#main">Skip to the content</a>
+  <%- include('partials/tprm_portal_top', { frame }) %>
+  <div class="vq-frame">
+    <%- include('partials/tprm_portal_side', { frame }) %>
     <main class="vq-main" id="main" data-vendor-conditions-open>
-      <section class="vq-page">
-        <p class="vq-lead"><%= p.clientName %> has agreed to work with you on the conditions below. Send your proof for each one here; it is reviewed before the condition is closed.</p>
-
-        <% if (notice) { %>
-          <div class="vq-alert vq-alert--ok" role="status" data-vendor-notice><%= notice %></div>
-        <% } %>
-        <% if (errorList.length) { %>
-          <div class="vq-alert vq-alert--bad" role="alert" data-vendor-errors>
-            <p class="vq-alert-title">Nothing was sent. Please correct the following:</p>
-            <ul><% errorList.forEach(e => { %><li><%= e %></li><% }) %></ul>
-          </div>
-        <% } %>
+      <header class="vq-top">
+        <div class="vq-top-main">
+          <h1 class="vq-title">Conditions for <span data-vendor-client><%= p.clientName %></span></h1>
+          <p class="vq-top-meta"><span class="vq-due" data-vendor-deadline>Link works until <strong><%= fmtDay(p.expiresAt) %></strong></span>.</p>
+        </div>
+      </header>
+      <p class="vq-lead">Send proof for each condition. The reviewers check it before the condition is closed.</p>
+      <% if (notice) { %><p class="vq-notice" role="status" data-vendor-notice><%= notice %></p><% } %>
+      <% if (errorList.length) { %>
+        <div class="vq-errors" role="alert" data-vendor-errors>
+          <p class="vq-errors-title">Nothing was sent. Correct the following:</p>
+          <ul><% errorList.forEach(e => { %><li><%= e %></li><% }) %></ul>
+        </div>
+      <% } %>
 
         <% p.conditions.forEach(c => { %>
           <section class="vq-item" data-vendor-condition="<%= c.id %>" data-vendor-condition-status="<%= c.status %>">
             <h2 class="vq-h3 vq-item-head">Condition <%= c.position %></h2>
-            <p class="vq-item-ref"><span data-vendor-condition-label><%= c.label %></span>. Due <strong><%= c.due_date ? fmtDay(c.due_date) : '-' %></strong><% if (c.overdue) { %>, <span class="vq-attention vq-problem" data-vendor-condition-overdue>overdue</span><% } %>.</p>
+            <p class="vq-item-ref">Status: <span data-vendor-condition-label><%= c.label %></span>. Due <%= c.due_date ? fmtDay(c.due_date) : '-' %><% if (c.overdue) { %>, <span data-vendor-condition-overdue>overdue</span><% } %>.</p>
             <p class="vq-item-text vq-pre"><%= c.description %></p>
             <% if (c.changesComment) { %>
               <p class="vq-item-label">Changes requested</p>
@@ -57,16 +49,15 @@
                   <input class="vq-file-input" id="files-<%= c.id %>" type="file" name="files" multiple></div>
                 <div class="vq-field"><label class="vq-label" for="note-<%= c.id %>">Note</label>
                   <textarea class="vq-input vq-textarea" id="note-<%= c.id %>" name="note" rows="3" maxlength="<%= p.limits.note %>"></textarea></div>
-                <div class="vq-form-foot"><button class="vq-btn vq-btn--primary" type="submit" data-vendor-condition-send>Send proof</button></div>
+                <div class="vq-form-foot"><button class="vq-btn vq-btn--secondary" type="submit" data-vendor-condition-send>Send proof</button></div>
               </form>
             <% } else { %>
               <p class="vq-muted">Your proof has been received. You will hear from the firm if anything more is needed.</p>
             <% } %>
           </section>
         <% }) %>
-      </section>
+      <%- include('partials/tprm_vendor_footer', { firm: p.firm, expiresAt: null, note: locals.signedIn ? '' : 'Do not share this link.' }) %>
     </main>
   </div>
-  <%- include('partials/tprm_vendor_footer', { firm: p.firm, expiresAt: fmtDay(p.expiresAt), note: 'This page is private to you. Do not share the link.' }) %>
 </body>
 </html>

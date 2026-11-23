@@ -107,6 +107,11 @@ function registerRoutes(app, deps) {
       questionnairePanel,
       newLink,
       evidencePanel: await require('../lib/tprm/evidence').panel(db, actor, assessment),
+      issuesPanel: {
+        list: await require('../lib/tprm/issues').forAssessment(db, actor.ws.id, assessment.id),
+        labels: require('../lib/tprm/issues').STATUS_LABELS,
+        canManage: canManage && !['cancelled', 'completed'].includes(assessment.status),
+      },
       recommendation,
       canCancel: canManage && await assessments.canCancel(db, actor, assessment),
       decisionPanel,

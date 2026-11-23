@@ -184,7 +184,7 @@ async function allSteps(session, url) {
 // question that takes named fields fills its fields with that text.
 const sampleFor = (kind, text) => (kind === 'date' ? '2026-01-15' : kind === 'number' ? '24' : text);
 function fieldValues(row, text) {
-  return Object.fromEntries((row.fields || []).map(f => [f.key, sampleFor(f.kind, text)]));
+  return Object.fromEntries((row.fields || []).map(f => [f.key, f.kind === 'multi' ? f.options[0] : sampleFor(f.kind, text)]));
 }
 function completeAnswer(row, id, extra = {}) {
   const q = row || {};

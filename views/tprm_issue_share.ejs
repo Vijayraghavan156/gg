@@ -1,0 +1,28 @@
+<%- include('partials/header', { title: 'Share with the third party · ' + thirdParty.name + ' · ' + tpClient.name, user, active }) %>
+<%
+  const v = values || {};
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const back = '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id + '/assessments/' + assessment.id;
+%>
+<%- include('tprm_client_nav', { tpClient, section: 'register', canManage: true, canSettings }) %>
+
+<div class="tpu-mb-10"><a class="text-xs tpu-back" href="<%= back %>?step=evidence#findings">← <%= at.TYPE_LABELS[assessment.type] %> · <%= thirdParty.name %></a></div>
+
+<div class="panel tpu-narrow tpu-mb-14" data-tprm-issue-share-form>
+  <div class="panel-head"><h2>Share with the third party</h2></div>
+  <div class="panel-pad">
+    <p class="meta">Finding: <strong><%= finding.title %></strong>. The third party sees only the title and text below, on its questionnaire link, and is emailed that an issue was shared. Why it matters stays with the client.</p>
+    <% if (errors && errors.length) { %><div class="callout tprm-callout-error" role="alert" data-tprm-form-errors><ul><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul></div><% } %>
+    <form method="POST" action="<%= back %>/findings/<%= finding.id %>/share" class="tpu-form" data-tp-unsaved>
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <%- include('partials/tprm_confirm_fields', { title: 'Share this issue with ' + thirdParty.name + '?', body: 'They will see the title and text you wrote, and can respond or propose a fix. You can withdraw it later.', action: 'Share' }) %>
+      <div><label class="label" for="issue-title">Title the third party sees</label>
+        <input class="input" id="issue-title" name="title" maxlength="200" value="<%= v.title || '' %>" required></div>
+      <div class="tpu-mt-10"><label class="label" for="issue-body">What the third party needs to know</label>
+        <textarea class="input" id="issue-body" name="body" rows="7" maxlength="4000" required><%= v.body || '' %></textarea>
+        <div class="meta text-xs tpu-mt-4">Write it for the third party: what was found and what you expect. Leave out internal notes and anything about the client's own exposure.</div></div>
+      <div class="tpu-end tpu-mt-10"><button class="btn btn-primary" type="submit" data-tprm-issue-share>Share with the third party</button></div>
+    </form>
+  </div>
+</div>
+<%- include('partials/footer') %>

@@ -1,6 +1,6 @@
 {
- "version": "2026-11-22 version 5",
- "source": "TPRM Question Bank (draft).xlsx, approved 20 Nov 2026; answer types, benchmarks, report coverage and evidence rules from \"TPRM questions vs ISO 27001 and SOC 2.xlsx\", 22 Nov 2026; version 3: the \"Cloud & Hosting\" module renamed \"Hosting Platform & Cloud Provider\", internal notes moved out of the third party's text into the firm-only benchmark, report_partly_supported dropped; version 4: base and module questions no longer assume an Indian client (the India-specific expectations moved to the firm-only benchmark), answer hints that did not fit the Yes / No / Not applicable control fixed, and the unverified Central Bank timeline out of UAE-03",
+ "version": "2026-11-24 version 6",
+ "source": "TPRM Question Bank (draft).xlsx, approved 20 Nov 2026; answer types, benchmarks, report coverage and evidence rules from \"TPRM questions vs ISO 27001 and SOC 2.xlsx\", 22 Nov 2026; version 3: the \"Cloud & Hosting\" module renamed \"Hosting Platform & Cloud Provider\", internal notes moved out of the third party's text into the firm-only benchmark, report_partly_supported dropped; version 4: base and module questions no longer assume an Indian client (the India-specific expectations moved to the firm-only benchmark), answer hints that did not fit the Yes / No / Not applicable control fixed, and the unverified Central Bank timeline out of UAE-03; version 6: tick-box fields for questions with a fixed set of choices",
  "questions": [
   {
    "id": "GOV-01",
@@ -957,8 +957,8 @@
    "evidence_mandatory": false,
    "min_tier": "Low",
    "iso27001": "8.5",
-   "status": "Changed in version 5",
-   "change_note": "Two details asked for in guidance given fields shown on Yes.",
+   "status": "Changed in version 6",
+   "change_note": "The Factors used box became tick boxes, with a box for other factors.",
    "source": "Original pack, Tier tabs",
    "delivery_models": "Vendor-hosted",
    "answered_by": "Vendor",
@@ -970,9 +970,28 @@
    ],
    "report_coverage": "none",
    "benchmark": null,
-   "details_on_yes": {
-    "label": "Factors used"
-   }
+   "fields": [
+    {
+     "key": "factors",
+     "label": "Factors used",
+     "kind": "multi",
+     "options": [
+      "Authenticator app code",
+      "Push approval on a phone",
+      "Hardware security key (FIDO2)",
+      "Smart card or certificate",
+      "SMS or voice code",
+      "Email code",
+      "Other"
+     ]
+    },
+    {
+     "key": "other_factors",
+     "label": "Other factors, if any",
+     "kind": "short"
+    }
+   ],
+   "fields_on": "yes"
   },
   {
    "id": "IAM-04",
@@ -1819,8 +1838,8 @@
    "evidence_mandatory": false,
    "min_tier": "Critical",
    "iso27001": "8.20",
-   "status": "Changed in version 5",
-   "change_note": "Two details asked for in guidance given fields shown on Yes.",
+   "status": "Changed in version 6",
+   "change_note": "Authentication method became tick boxes.",
    "source": "Original pack, Tier tabs",
    "delivery_models": "Vendor-hosted",
    "answered_by": "Vendor",
@@ -1834,14 +1853,25 @@
    "benchmark": null,
    "fields": [
     {
-     "key": "authentication_method",
+     "key": "auth_methods",
      "label": "Authentication method",
-     "kind": "short"
+     "kind": "multi",
+     "options": [
+      "802.1X with certificates (EAP-TLS)",
+      "802.1X with username and password",
+      "Shared password (PSK)",
+      "Other"
+     ]
     },
     {
      "key": "guest_isolation",
      "label": "Guest isolation controls",
      "kind": "long"
+    },
+    {
+     "key": "other_method",
+     "label": "Other method, if any",
+     "kind": "short"
     }
    ],
    "fields_on": "yes"
@@ -2183,8 +2213,8 @@
    "evidence_mandatory": false,
    "min_tier": "Medium",
    "iso27001": "5.23",
-   "status": "Changed in version 5",
-   "change_note": "Three asks in one box split into three fields.",
+   "status": "Changed in version 6",
+   "change_note": "Service models became tick boxes.",
    "source": "Original pack, Tier tabs",
    "delivery_models": "Vendor-hosted",
    "answered_by": "Vendor",
@@ -2207,9 +2237,15 @@
      "kind": "long"
     },
     {
-     "key": "service_models",
+     "key": "models",
      "label": "Service models",
-     "kind": "short"
+     "kind": "multi",
+     "options": [
+      "Infrastructure as a service (IaaS)",
+      "Platform as a service (PaaS)",
+      "Software as a service (SaaS)",
+      "Own data centre or colocation"
+     ]
     }
    ],
    "fields_on": "answer",
@@ -3105,8 +3141,8 @@
    "evidence_mandatory": false,
    "min_tier": "Critical",
    "iso27001": "8.12",
-   "status": "Changed in version 5",
-   "change_note": "Details box on Yes for the policies the guidance asks to describe.",
+   "status": "Changed in version 6",
+   "change_note": "Tick boxes for the channels covered; the Details box became the policies field.",
    "source": "Original pack, Tier tabs",
    "delivery_models": "Vendor-hosted",
    "answered_by": "Vendor",
@@ -3118,9 +3154,25 @@
    ],
    "report_coverage": "none",
    "benchmark": null,
-   "details_on_yes": {
-    "label": "Policies applied to client data"
-   }
+   "fields": [
+    {
+     "key": "channels",
+     "label": "Channels covered",
+     "kind": "multi",
+     "options": [
+      "Email",
+      "Web",
+      "Endpoint (USB, printing, local copies)",
+      "Cloud egress (uploads to cloud services)"
+     ]
+    },
+    {
+     "key": "policies",
+     "label": "Policies applied to client data",
+     "kind": "long"
+    }
+   ],
+   "fields_on": "yes"
   },
   {
    "id": "PRV-01",
@@ -3340,8 +3392,8 @@
    "evidence_mandatory": true,
    "min_tier": "Medium",
    "iso27001": "5.34",
-   "status": "Changed in version 5",
-   "change_note": "Turnaround and channel given a field each on Yes.",
+   "status": "Changed in version 6",
+   "change_note": "Request channel became tick boxes.",
    "source": "Original pack, Tier tabs",
    "delivery_models": "Vendor-hosted",
    "answered_by": "Vendor",
@@ -3360,8 +3412,20 @@
      "kind": "short"
     },
     {
-     "key": "channel",
+     "key": "channels",
      "label": "Request channel",
+     "kind": "multi",
+     "options": [
+      "Email",
+      "Client's ticketing portal",
+      "Vendor's support portal",
+      "API",
+      "Other"
+     ]
+    },
+    {
+     "key": "other_channel",
+     "label": "Other channel, if any",
      "kind": "short"
     }
    ],
@@ -3753,8 +3817,8 @@
    "evidence_mandatory": true,
    "min_tier": "Low",
    "iso27001": "5.24; 6.8",
-   "status": "Changed in version 5",
-   "change_note": "Hours and channel split into two fields.",
+   "status": "Changed in version 6",
+   "change_note": "Notification channel became tick boxes.",
    "source": "Original pack, Tier tabs",
    "delivery_models": "Vendor-hosted; Client-hosted (all tiers); Staff in client environment (all tiers); Non-technology services (all tiers)",
    "answered_by": "Vendor",
@@ -3772,8 +3836,20 @@
      "kind": "number"
     },
     {
-     "key": "channel",
+     "key": "channels",
      "label": "Notification channel",
+     "kind": "multi",
+     "options": [
+      "Email",
+      "Phone call",
+      "Client's ticketing or service portal",
+      "Named security contact",
+      "Other"
+     ]
+    },
+    {
+     "key": "other_channel",
+     "label": "Other channel, if any",
      "kind": "short"
     }
    ],
@@ -4721,8 +4797,8 @@
    "evidence_mandatory": true,
    "min_tier": "High",
    "iso27001": "7.4",
-   "status": "Changed in version 5",
-   "change_note": "Controls in place and retention per record type split into four fields.",
+   "status": "Changed in version 6",
+   "change_note": "Controls in place became tick boxes.",
    "source": "Original pack, Tier tabs",
    "delivery_models": "Vendor-hosted",
    "answered_by": "Vendor",
@@ -4735,9 +4811,14 @@
    "benchmark": null,
    "fields": [
     {
-     "key": "controls_in_place",
-     "label": "Which of the three controls you have",
-     "kind": "long"
+     "key": "controls",
+     "label": "Controls in place",
+     "kind": "multi",
+     "options": [
+      "CCTV",
+      "Visitor registration",
+      "Access logging (badge or key-card records)"
+     ]
     },
     {
      "key": "cctv_retention",
@@ -6202,8 +6283,8 @@
    "evidence_mandatory": true,
    "min_tier": "All tiers",
    "iso27001": "8.15",
-   "status": "Changed in version 5",
-   "change_note": "Four asks in one box split into four fields; the retention remark kept against the retention field.",
+   "status": "Changed in version 6",
+   "change_note": "What is logged became tick boxes.",
    "source": "Topics informed by reco.ai AI Vendor Security Questionnaire (Jul 2026); SEBI Intermediaries Reg. 16C (Feb 2025, binding); RBI FREE-AI report (Aug 2025, guidance) and draft Model Risk Management guidance (Jun 2026, draft); CERT-In AI Security Auditing Guidelines (Nov 2026, guidance); OWASP Top 10 for LLM Applications 2026; ISO/IEC 42001",
    "delivery_models": "Any (when AIS-01 is Yes)",
    "answered_by": "Vendor",
@@ -6216,9 +6297,16 @@
    "benchmark": null,
    "fields": [
     {
-     "key": "logged_items",
+     "key": "logged",
      "label": "Which AI inputs, outputs and actions you log",
-     "kind": "long"
+     "kind": "multi",
+     "options": [
+      "Inputs (prompts and files)",
+      "Outputs",
+      "Actions taken in systems",
+      "Model and version used",
+      "Other"
+     ]
     },
     {
      "key": "client_access",
@@ -6606,8 +6694,8 @@
    "evidence_mandatory": true,
    "min_tier": "All tiers",
    "iso27001": "8.19; 8.32",
-   "status": "Changed in version 5",
-   "change_note": "Delivery, verification and release notes split into three fields.",
+   "status": "Changed in version 6",
+   "change_note": "Delivery channel became tick boxes.",
    "source": "Software Supplier Questionnaire.xlsx",
    "delivery_models": "Client-hosted",
    "answered_by": "Vendor",
@@ -6620,9 +6708,17 @@
    "benchmark": null,
    "fields": [
     {
-     "key": "delivery_channel",
+     "key": "delivery",
      "label": "Delivery channel",
-     "kind": "short"
+     "kind": "multi",
+     "options": [
+      "Vendor download portal",
+      "Package registry or repository",
+      "Installed remotely by the vendor",
+      "Installed on site by vendor staff",
+      "Physical media",
+      "Other"
+     ]
     },
     {
      "key": "verification",
@@ -6633,6 +6729,11 @@
      "key": "release_notes",
      "label": "Release notes provided",
      "kind": "long"
+    },
+    {
+     "key": "other_delivery",
+     "label": "Other channel, if any",
+     "kind": "short"
     }
    ],
    "fields_on": "answer",
@@ -7077,8 +7178,8 @@
    "evidence_mandatory": true,
    "min_tier": "All tiers",
    "iso27001": "8.15",
-   "status": "Changed in version 5",
-   "change_note": "Three detail asks became three fields on Yes.",
+   "status": "Changed in version 6",
+   "change_note": "Event types and forwarding methods became tick boxes, with a box for anything else.",
    "source": "Software Supplier Questionnaire.xlsx",
    "delivery_models": "Client-hosted",
    "answered_by": "Vendor",
@@ -7092,9 +7193,19 @@
    "benchmark": null,
    "fields": [
     {
-     "key": "event_types",
+     "key": "events",
      "label": "Event types logged",
-     "kind": "long"
+     "kind": "multi",
+     "options": [
+      "Sign-in and sign-out",
+      "Failed sign-in attempts",
+      "Administrative and configuration changes",
+      "Permission and role changes",
+      "Data exports",
+      "Transaction events",
+      "Changes to log settings",
+      "Other"
+     ]
     },
     {
      "key": "log_format",
@@ -7102,8 +7213,21 @@
      "kind": "short"
     },
     {
-     "key": "forwarding",
-     "label": "Supported forwarding methods",
+     "key": "forwarding_methods",
+     "label": "Forwarding methods",
+     "kind": "multi",
+     "options": [
+      "Syslog",
+      "API that the client pulls from",
+      "Push to a webhook or stream",
+      "File export",
+      "Ready-made SIEM connector",
+      "Other"
+     ]
+    },
+    {
+     "key": "other_details",
+     "label": "Other, if any",
      "kind": "short"
     }
    ],
@@ -8025,8 +8149,8 @@
    "evidence_mandatory": true,
    "min_tier": "All tiers",
    "iso27001": "5.34",
-   "status": "Changed in version 5",
-   "change_note": "Three detail asks became three fields on Yes.",
+   "status": "Changed in version 6",
+   "change_note": "Request channel became tick boxes.",
    "source": "Original pack, Conditional Modules",
    "delivery_models": "Any (when module triggered)",
    "answered_by": "Vendor",
@@ -8045,14 +8169,26 @@
      "kind": "short"
     },
     {
-     "key": "channel",
+     "key": "channels",
      "label": "Request channel",
-     "kind": "short"
+     "kind": "multi",
+     "options": [
+      "Email",
+      "Client's ticketing portal",
+      "Vendor's support portal",
+      "API",
+      "Other"
+     ]
     },
     {
      "key": "escalation",
      "label": "Escalation route",
      "kind": "long"
+    },
+    {
+     "key": "other_channel",
+     "label": "Other channel, if any",
+     "kind": "short"
     }
    ],
    "fields_on": "yes",
@@ -10247,13 +10383,13 @@
    "domain": "Data Privacy",
    "theme": "Transfer mechanism",
    "question": "If personal data leaves the EEA, which transfer mechanism do you rely on?",
-   "guidance": "Answer: None leaves the EEA / Adequacy / EU-US Data Privacy Framework / SCCs 2021/914 / BCRs / Derogation.",
+   "guidance": "Tick every mechanism you rely on.",
    "evidence": "Transfer register",
    "evidence_mandatory": true,
    "min_tier": "All tiers",
    "iso27001": "5.34; 5.14",
    "status": "New",
-   "change_note": "New, drafted from regulator research on 20 Nov 2026; check before use.",
+   "change_note": "New, drafted from regulator research on 20 Nov 2026; check before use. Version 6: Tick boxes for the transfer mechanisms.",
    "source": "EU GDPR (Reg. 2016/679) Art 28, 33, Chapter V - https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32016R0679",
    "delivery_models": "Any (when rulebook ticked)",
    "answered_by": "Vendor",
@@ -10272,7 +10408,23 @@
     "EEA",
     "SCCs",
     "BCRs"
-   ]
+   ],
+   "fields": [
+    {
+     "key": "mechanisms",
+     "label": "Transfer mechanism",
+     "kind": "multi",
+     "options": [
+      "None leaves the EEA",
+      "Adequacy decision",
+      "EU-US Data Privacy Framework",
+      "Standard contractual clauses (2021/914)",
+      "Binding corporate rules",
+      "Derogation (Article 49)"
+     ]
+    }
+   ],
+   "fields_on": "answer"
   },
   {
    "id": "GDP-02",
@@ -11494,13 +11646,13 @@
    "domain": "Application & Secure Development",
    "theme": "Critical application assurance",
    "question": "For critical applications, which of these do you provide: a certificate that the software is free of known vulnerabilities and malware, and the source code or a source-code escrow?",
-   "guidance": "Say which: both, only the certificate, only the source code or escrow, or neither.",
+   "guidance": "Tick everything you provide, or None of these.",
    "evidence": "Software certificate (free of known vulnerabilities and malware)",
    "evidence_mandatory": false,
    "min_tier": "All tiers",
    "iso27001": "8.4; 8.29",
    "status": "New",
-   "change_note": "New, drafted from regulator research on 20 Nov 2026; check before use.",
+   "change_note": "New, drafted from regulator research on 20 Nov 2026; check before use. Version 6: Tick boxes for what is provided.",
    "source": "RBI IT/cyber Directions for Commercial Banks, 31 Jul 2026 - https://www.rbi.org.in/scripts/NotificationUser.aspx?Id=13643",
    "delivery_models": "Any (when rulebook ticked)",
    "answered_by": "Vendor",
@@ -11514,7 +11666,21 @@
    "document": {
     "name": "Software certificate (free of known vulnerabilities and malware)",
     "group": "Contracts and agreements"
-   }
+   },
+   "fields": [
+    {
+     "key": "provided",
+     "label": "What you provide",
+     "kind": "multi",
+     "options": [
+      "Certificate that the software is free of known vulnerabilities and malware",
+      "Source code",
+      "Source-code escrow",
+      "None of these"
+     ]
+    }
+   ],
+   "fields_on": "answer"
   },
   {
    "id": "RBI-08",
@@ -11837,8 +12003,8 @@
    "evidence_mandatory": true,
    "min_tier": "All tiers",
    "iso27001": "5.34; 5.14",
-   "status": "Changed in version 5",
-   "change_note": "Two asks split into two fields; v4 sentence 'Continuous or large-scale sensitive transfers need a risk assessment.' left out of guidance, decide whether to keep as help text.",
+   "status": "Changed in version 6",
+   "change_note": "Safeguard became tick boxes.",
    "source": "KSA PDPL and Implementing / Transfer Regulations - https://dgp.sdaia.gov.sa",
    "delivery_models": "Any (when rulebook ticked)",
    "answered_by": "Vendor",
@@ -11851,9 +12017,15 @@
    "benchmark": null,
    "fields": [
     {
-     "key": "safeguard",
-     "label": "Safeguard that applies",
-     "kind": "short"
+     "key": "safeguards",
+     "label": "Safeguard",
+     "kind": "multi",
+     "options": [
+      "Data stays in Saudi Arabia",
+      "SDAIA standard clauses",
+      "Binding common rules",
+      "Certification"
+     ]
     },
     {
      "key": "sensitive_transfer",
@@ -12307,13 +12479,13 @@
    "domain": "Data Privacy",
    "theme": "Transfer mechanism",
    "question": "If personal data leaves the DIFC or ADGM, which mechanism do you rely on?",
-   "guidance": "Answer: Adequate jurisdiction / DIFC or ADGM standard clauses / BCRs / None leaves.",
+   "guidance": "Tick every mechanism you rely on.",
    "evidence": "Transfer register",
    "evidence_mandatory": true,
    "min_tier": "All tiers",
    "iso27001": "5.34; 5.14",
    "status": "New",
-   "change_note": "New, drafted from regulator research on 20 Nov 2026; check before use.",
+   "change_note": "New, drafted from regulator research on 20 Nov 2026; check before use. Version 6: Tick boxes for the transfer mechanisms.",
    "source": "DIFC Data Protection Law No. 5 of 2020 (consolidated Jul 2025); ADGM Data Protection Regulations 2021",
    "delivery_models": "Any (when rulebook ticked)",
    "answered_by": "Vendor",
@@ -12332,7 +12504,21 @@
     "DIFC",
     "ADGM",
     "BCRs"
-   ]
+   ],
+   "fields": [
+    {
+     "key": "mechanisms",
+     "label": "Transfer mechanism",
+     "kind": "multi",
+     "options": [
+      "None leaves the DIFC or ADGM",
+      "Adequate jurisdiction",
+      "DIFC or ADGM standard clauses",
+      "Binding corporate rules"
+     ]
+    }
+   ],
+   "fields_on": "answer"
   },
   {
    "id": "UKF-01",
@@ -12463,8 +12649,8 @@
    "evidence_mandatory": true,
    "min_tier": "All tiers",
    "iso27001": "5.34; 5.14",
-   "status": "Changed in version 5",
-   "change_note": "Risk assessment question hidden in the guidance moved into the question; two fields.",
+   "status": "Changed in version 6",
+   "change_note": "Transfer tool became tick boxes.",
    "source": "UK GDPR / DPA 2018 as amended by Data (Use and Access) Act 2025 - https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/international-transfers/",
    "delivery_models": "Any (when rulebook ticked)",
    "answered_by": "Vendor",
@@ -12477,9 +12663,16 @@
    "benchmark": null,
    "fields": [
     {
-     "key": "transfer_tool",
-     "label": "Transfer tool you rely on",
-     "kind": "short"
+     "key": "tools",
+     "label": "Transfer tool",
+     "kind": "multi",
+     "options": [
+      "None leaves the UK",
+      "Adequacy regulations",
+      "International data transfer agreement (IDTA)",
+      "UK Addendum to the EU SCCs",
+      "UK Extension to the Data Privacy Framework"
+     ]
     },
     {
      "key": "risk_assessment",

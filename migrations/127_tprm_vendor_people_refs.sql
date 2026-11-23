@@ -1,0 +1,8 @@
+ALTER TABLE tp_answers DROP CONSTRAINT IF EXISTS tp_answers_saved_by_person_id_fkey;
+ALTER TABLE tp_answers ADD CONSTRAINT tp_answers_saved_by_person_id_fkey FOREIGN KEY (saved_by_person_id) REFERENCES tp_vendor_people(id);
+ALTER TABLE tp_clarifications DROP CONSTRAINT IF EXISTS tp_clarifications_responded_by_person_id_fkey;
+ALTER TABLE tp_clarifications ADD CONSTRAINT tp_clarifications_responded_by_person_id_fkey FOREIGN KEY (responded_by_person_id) REFERENCES tp_vendor_people(id);
+ALTER TABLE tp_issue_messages DROP CONSTRAINT IF EXISTS tp_issue_messages_author_person_id_fkey;
+ALTER TABLE tp_issue_messages ADD CONSTRAINT tp_issue_messages_author_person_id_fkey FOREIGN KEY (author_person_id) REFERENCES tp_vendor_people(id);
+ALTER TABLE tp_condition_proofs DROP CONSTRAINT IF EXISTS tp_condition_proofs_submitted_by_person_id_fkey;
+ALTER TABLE tp_condition_proofs ADD CONSTRAINT tp_condition_proofs_submitted_by_person_id_fkey FOREIGN KEY (submitted_by_person_id) REFERENCES tp_vendor_people(id);

@@ -146,6 +146,7 @@
               <% if (r.prefilled_from_answer_id) { %><span class="tpa-meta-inline">Confirmed from last time</span><% } %>
             </p>
             <% if (r.answerText) { %><p class="tpa-answer" data-tprm-answer-text><%= r.answerText %></p><% } else if (r.detail) { %><p class="tpa-answer" data-tprm-answer-detail><%= r.detail %></p><% } %>
+            <% if (r.comments && r.comments.length) { %><ul class="tpa-comments" data-tprm-answer-comments><% r.comments.forEach(c => { %><li><span class="tpa-meta"><%= c.name %>, <%= qWhen(c.at) %></span><span class="tpu-pre"><%= c.body %></span></li><% }) %></ul><% } %>
             <p class="tpa-meta" data-tprm-answer-evidence><% if (r.evidence_ref) { %>Evidence: <%= r.evidence_ref %><% if (r.evidence_date) { %>, dated <%= aDay(r.evidence_date) %><% } %><% } else if (!r.files.length && !rv.typed) { %>No evidence given<% if (r.evidenceRequired) { %> (evidence required)<% } %><% } %></p>
             <% if (r.files.length) { %>
               <ul class="tpw-files">

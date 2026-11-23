@@ -217,7 +217,7 @@ function request(method, urlPath, { body = null, headers = {} } = {}) {
 }
 
 const vget = token => request('GET', `/vendor/c/${token}`);
-const aftOf = text => (String(text).match(/name="_aft" value="([^"]+)"/) || [])[1];
+const aftOf = text => (String(text).replace(/<form[^>]*data-vendor-sign-out[\s\S]*?<\/form>/g, '').match(/name="_aft" value="([^"]+)"/) || [])[1];
 
 function multipart(fields, files = []) {
   const boundary = '----tprmp5f' + crypto.randomBytes(8).toString('hex');
@@ -620,4 +620,30 @@ test('9. rate limits on the conditions link, and deleting a client removes its l
   await purge('P5F Cascade Client', false);
   const restoreCheck = fs.readFileSync(path.join(ROOT, 'lib', 'restore-check.js'), 'utf8');
   assert.match(restoreCheck, /'tp_condition_links', 'tp_recommendation_snapshots'/);
+});
+
+test('signed in to the portal, a person sends proof for a condition under their own name', async () => {
+  const ctx = await withConditions(main, 'Portal Proof Co');
+  const { token } = await createLink(consultant.session, ctx);
+  assert.ok(token);
+  const added = await consultant.session.post(`/tprm/clients/${ctx.ws}/third-parties/${ctx.tp}/people`, { name: 'Ivy Chen', email: 'ivy@portalproof.example' });
+  assert.equal(added.status, 302);
+  const person = await db.prepare(`SELECT * FROM tp_vendor_people WHERE workspace_id=? AND third_party_id=? AND email='ivy@portalproof.example'`).get(ctx.ws, ctx.tp);
+  const firm = await db.prepare('SELECT firm_id FROM workspaces WHERE id=?').get(ctx.ws);
+  const sid = await require('../lib/tprm/vendor-session').createSession(db, { firmId: Number(firm.firm_id), email: 'ivy@portalproof.example' });
+  const cookie = `tpv_sid=${sid}`;
+  const home = await request('GET', '/vendor/p/home', { headers: { cookie } });
+  assert.match(home.text, new RegExp(`href="/vendor/p/a/${ctx.a}/c">Send proof`));
+  const page = await request('GET', `/vendor/p/a/${ctx.a}/c`, { headers: { cookie } });
+  assert.equal(page.status, 200);
+  assert.match(page.text, new RegExp(`action="/vendor/p/a/${ctx.a}/c/conditions/${ctx.vendorId}/proof"`));
+  const form = multipart([['_aft', aftOf(page.text)], ['note', 'MFA is on for every admin.']], [{ filename: 'mfa.txt', content: 'MFA enforced' }]);
+  const sent = await request('POST', `/vendor/p/a/${ctx.a}/c/conditions/${ctx.vendorId}/proof`, { body: form.body, headers: { ...form.headers, cookie } });
+  for (const r of await db.prepare('SELECT stored_path FROM tp_condition_proof_files').all()) createdPaths.add(r.stored_path);
+  assert.equal(sent.status, 303, sent.text.slice(0, 300));
+  assert.equal(sent.location, `/vendor/p/a/${ctx.a}/c?notice=sent`);
+  const proof = (await proofsOf(ctx.vendorId)).pop();
+  assert.equal(Number(proof.submitted_by_person_id), Number(person.id));
+  const withLinkAft = multipart([['_aft', aftOf((await vget(token)).text)], ['note', 'x']], []);
+  assert.equal((await request('POST', `/vendor/p/a/${ctx.a}/c/conditions/${ctx.vendorId}/proof`, { body: withLinkAft.body, headers: { ...withLinkAft.headers, cookie } })).status, 403);
 });

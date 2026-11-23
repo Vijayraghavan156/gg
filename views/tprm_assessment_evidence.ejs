@@ -6,6 +6,8 @@
   const evWhen = d => tpf.dayTime(d) || '-';
   const evSize = n => tpf.fileSize(Number(n) || 0);
   const released = ep.evidence.filter(e => e.released_to_client).length;
+  const ip = typeof issuesPanel !== 'undefined' && issuesPanel ? issuesPanel : { list: [], labels: {}, canManage: false };
+  const issueOf = fid => ip.list.find(i => Number(i.finding_id) === Number(fid) && i.status !== 'withdrawn') || null;
 %>
 <div class="panel" id="evidence" data-tprm-evidence>
   <div class="panel-head">
@@ -97,7 +99,61 @@
           <% if (f.evidence.length) { %>Evidence: <% f.evidence.forEach((e, i) => { %><%= i ? ', ' : '' %><a href="<%= evBase %>/evidence/<%= e.id %>/download"><%= e.original_name %></a><% }) %><% } else { %>No evidence linked<% } %>
           · Added by <%= f.created_by_name || 'Unknown user' %> · <%= evWhen(f.created_at) %><% if (f.source === 'ai_accepted') { %> · <span data-tprm-finding-source="ai_accepted">accepted from an AI suggestion</span><% } %>
         </div>
+        <% const shared = issueOf(f.id); %>
+        <div class="text-xs tpu-mt-6" data-tprm-finding-share="<%= shared ? shared.status : 'none' %>">
+          <% if (shared) { %>Shared with the third party: <a href="#issue-<%= shared.id %>"><%= ip.labels[shared.status] %></a>
+          <% } else if (ip.canManage) { %><a href="<%= evBase %>/findings/<%= f.id %>/share" data-tprm-share-finding>Share with the third party</a><% } %>
+        </div>
       </div>
     <% }) %>
   <% } %>
 </div>
+
+<% if (ip.list.length) { %>
+<div class="panel tpu-mt-14" id="issues" data-tprm-issues>
+  <div class="panel-head"><h2>Issues shared with the third party</h2><span class="meta"><%= ip.list.filter(i => i.status !== 'withdrawn').length %></span></div>
+  <% ip.list.forEach(i => { const proposal = i.latestProposal; %>
+    <div class="panel-pad tprm-divide" id="issue-<%= i.id %>" data-tprm-issue="<%= i.id %>" data-tprm-issue-status="<%= i.status %>">
+      <div class="tprm-aw-between-top">
+        <div><strong><%= i.title %></strong> <%- include('partials/tprm_status', { text: ip.labels[i.status], tone: i.status === 'agreed' ? 'good' : i.status === 'proposed' ? 'attention' : 'quiet' }) %></div>
+        <span class="meta text-xs">Shared by <%= i.shared_by_name || 'a consultant' %> · <%= evWhen(i.shared_at) %></span>
+      </div>
+      <div class="tpu-pre tpu-mt-6"><%= i.body %></div>
+      <% if (i.status === 'agreed') { %><p class="tpu-mt-6" data-tprm-issue-agreed>Agreed fix: <%= i.agreed_fix %><%= i.agreed_date ? ', by ' + tpf.day(i.agreed_date) : '' %>.</p><% } %>
+      <% if (i.messages.length) { %>
+        <ol class="tprm-issue-thread" data-tprm-issue-thread>
+          <% i.messages.forEach(m => { %>
+            <li data-tprm-issue-message="<%= m.author_kind %>">
+              <span class="meta text-xs"><%= m.author_kind === 'firm' ? (m.author_name || 'Consultant') : (m.author_name || 'The third party') %> · <%= evWhen(m.created_at) %></span>
+              <% if (m.proposed_fix) { %><div><span class="tpu-medium">Proposed fix:</span> <span class="tpu-pre"><%= m.proposed_fix %></span><%= m.proposed_date ? ' (by ' + tpf.day(m.proposed_date) + ')' : '' %></div><% } %>
+              <% if (m.body) { %><div class="tpu-pre"><%= m.body %></div><% } %>
+            </li>
+          <% }) %>
+        </ol>
+      <% } %>
+      <% if (ip.canManage && i.status !== 'withdrawn') { %>
+        <div class="tprm-issue-actions">
+          <% if (i.status === 'proposed' && proposal) { %>
+            <form method="POST" action="<%= evBase %>/issues/<%= i.id %>/agree" class="tpu-m-0" data-tprm-issue-agree>
+              <input type="hidden" name="_csrf" value="<%= evCsrf %>"><input type="hidden" name="row_version" value="<%= i.row_version %>">
+              <%- include('partials/tprm_confirm_fields', { title: 'Agree this fix?', body: 'The third party sees the fix as agreed. If a recommendation is being drafted, the fix is added to it as a condition owned by the third party.', action: 'Agree fix' }) %>
+              <button class="btn btn-primary btn-xs" type="submit">Agree the proposed fix</button>
+            </form>
+          <% } %>
+          <form method="POST" action="<%= evBase %>/issues/<%= i.id %>/reply" class="tprm-issue-reply" data-tprm-issue-reply>
+            <input type="hidden" name="_csrf" value="<%= evCsrf %>">
+            <label class="sr-only" for="issue-reply-<%= i.id %>">Reply to the third party on <%= i.title %></label>
+            <textarea class="input" id="issue-reply-<%= i.id %>" name="body" rows="2" maxlength="4000" placeholder="Reply to the third party"></textarea>
+            <button class="btn btn-secondary btn-xs" type="submit">Send reply</button>
+          </form>
+          <form method="POST" action="<%= evBase %>/issues/<%= i.id %>/withdraw" class="tpu-m-0" data-tprm-issue-withdraw>
+            <input type="hidden" name="_csrf" value="<%= evCsrf %>"><input type="hidden" name="row_version" value="<%= i.row_version %>">
+            <%- include('partials/tprm_confirm_fields', { title: 'Withdraw this issue?', body: 'The third party no longer sees it. The finding stays as it is.', action: 'Withdraw' }) %>
+            <button class="btn btn-ghost btn-xs" type="submit">Withdraw</button>
+          </form>
+        </div>
+      <% } %>
+    </div>
+  <% }) %>
+</div>
+<% } %>

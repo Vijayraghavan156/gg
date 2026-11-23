@@ -1,0 +1,90 @@
+<%
+  const base = locals.base || ('/vendor/q/' + token);
+  const fmtDay = d => (d ? tpf.day(d) : '');
+  const fmtWhen = d => (d ? tpf.dayTime(d, { zone: true }) : '');
+  const errorList = (errors || []).map(e => String(e && typeof e === 'object' ? e.message : e));
+  const v = values || {};
+%><!doctype html>
+<html lang="en" class="page-standalone" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <link rel="stylesheet" href="/app.css">
+<%- include('tprm_portal_head', { title: 'Issues · ' + p.clientName, frame }) %>
+</head>
+<body class="vq-body">
+  <a class="vq-skip" href="#main">Skip to the content</a>
+  <%- include('partials/tprm_portal_top', { frame }) %>
+  <div class="vq-frame">
+    <%- include('partials/tprm_portal_side', { frame }) %>
+    <main class="vq-main" id="main" data-vendor-issues>
+      <header class="vq-top">
+        <div class="vq-top-main">
+          <h1 class="vq-title">Issues</h1>
+          <p class="vq-top-meta">Security review for <span data-vendor-client><%= p.clientName %></span>.<% if (p.expiresAt) { %> <span class="vq-due" data-vendor-deadline>Link works until <strong><%= fmtDay(p.expiresAt) %></strong></span>.<% } %></p>
+        </div>
+        <div class="vq-toolbar"><a class="vq-btn vq-btn--secondary" href="<%= base %>" data-vendor-issues-back>Questionnaire</a></div>
+      </header>
+
+      <% if (notice) { %><p class="vq-notice" role="status" data-vendor-notice><%= notice %></p><% } %>
+      <% if (errorList.length) { %>
+        <div class="vq-errors" role="alert" data-vendor-errors>
+          <p class="vq-errors-title">Nothing was sent. Correct the following:</p>
+          <ul><% errorList.forEach(e => { %><li><%= e %></li><% }) %></ul>
+        </div>
+      <% } %>
+
+      <% if (!p.issues.length) { %>
+        <p class="vq-muted" data-vendor-issues-empty>No issues.</p>
+      <% } %>
+
+      <% p.issues.forEach((i, n) => { const mine = Number(v.issue) === i.id; %>
+        <section class="vq-item" id="issue-<%= i.id %>" data-vendor-issue="<%= i.id %>" data-vendor-issue-status="<%= i.status %>">
+          <h2 class="vq-h3 vq-item-head"><%= i.title %></h2>
+          <p class="vq-item-ref">Shared <%= fmtDay(i.sharedAt) %>. Status: <span data-vendor-issue-label><%= i.label %></span></p>
+          <p class="vq-item-sub vq-pre"><%= i.body %></p>
+
+          <% if (i.status === 'agreed') { %>
+            <dl class="vq-facts" data-vendor-issue-agreed>
+              <dt>Agreed fix</dt><dd class="vq-pre"><%= i.agreedFix %></dd>
+              <% if (i.agreedDate) { %><dt>Due</dt><dd><%= fmtDay(i.agreedDate) %></dd><% } %>
+              <dt>Next step</dt><dd>You will be asked for proof when it is done</dd>
+            </dl>
+          <% } %>
+
+          <% if (i.messages.length) { %>
+            <ol class="vq-thread" data-vendor-issue-thread>
+              <% i.messages.forEach(m => { %>
+                <li class="vq-thread-item" data-vendor-issue-message="<%= m.mine ? 'third_party' : 'firm' %>">
+                  <p class="vq-thread-by"><strong><%= m.name %></strong>, <%= fmtWhen(m.at) %></p>
+                  <% if (m.proposedFix) { %><p class="vq-pre">Proposed fix: <%= m.proposedFix %><% if (m.proposedDate) { %>, by <%= fmtDay(m.proposedDate) %><% } %></p><% } %>
+                  <% if (m.body) { %><p class="vq-pre"><%= m.body %></p><% } %>
+                </li>
+              <% }) %>
+            </ol>
+          <% } %>
+
+          <% if (!p.closed) { %>
+            <form method="POST" action="<%= base %>/issues/<%= i.id %>" class="vq-issue-form vq-form-grid" data-vendor-issue-form="<%= i.id %>">
+              <input type="hidden" name="_aft" value="<%= aft %>">
+              <div class="vq-field"><label class="vq-label" for="body-<%= i.id %>">Your reply<% if (i.status !== 'agreed') { %> <span class="vq-optional">optional with a proposed fix</span><% } %></label>
+                <textarea class="vq-input vq-textarea" id="body-<%= i.id %>" name="body" rows="3" maxlength="<%= p.limits.body %>"><%= mine ? (v.body || '') : '' %></textarea></div>
+              <% if (i.status !== 'agreed') { %>
+                <div>
+                  <div class="vq-field"><label class="vq-label" for="fix-<%= i.id %>">Proposed fix <span class="vq-optional">optional</span></label>
+                    <textarea class="vq-input vq-textarea" id="fix-<%= i.id %>" name="proposed_fix" rows="3" maxlength="<%= p.limits.fix %>"><%= mine ? (v.proposed_fix || '') : '' %></textarea></div>
+                  <div class="vq-field"><label class="vq-label" for="date-<%= i.id %>">Done by <span class="vq-optional">needed with a fix</span></label>
+                    <input class="vq-input vq-input--date" id="date-<%= i.id %>" type="date" name="proposed_date" value="<%= mine ? (v.proposed_date || '') : '' %>"></div>
+                </div>
+              <% } %>
+              <div class="vq-form-foot"><button class="vq-btn vq-btn--secondary" type="submit" data-vendor-issue-send>Send</button></div>
+            </form>
+          <% } %>
+        </section>
+      <% }) %>
+      <%- include('partials/tprm_vendor_footer', { firm: p.firm, expiresAt: null, note: locals.signedIn ? '' : 'Do not share this link.' }) %>
+    </main>
+  </div>
+</body>
+</html>

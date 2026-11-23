@@ -174,7 +174,7 @@ async function vsection(token, a, id) {
   assert.ok(index >= 0, `${id} is in the questionnaire`);
   return request('GET', `/vendor/q/${token}?s=${index + 1}`);
 }
-const aftOf = text => (String(text).match(/name="_aft" value="([^"]+)"/) || [])[1];
+const aftOf = text => (String(text).replace(/<form[^>]*data-vendor-sign-out[\s\S]*?<\/form>/g, '').match(/name="_aft" value="([^"]+)"/) || [])[1];
 
 function multipart(fields, files = []) {
   const boundary = '----tprmva' + crypto.randomBytes(8).toString('hex');
@@ -254,7 +254,7 @@ async function legacyInReview(ctx) {
 test('opening the link shows the questionnaire by domain and module and changes nothing', async () => {
   const ctx = await linked('Open Answers Co');
   const q = await qRow(ctx.a);
-  assert.equal(q.vendor_question_count, 35);
+  assert.equal(q.vendor_question_count, 36);
   const before = { q, link: (await linksOf(ctx.a))[0], answers: (await answersOf(ctx.a)).length, events: (await chain(ctx.ws, ctx.a)).length };
   const res = await vget(ctx.token);
   assert.equal(res.status, 200);
@@ -263,11 +263,11 @@ test('opening the link shows the questionnaire by domain and module and changes 
   assert.match(res.headers['x-robots-tag'], /noindex/);
   assert.equal(res.headers['referrer-policy'], 'no-referrer');
   assert.match(res.text, /Questionnaire for Open Answers Co Client/);
-  assert.match(res.text, /Security questionnaire for Open Answers Co Client/);
+  assert.match(res.text, /Security questionnaire for <span data-vendor-client>Open Answers Co Client</);
   assert.match(res.text, /data-vendor-deadline>[^<]*<strong>\d{1,2} [A-Z][a-z]+ \d{4}<\/strong>/, 'the date the link stops working');
   assert.match(res.text, /data-vendor-view="start"/);
   assert.match(res.text, /data-vendor-start/);
-  assert.match(res.text, /data-vendor-reports/, 'the report uploads (decision 3)');
+  assert.match(res.text, /data-vendor-report-hint/, 'the certificate and report are asked in ASR-01 and ASR-03');
   for (const s of q.sections) assert.ok(res.text.includes(`data-vendor-section-link="${s.title.replace(/&/g, '&amp;')}"`), s.title);
   assert.doesNotMatch(res.text, /data-vendor-question=/, 'no questions on the start screen');
   for (const [i, s] of q.sections.entries()) {
@@ -388,7 +388,7 @@ test('saving: an explanation is required for No and Not applicable, Partially is
   assert.equal((await qRow(ctx.a)).status, 'in_progress');
   assert.ok((await linksOf(ctx.a))[0].last_opened_at, 'last_opened_at set by the first POST');
   const page = await request('GET', ok.location);
-  assert.match(page.text, /data-vendor-progress>2 of 35 questions answered/);
+  assert.match(page.text, /data-vendor-progress>2 of 36 questions answered/);
   assert.match(page.text, /data-vendor-notice>Your answers are saved/);
   assert.equal((await linksOf(ctx.a)).length, 1);
   await assert.rejects(db.prepare("UPDATE tp_answers SET detail = NULL WHERE assessment_id=? AND question_id='GOV-01'").run(ctx.a), /tp_answers_detail/);
@@ -586,7 +586,7 @@ test('submission needs every question answered and evidence for evidence-require
   assert.equal((await qRow(ctx.a)).status, 'in_progress');
   const answers = await answerAll(ctx, { 'GOV-02': { r: 'na', d: 'No such function.' }, 'ORG-02': { r: 'no', d: 'Not yet.' } });
   const ready = await save(ctx.token, {}, { intent: 'review' });
-  assert.match(ready.text, /data-vendor-ready>All 35 questions are answered/);
+  assert.match(ready.text, /data-vendor-ready>All 36 questions are answered/);
   assert.match(ready.text, /data-vendor-submit-form/);
   const done = await submitLink(ctx.token);
   assert.equal(done.status, 200);
@@ -598,7 +598,7 @@ test('submission needs every question answered and evidence for evidence-require
   const [link] = await linksOf(ctx.a);
   assert.equal(link.status, 'submitted');
   const rows = await answersOf(ctx.a);
-  assert.equal(rows.length, 35);
+  assert.equal(rows.length, 36);
   assert.ok(rows.every(r => r.submitted_at));
   const invalid = await vget(crypto.randomBytes(32).toString('base64url'));
   const after = await vget(ctx.token);
@@ -889,7 +889,7 @@ test('submitted questionnaires appear in the firm review queue with their open c
   const ctx = await submitted('Queue Vendor Co');
   const q = await qRow(ctx.a);
   const row = new RegExp(`data-tprm-review-questionnaire="${q.id}"[\\s\\S]*?Queue Vendor Co[\\s\\S]*?Submitted by the third party[\\s\\S]*?`
-    + `data-tprm-review-questionnaire-unreviewed>35 of 35<[\\s\\S]*?data-tprm-review-questionnaire-clarifications>0<`);
+    + `data-tprm-review-questionnaire-unreviewed>36 of 36<[\\s\\S]*?data-tprm-review-questionnaire-clarifications>0<`);
   let queue = await senior.session.get('/tprm/review');
   assert.equal(queue.status, 200);
   assert.match(queue.text, /data-tprm-review-questionnaires/);
@@ -1257,10 +1257,11 @@ test('Your documents: upload once with a description, choose on several question
   const ctx = await linked('Shelf Co');
   const vq = (token, query) => request('GET', `/vendor/q/${token}${query}`);
   const start = await vget(ctx.token);
-  assert.match(start.text, /data-vendor-counts data-vendor-questions-left="\d+">\d+ questions in \d+ sections?/);
+  assert.match(start.text, /data-vendor-questions-left="\d+" data-vendor-progress>\d+ of \d+ questions answered</);
+  assert.doesNotMatch(start.text, /<dt>/, 'no details sheet on the overview');
   assert.doesNotMatch(start.text, /Dear /, 'no letter');
   assert.doesNotMatch(start.text, /hours?\b|minutes?\b/, 'no time estimate');
-  assert.match(start.text, /data-vendor-documents-link/);
+  assert.match(start.text, /data-vendor-nav="documents"/);
   await db.prepare(`INSERT INTO tp_evidence (workspace_id, assessment_id, original_name, stored_path, size_bytes, sha256, source, uploaded_by, description)
     VALUES (?, ?, 'firm-internal-notes.txt', 'firm-shelf-test.txt', 5, ?, 'consultant', ?, 'FIRM-ONLY-DESCRIPTION')`)
     .run(ctx.ws, ctx.a, crypto.createHash('sha256').update('firm-shelf').digest('hex'), consultant.id);

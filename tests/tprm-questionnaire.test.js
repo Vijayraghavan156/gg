@@ -152,10 +152,10 @@ test('base questions are nested by tier for a vendor-hosted service, and AIS-01 
     for (const id of sets[tier]) {
       const row = BANK.questions.find(q => q.id === id);
       assert.equal(row.set, 'Base');
-      if (id !== 'AIS-01') assert.ok(rank[row.min_tier] <= assembly.TIER_RANK[tier], `${id} (${row.min_tier}) is not above ${tier}`);
+      if (!['AIS-01', 'ASR-01', 'ASR-03'].includes(id)) assert.ok(rank[row.min_tier] <= assembly.TIER_RANK[tier], `${id} (${row.min_tier}) is not above ${tier}`);
     }
   }
-  assert.deepEqual(counts, { low: 23, medium: 54, high: 112, critical: 137 });
+  assert.deepEqual(counts, { low: 24, medium: 54, high: 112, critical: 137 }, 'low gains ASR-03 for the report');
   for (const [lower, higher] of [['low', 'medium'], ['medium', 'high'], ['high', 'critical']]) {
     for (const id of sets[lower]) assert.ok(sets[higher].has(id), `${id} at ${lower} is also asked at ${higher}`);
   }
@@ -165,16 +165,32 @@ test('base questions are nested by tier for a vendor-hosted service, and AIS-01 
   assert.ok(r.sections.every(s => s.kind === 'base'));
 });
 
+test('every questionnaire with questions a certificate or report can cover asks ASR-01 and ASR-03', () => {
+  for (const model of assembly.DELIVERY_MODELS) {
+    for (const tier of ['low', 'medium', 'high', 'critical']) {
+      const r = assembly.assemble(BANK, { tier, deliveryModel: model });
+      const section = r.sections.find(s => s.ids.includes('ASR-01'));
+      assert.ok(section && section.ids.includes('ASR-03'), `${model} at ${tier}`);
+      assert.equal(section.title, 'Assurance & Certification');
+      assert.ok(section.ids.indexOf('ASR-01') < section.ids.indexOf('ASR-03'), 'bank order kept');
+    }
+  }
+  const tiny = { ...BANK, questions: BANK.questions.filter(q => q.set !== 'Base' || ['AIS-01', 'ASR-01', 'ASR-03', 'GOV-01'].includes(q.id))
+    .map(q => (q.id === 'GOV-01' ? { ...q, report_coverage: 'none' } : q)) };
+  const none = assembly.assemble(tiny, { tier: 'low', deliveryModel: 'non_technology' }).sections.flatMap(s => s.ids);
+  assert.ok(!none.includes('ASR-03'), 'nothing to cover, nothing added');
+});
+
 test('client-hosted and non-technology services get their flat Base sets at every tier', () => {
   const tagged = tag => BANK.questions.filter(q => q.set === 'Base'
     && assembly.parseDeliveryTags(q.delivery_models).some(t => t.tag === tag)).map(q => q.id);
-  for (const [model, tag, expected] of [['client_hosted', 'Client-hosted', 19], ['non_technology', 'Non-technology services', 18]]) {
-    const want = new Set([...tagged(tag), 'AIS-01']);
+  for (const [model, tag, expected] of [['client_hosted', 'Client-hosted', 19], ['non_technology', 'Non-technology services', 20]]) {
+    const want = new Set([...tagged(tag), 'AIS-01', 'ASR-01', 'ASR-03']);
     for (const tier of ['low', 'medium', 'high', 'critical']) {
       const r = assembly.assemble(BANK, { tier, deliveryModel: model });
       const got = r.sections.flatMap(s => s.ids);
       assert.equal(got.length, expected, `${model} at ${tier}`);
-      assert.deepEqual(new Set(got), want, `${model} at ${tier}: exactly the rows tagged ${tag}, plus AIS-01`);
+      assert.deepEqual(new Set(got), want, `${model} at ${tier}: exactly the rows tagged ${tag}, plus AIS-01 and the certificate and report questions`);
     }
   }
   assert.deepEqual(assembly.assemble(BANK, { tier: 'high', deliveryModel: 'staff_in_client_environment' }).sections,

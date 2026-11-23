@@ -1,0 +1,69 @@
+<%
+  const fmtDay = d => (d ? tpf.day(d) : '');
+  const sizeOf = n => tpf.fileSize(n);
+  const fileMb = limits.fileBytes / 1048576;
+  const many = new Set(reviews.map(r => r.thirdPartyName)).size > 1;
+%><!doctype html>
+<html lang="en" class="page-standalone" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <link rel="stylesheet" href="/app.css">
+<%- include('tprm_portal_head', { title: 'Files · ' + (firm.name || 'Third-party portal'), frame, withScript: true }) %>
+</head>
+<body class="vq-body">
+  <a class="vq-skip" href="#main">Skip to the content</a>
+  <%- include('partials/tprm_portal_top', { frame }) %>
+  <div class="vq-frame">
+    <%- include('partials/tprm_portal_side', { frame }) %>
+    <main class="vq-main" id="main" data-vendor-files-page>
+      <header class="vq-top"><div class="vq-top-main"><h1 class="vq-title">Files</h1></div></header>
+      <% if (notice) { %><p class="vq-notice" role="status" data-vendor-notice><%= notice %></p><% } %>
+      <% if (!reviews.length) { %><p class="vq-muted" data-vendor-files-empty>No reviews yet.</p><% } %>
+      <% reviews.forEach((r, ri) => { %>
+        <section class="vq-page<%= ri ? ' vq-mt' : '' %>" id="review-<%= r.id %>" data-vendor-files-review="<%= r.id %>">
+          <h2 class="vq-h2"><%= r.name %>, <%= r.clientName %><% if (many) { %> <span class="vq-optional"><%= r.thirdPartyName %></span><% } %></h2>
+          <% if (r.files.length) { %>
+            <div class="vq-panel"><table class="vq-table">
+              <thead><tr><th scope="col">File</th><th scope="col">Description</th><th scope="col" class="vq-num">Size</th><th scope="col">Added</th><th scope="col">Used for</th><% if (r.answering) { %><th scope="col"><span class="sr-only">Actions</span></th><% } %></tr></thead>
+              <tbody>
+                <% r.files.forEach(f => { %>
+                  <tr data-vendor-file-row="<%= f.id %>">
+                    <td class="vq-file-name"><%= f.name %></td>
+                    <td><%= f.description || '-' %></td>
+                    <td class="vq-num"><%= sizeOf(f.size) %></td>
+                    <td><%= fmtDay(f.uploadedAt) %></td>
+                    <td><%= f.report ? 'Certificate or report' : f.answers ? f.answers + (f.answers === 1 ? ' answer' : ' answers') : '-' %></td>
+                    <% if (r.answering) { %><td><% if (f.deletable) { %>
+                      <form method="POST" action="/vendor/p/a/<%= r.id %>/documents/<%= f.id %>" class="vq-inline" data-vendor-file-delete="<%= f.id %>">
+                        <input type="hidden" name="_aft" value="<%= r.aft %>"><input type="hidden" name="delete" value="1"><input type="hidden" name="back" value="files">
+                        <button class="vq-linklike" type="submit">Delete</button>
+                      </form><% } %></td><% } %>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table></div>
+          <% } else { %><p class="vq-muted">No files.</p><% } %>
+          <% if (r.answering) { %>
+            <details class="vq-docs vq-mt" data-vendor-files-add="<%= r.id %>">
+              <summary class="vq-docs-summary">Add files to this review</summary>
+              <form method="POST" action="/vendor/p/a/<%= r.id %>/documents" enctype="multipart/form-data" class="vq-shelf-add">
+                <input type="hidden" name="_aft" value="<%= r.aft %>"><input type="hidden" name="back" value="files">
+                <% [1, 2, 3].forEach(n => { %>
+                  <div class="vq-row vq-shelf-row">
+                    <div class="vq-field"><label class="vq-label" for="f<%= r.id %>-<%= n %>">File <%= n %> <span class="vq-optional">up to <%= fileMb %> MB</span></label><input class="vq-file-input" id="f<%= r.id %>-<%= n %>" type="file" name="doc_file_<%= n %>"></div>
+                    <div class="vq-field"><label class="vq-label" for="d<%= r.id %>-<%= n %>">Description <span class="vq-optional">optional</span></label><input class="vq-input" id="d<%= r.id %>-<%= n %>" name="desc_<%= n %>" maxlength="<%= limits.description %>"></div>
+                  </div>
+                <% }) %>
+                <div class="vq-form-foot"><button class="vq-btn vq-btn--secondary" type="submit" data-vendor-files-send>Add files</button></div>
+              </form>
+            </details>
+          <% } %>
+        </section>
+      <% }) %>
+      <%- include('partials/tprm_vendor_footer', { firm, expiresAt: null, note: '' }) %>
+    </main>
+  </div>
+</body>
+</html>

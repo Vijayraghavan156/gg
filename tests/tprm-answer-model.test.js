@@ -131,10 +131,10 @@ async function createLink(ctx) {
   return url ? url.split('/vendor/q/')[1] : null;
 }
 
-async function linked(name, { ws = null } = {}) {
+async function linked(name, { ws = null, answers = LOW } = {}) {
   const wsId = ws || await tprmClient(`${name} Client`);
   const tp = await addThirdParty(wsId, name);
-  const a = await startAssessment(wsId, tp);
+  const a = await startAssessment(wsId, tp, answers);
   const ctx = { ws: wsId, tp, a };
   assert.equal((await consultant.session.post(qBase(ctx), {})).status, 302);
   ctx.token = await createLink(ctx);
@@ -163,7 +163,7 @@ function request(method, urlPath, { body = null, headers = {} } = {}) {
 }
 
 const vget = (token, query = '') => request('GET', `/vendor/q/${token}${query}`);
-const aftOf = text => (String(text).match(/name="_aft" value="([^"]+)"/) || [])[1];
+const aftOf = text => (String(text).replace(/<form[^>]*data-vendor-sign-out[\s\S]*?<\/form>/g, '').match(/name="_aft" value="([^"]+)"/) || [])[1];
 async function vsection(ctx, id) {
   const q = await qRow(ctx.a);
   const index = q.sections.findIndex(s => s.ids.includes(id));
@@ -186,10 +186,12 @@ function answerFields(answers) {
   return answerFormFields(answers, BANK_BY_ID);
 }
 
-async function save(token, answers, { files = [], intent = 'save', section = null, go = null } = {}) {
+async function save(token, answers, { files = [], intent = 'save', section = null, go = null, jump = null } = {}) {
   const fields = [['_aft', aftOf((await vget(token, '?s=1')).text)]];
   if (section) fields.push(['section', String(section)]);
-  fields.push(...answerFields(answers), go ? ['go', go] : ['intent', intent]);
+  fields.push(...answerFields(answers));
+  if (jump !== null) fields.push(['jump', jump], ['go', 'jump']);
+  else fields.push(go ? ['go', go] : ['intent', intent]);
   const form = multipart(fields, files);
   const res = await request('POST', `/vendor/q/${token}/save`, { body: form.body, headers: form.headers });
   for (const r of await db.prepare('SELECT stored_path FROM tp_evidence').all()) createdPaths.add(r.stored_path);
@@ -538,6 +540,20 @@ test('leaving a section saves it first: the section list, the picker, Previous a
   assert.equal((await chain(ctx.ws, ctx.a)).length, before);
   res = await save(ctx.token, {}, { section: 2, go: 'https://example.net/' });
   assert.match(res.location, /^\/vendor\/q\/[^?]+\?s=2&notice=saved$/);
+  const sectionPage = (await vget(ctx.token, '?s=2')).text;
+  assert.match(sectionPage, /<select class="vq-input vq-jump-select" id="vq-jump" name="jump">/);
+  assert.ok(sectionPage.includes(`<option value="${q.sections[1].ids[0]}" selected>Section 2 of ${q.sections.length}: `), 'the current section is chosen');
+  assert.match(sectionPage, /name="go" value="jump" formnovalidate data-vendor-jump-go>Save and go</);
+  res = await save(ctx.token, { 'ORG-03': { t: 'Yearly, by the LMS.' } }, { section: 2, jump: q.sections[2].ids[0] });
+  assert.match(res.location, /\?s=3&notice=saved$/);
+  assert.match((await answerOf(ctx.a, 'ORG-03')).detail, /Yearly, by the LMS\./, 'the dropdown saves before it goes');
+  res = await save(ctx.token, {}, { section: 2, jump: 'review' });
+  assert.match(res.location, /\?view=review&notice=saved$/);
+  res = await save(ctx.token, {}, { section: 2, jump: 'https://example.net/' });
+  assert.match(res.location, /^\/vendor\/q\/[^?]+\?s=2&notice=saved$/);
+  const overview = (await vget(ctx.token)).text;
+  assert.match(overview, /<form method="GET" action="\/vendor\/q\/[^"]+" class="vq-jump" data-vendor-jump>/);
+  assert.match(overview, /<option value="3">Section 3 of \d+: /);
 });
 
 test('leaving a section whose save is refused stays on it with the errors; nothing is saved', async () => {
@@ -565,8 +581,11 @@ test('leaving a section whose save is refused stays on it with the errors; nothi
 test('reports: uploaded at the start, their coverage shown and counted, the covered evidence waived at submission', async () => {
   const ctx = await linked('Reports Co');
   let start = await vget(ctx.token);
-  assert.match(start.text, /data-vendor-report="iso27001"[\s\S]*?Would cover the evidence for up to 2 questions/);
-  assert.match(start.text, /data-vendor-report="soc2_type2"[\s\S]*?Would cover the evidence for up to 3 questions/);
+  assert.doesNotMatch(start.text, /data-vendor-reports/, 'no separate upload box: ASR-01 and ASR-03 are asked even at the low tier');
+  assert.match(start.text, /data-vendor-report-hint>If you hold a current ISO 27001 certificate or SOC 2 Type II report, answer ASR-01 and ASR-03 in <a href="[^"]+">Assurance &amp; Certification<\/a> first: it covers the documents for up to 3 other questions\.</);
+  const asr = (await vsection(ctx, 'ASR-01')).page.text;
+  assert.match(asr, /data-vendor-report-note="iso27001">Answer Yes with the certificate attached and it covers the documents for 2 other questions\.</);
+  assert.match(asr, /data-vendor-report-note="soc2_type2">Answer Yes with the report attached and it covers the documents for 3 other questions\.</);
   let res = await uploadReport(ctx.token, 'iso27001', { expires_on: '2020-01-01', scope: 'All' });
   assert.equal(res.status, 400);
   assert.match(res.text, /already expired/);
@@ -584,13 +603,14 @@ test('reports: uploaded at the start, their coverage shown and counted, the cove
   const file = await db.prepare('SELECT * FROM tp_evidence WHERE id=?').get(rep.evidence_id);
   assert.deepEqual([file.source, file.uploaded_by], ['vendor', null], 'an ordinary third-party file');
   start = await vget(ctx.token);
-  assert.match(start.text, /data-vendor-report-covers>Your report covers the evidence for <strong>3 questions<\/strong>/);
+  assert.match(start.text, /data-vendor-report-covered>Your certificate or report covers the documents for 4 questions/, "three other questions and ASR-03 itself");
+  assert.match((await vsection(ctx, 'ASR-03')).page.text, /data-vendor-report-note="soc2_type2">Saved as your SOC 2 Type II report\. It covers the documents for 3 other questions \(file: [^)]+\)\.</, 'a report from the earlier upload box is shown at ASR-03');
   const { page } = await vsection(ctx, 'IAM-01');
   assert.match(page.text, /data-vendor-question="IAM-01"[\s\S]*?data-vendor-evidence-covered>Covered by your SOC 2 report</);
   assert.doesNotMatch(page.text, /data-vendor-question="IAM-01"[^]*?data-vendor-evidence-required[^]*?data-vendor-question="IAM-03"/);
   await answerAll(ctx, { bare: SOC2_COVERED });
   let check = await vget(ctx.token, '?view=review');
-  assert.match(check.text, /data-vendor-ready>All 35 questions are answered/);
+  assert.match(check.text, /data-vendor-ready>All 36 questions are answered/);
   res = await uploadReport(ctx.token, 'soc2_type2', { remove: '1' }, []);
   assert.match(res.location, /notice=report_removed/);
   assert.equal((await reportsOf(ctx.a)).length, 0);
@@ -607,6 +627,47 @@ test('reports: uploaded at the start, their coverage shown and counted, the cove
   for (const want of ['assurance_report.uploaded', 'assurance_report.removed']) assert.ok(actions.includes(want), want);
   const submittedEvent = (await chain(ctx.ws, ctx.a)).find(e => e.action === 'questionnaire.submitted');
   assert.deepEqual(submittedEvent.after_state.reports.map(r => r.kind), ['soc2_type2']);
+});
+
+test('the certificate and the report are given as answers to ASR-01 and ASR-03; they cover other questions and stop when the answer changes', async () => {
+  const ctx = await linked('Report Questions Co', { answers: { ...LOW, data_handled: 'confidential' } });
+  const { index } = await vsection(ctx, 'ASR-03');
+  const soc2Fields = { period_covered: '1 Jul 2025 to 30 Jun 2026', period_end: '2026-06-30', trust_services_criteria: 'Security', exceptions: 'None',
+    subservice_organisations: 'AWS, carved out', user_entity_controls: 'Listed in section 4' };
+  let res = await save(ctx.token, { 'ASR-03': { r: 'yes', f: soc2Fields } }, { section: index,
+    files: [{ field: 'file__ASR-03', filename: 'soc2.pdf', content: PDF('soc2 report'), type: 'application/pdf' }] });
+  assert.equal(res.status, 303);
+  let reports = await reportsOf(ctx.a);
+  assert.deepEqual(reports.map(r => [r.kind, r.check_status]), [['soc2_type2', 'pending']]);
+  const dayOf = async (col, id) => (await db.prepare(`SELECT to_char(${col}, 'YYYY-MM-DD') AS d FROM tp_assurance_reports WHERE id = ?`).get(id)).d;
+  assert.equal(await dayOf('period_end', reports[0].id), '2026-06-30');
+  let page = (await vget(ctx.token, `?s=${index}`)).text;
+  assert.match(page, /data-vendor-report-note="soc2_type2">Saved as your SOC 2 Type II report\. It covers the documents for \d+ other questions\.</);
+  assert.match(page, /name="f\[ASR-03\]\[period_end\]" type="date"/);
+  const { page: iam } = await vsection(ctx, 'IAM-01');
+  assert.match(iam.text, /data-vendor-question="IAM-01"[\s\S]*?data-vendor-evidence-covered>Covered by your SOC 2 report</);
+  assert.doesNotMatch((await vget(ctx.token)).text, /data-vendor-reports/);
+
+  const isoAnswer = { r: 'yes', f: { certificate_number: 'IS 1', certification_body: 'BSI', issue_date: '2025-01-10', expiry_date: '2099-01-09', scope: 'All services' } };
+  res = await save(ctx.token, { 'ASR-01': isoAnswer }, { section: index, files: [{ field: 'file__ASR-01', filename: 'cert.pdf', content: PDF('cert'), type: 'application/pdf' }] });
+  assert.equal(res.status, 303);
+  assert.equal((await reportsOf(ctx.a)).length, 1, 'no certificate without the Statement of Applicability');
+  page = (await vget(ctx.token, `?s=${index}`)).text;
+  assert.match(page, /data-vendor-report-note="iso27001">To use this certificate for \d+ other questions, attach the Statement of Applicability as a second file\.</);
+  res = await save(ctx.token, { 'ASR-01': isoAnswer }, { section: index, files: [{ field: 'file__ASR-01', filename: 'soa.pdf', content: PDF('soa'), type: 'application/pdf' }] });
+  reports = await reportsOf(ctx.a);
+  assert.deepEqual(reports.map(r => r.kind).sort(), ['iso27001', 'soc2_type2']);
+  const iso = reports.find(r => r.kind === 'iso27001');
+  assert.equal(await dayOf('certificate_expires_on', iso.id), '2099-01-09');
+  assert.equal(iso.scope, 'All services');
+  assert.ok(iso.soa_evidence_id && Number(iso.soa_evidence_id) !== Number(iso.evidence_id));
+
+  res = await save(ctx.token, { 'ASR-03': { r: 'no', d: 'The report is being renewed.' } }, { section: index });
+  assert.equal(res.status, 303);
+  assert.deepEqual((await reportsOf(ctx.a)).map(r => r.kind), ['iso27001'], 'answering No removes the report');
+  const actions = (await chain(ctx.ws, ctx.a)).map(e => e.action);
+  for (const want of ['assurance_report.uploaded', 'assurance_report.removed']) assert.ok(actions.includes(want), want);
+  assert.deepEqual(await events.verifyChains(db, ctx.ws), []);
 });
 
 test('the firm checks each report once; a reject asks for the waived evidence through clarifications; closing waits for every check', async () => {
@@ -752,11 +813,11 @@ test('the vendor pages are branded: the firm, a cover with the facts and a conta
   const ctx = await linked('Cover Co');
   const start = (await vget(ctx.token)).text;
   assert.match(start, /data-vendor-brandbar="firm"[\s\S]*?data-vendor-firm>[^<]+</);
-  assert.match(start, /data-vendor-cover-title>Security questionnaire for Cover Co Client<\/h1>/);
-  assert.match(start, /data-vendor-preparer>[^<]+</);
-  assert.match(start, /data-vendor-recipient>Asha Vendor</);
-  assert.match(start, /data-vendor-questions-left="35"/, '35 questions left to answer');
-  assert.match(start, /data-vendor-contact>[\s\S]*?href="mailto:am-consultant@test\.local"/, 'the consultant who issued the link');
+  assert.match(start, /data-vendor-cover-title>Security questionnaire for <span data-vendor-client>Cover Co Client<\/span><\/h1>/);
+  assert.match(start, /Sent to <span data-vendor-recipient>Asha Vendor</);
+  assert.match(start, /data-vendor-questions-left="36"/, '36 questions left to answer');
+  assert.match(start, /data-vendor-reviewer>[\s\S]*?href="mailto:am-consultant@test\.local"/, 'the consultant who issued the link');
+  assert.equal((start.match(/am-consultant@test\.local"/g) || []).length, 1, 'the contact shown once');
   assert.match(start, /data-vendor-footer/);
   const q = await qRow(ctx.a);
   for (let i = 1; i <= q.sections.length; i++) {
