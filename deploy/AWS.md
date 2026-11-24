@@ -563,9 +563,10 @@ lists them, and `aws rds delete-db-snapshot` removes them.
   cluster's exec logging to `DEFAULT` in `ecs.tf` (`logging = "DEFAULT"`, no
   `log_configuration`).
 - **ClamAV signatures** are fixed when the image is built (`RUN freshclam` in
-  the Dockerfile). A Fargate task cannot refresh them as root. Run the
-  workflow with **rebuild_image** at least weekly, or decide on a `clamd` +
-  `freshclam` sidecar.
+  the Dockerfile). The container starts `clamd` before the app, which loads
+  them once, and each upload is scanned with `clamdscan` in milliseconds. A
+  Fargate task cannot refresh them as root. Run the workflow with
+  **rebuild_image** at least weekly, or decide on a `freshclam` sidecar.
 - **Scaling:** change `desired_count` (2 to 20). Autoscaling is not
   configured. Each task opens up to `PG_POOL_MAX` (default 10) database
   connections, plus short-lived ones for the boot and job locks; check the
@@ -738,8 +739,8 @@ process now lives in PostgreSQL or EFS:
 | Uploads and app backups | EFS | `/app/uploads`, `/app/var` |
 
 Other items that used to be on this list are done: `/readyz` reuses the
-scanner check for a minute (`lib/upload-security.js`) instead of spawning
-`clamscan` on every health check, and the policy acknowledgement records
+scanner check for a minute (`lib/upload-security.js`) instead of pinging
+`clamd` on every health check, and the policy acknowledgement records
 `req.ip` (`routes/documents.js`) instead of the client-controlled first
 `X-Forwarded-For` entry.
 

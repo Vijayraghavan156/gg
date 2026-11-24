@@ -41,8 +41,15 @@
       var shown = notes.get(inputs[0]);
       var xhr = new XMLHttpRequest();
       xhr.open('POST', form.action);
+      xhr.timeout = 150000;
       xhr.upload.addEventListener('progress', function (e) {
-        if (e.lengthComputable) shown.textContent = 'Uploading, ' + Math.round((e.loaded / e.total) * 100) + '%';
+        if (e.lengthComputable && e.loaded < e.total) shown.textContent = 'Uploading, ' + Math.round((e.loaded / e.total) * 100) + '%';
+      });
+      xhr.upload.addEventListener('load', function () {
+        shown.textContent = 'Uploaded. Checking the file, this can take a moment.';
+      });
+      xhr.addEventListener('timeout', function () {
+        shown.textContent = 'The server did not answer in time. Reload the page to see whether the file was saved, then try again if it was not.';
       });
       xhr.addEventListener('load', function () {
         var posted = new URL(form.action, location.href).href.split('#')[0];

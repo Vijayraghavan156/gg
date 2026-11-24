@@ -52,3 +52,42 @@ test('memory-backed uploads receive the same signature inspection', () => {
     else process.env.UPLOAD_AV_MODE = previous;
   }
 });
+
+test('with the clamd client, readiness pings the daemon and scans pass the open file', () => {
+  const saved = { mode: process.env.UPLOAD_AV_MODE, bin: process.env.CLAMAV_BIN };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upload-security-clamd-'));
+  try {
+    const calls = path.join(dir, 'calls.log');
+    const bin = path.join(dir, 'clamdscan');
+    fs.writeFileSync(bin, `#!/bin/sh\necho "$*" >> '${calls}'\ncase "$*" in *infected*) exit 1 ;; esac\nexit 0\n`, { mode: 0o755 });
+    process.env.CLAMAV_BIN = bin;
+    process.env.UPLOAD_AV_MODE = 'required';
+    assert.equal(uploadSecurity.scannerAvailable(), true);
+
+    const clean = path.join(dir, 'clean.pdf');
+    fs.writeFileSync(clean, '%PDF-1.7\n% clean');
+    assert.deepEqual(uploadSecurity.validateUpload({ path: clean, originalname: 'clean.pdf', size: 16 }, new Set(['pdf'])), { ok: true, scanner: 'clamav' });
+    const infected = path.join(dir, 'infected.pdf');
+    fs.writeFileSync(infected, '%PDF-1.7\n% infected');
+    const rejected = uploadSecurity.validateUpload({ path: infected, originalname: 'infected.pdf', size: 19 }, new Set(['pdf']));
+    assert.equal(rejected.ok, false);
+    assert.match(rejected.message, /rejected by the malware scanner/);
+
+    const lines = fs.readFileSync(calls, 'utf8').trim().split('\n');
+    assert.equal(lines[0], '--ping 1');
+    assert.equal(lines[1], `--no-summary --fdpass ${clean}`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    for (const [key, name] of [['mode', 'UPLOAD_AV_MODE'], ['bin', 'CLAMAV_BIN']]) {
+      if (saved[key] === undefined) delete process.env[name];
+      else process.env[name] = saved[key];
+    }
+  }
+});
+
+test('the container image starts clamd before the app and scans through it', () => {
+  const dockerfile = fs.readFileSync(path.join(__dirname, '..', 'Dockerfile'), 'utf8');
+  assert.match(dockerfile, /CLAMAV_BIN=\/usr\/bin\/clamdscan/);
+  assert.match(dockerfile, /'LocalSocket \/tmp\/clamd\.sock'/);
+  assert.match(dockerfile, /^CMD \["\/bin\/sh", "-c", "clamd \|\| .*; exec node server\.js"\]$/m);
+});

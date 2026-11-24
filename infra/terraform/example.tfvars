@@ -23,7 +23,7 @@ service_enabled = false
 # App tasks (at least 2). They share everything through PostgreSQL and EFS.
 desired_count = 2
 
-# Sizing: Chromium, ONNX policy retrieval and clamscan share the task.
+# Sizing: Chromium, ONNX policy retrieval and clamd share the task.
 task_cpu    = 2048
 task_memory = 4096
 

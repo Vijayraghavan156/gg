@@ -172,13 +172,13 @@ variable "desired_count" {
 }
 
 variable "task_cpu" {
-  description = "Fargate task CPU units. Chromium (PDF export), ONNX policy retrieval and clamscan run in the same container."
+  description = "Fargate task CPU units. Chromium (PDF export), ONNX policy retrieval and clamd run in the same container."
   type        = number
   default     = 2048
 }
 
 variable "task_memory" {
-  description = "Fargate task memory (MiB). clamscan loads the full signature database (about 1.2 GB) for each upload scan, so stay at 4096 or above."
+  description = "Fargate task memory (MiB). clamd keeps the signature database (about 1 GB) in memory for the life of the task, so stay at 4096 or above."
   type        = number
   default     = 4096
 }

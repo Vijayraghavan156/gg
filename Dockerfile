@@ -15,13 +15,22 @@ RUN mkdir -p /etc/ssl/rds \
  && echo "90a6f1a7978a1b1b096dca6c57511ca48d3b8cf052f8e704baf358f34ea2f21b  /etc/ssl/rds/global-bundle.pem" | sha256sum -c - \
  && chmod 0644 /etc/ssl/rds/global-bundle.pem
 
-RUN freshclam
+RUN freshclam \
+ && printf '%s\n' \
+      'LocalSocket /tmp/clamd.sock' \
+      'LocalSocketMode 600' \
+      'PidFile /tmp/clamd.pid' \
+      'TemporaryDirectory /tmp' \
+      'DatabaseDirectory /var/lib/clamav' \
+      'SelfCheck 0' \
+      'LogSyslog no' \
+      > /etc/clamav/clamd.conf
 
 ENV PUPPETEER_SKIP_DOWNLOAD=true \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
     UPLOAD_AV_MODE=required \
-    CLAMAV_BIN=/usr/bin/clamscan
+    CLAMAV_BIN=/usr/bin/clamdscan
 
 COPY package*.json ./
 RUN npm ci --omit=dev
@@ -62,4 +71,4 @@ EXPOSE 3000
 
 USER node:node
 
-CMD ["node", "server.js"]
+CMD ["/bin/sh", "-c", "clamd || echo 'The malware scanner did not start, so uploads are refused until it runs.' >&2; exec node server.js"]

@@ -210,8 +210,15 @@
       if (event.submitter && event.submitter.name) data.append(event.submitter.name, event.submitter.value);
       var xhr = new XMLHttpRequest();
       xhr.open((form.getAttribute('method') || 'POST').toUpperCase(), form.action);
+      xhr.timeout = 150000;
       xhr.upload.addEventListener('progress', function (e) {
-        if (e.lengthComputable) note.textContent = 'Uploading, ' + Math.round((e.loaded / e.total) * 100) + '%';
+        if (e.lengthComputable && e.loaded < e.total) note.textContent = 'Uploading, ' + Math.round((e.loaded / e.total) * 100) + '%';
+      });
+      xhr.upload.addEventListener('load', function () {
+        note.textContent = 'Uploaded. Checking the file, this can take a moment.';
+      });
+      xhr.addEventListener('timeout', function () {
+        note.textContent = 'The server did not answer in time. Reload the page to see whether the file was saved, then try again if it was not.';
       });
       xhr.addEventListener('load', function () {
         var posted = new URL(form.action, location.href).href.split('#')[0];
