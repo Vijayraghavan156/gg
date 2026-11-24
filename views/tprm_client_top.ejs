@@ -1,0 +1,48 @@
+<%
+  const cvAsset = typeof assetVersion !== 'undefined' ? assetVersion : '0';
+  const cvBase = '/workspaces/' + ws.id + '/client-portal/third-party-risk';
+  const cvClient = ws.brand_display_name || ws.client_name || ws.name || 'Client';
+  const cvInitials = s => String(s || '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+  const cvOn = typeof cvNav !== 'undefined' ? cvNav : 'home';
+  const cvIcons = {
+    home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/>',
+    decisions: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="m9 13 2 2 4-4"/>',
+    renewals: '<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+    reports: '<path d="M4 20h16"/><path d="M7 16v-5M12 16V7M17 16v-8"/>',
+    portal: '<path d="M19 12H5"/><path d="m11 18-6-6 6-6"/>',
+    signout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>'
+  };
+  const cvItem = (key, label, href) => '<a class="cv-nav' + (cvOn === key ? ' is-on' : '') + '" href="' + href + '"' + (cvOn === key ? ' aria-current="page"' : '') + ' data-tprm-cv-nav="' + key + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + cvIcons[key] + '</svg><span>' + label + '</span></a>';
+%><!doctype html>
+<html lang="en" class="page-standalone">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+<meta name="robots" content="noindex, nofollow">
+<title><%= title %></title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/app.css?v=<%= cvAsset %>">
+<link rel="stylesheet" href="/tprm-tokens.css?v=<%= cvAsset %>">
+<link rel="stylesheet" href="/tprm.css?v=<%= cvAsset %>">
+<link rel="stylesheet" href="/tprm-client.css?v=<%= cvAsset %>">
+<script src="/tprm.js?v=<%= cvAsset %>" defer></script>
+</head>
+<body class="cv-body">
+<div class="cv-app" data-tprm-client-view>
+  <nav class="cv-rail" aria-label="Third-party risk">
+    <a class="cv-logo" href="<%= cvBase %>" title="<%= cvClient %>"><%= cvInitials(cvClient) %></a>
+    <%- cvItem('home', 'Home', cvBase) %>
+    <%- cvItem('decisions', 'Decisions', cvBase + '?tab=waiting') %>
+    <%- cvItem('renewals', 'Renewals', cvBase + '?tab=renewals') %>
+    <%- cvItem('reports', 'Reports', cvBase + '/concentration') %>
+    <span class="cv-gap"></span>
+    <%- cvItem('portal', 'Portal', '/workspaces/' + ws.id + '/client-portal') %>
+    <form method="POST" action="/logout" class="cv-signout">
+      <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+      <button type="submit" class="cv-nav" title="Sign out"><svg viewBox="0 0 24 24" aria-hidden="true"><%- cvIcons.signout %></svg><span>Sign out</span></button>
+    </form>
+    <span class="cv-me" title="<%= user.name %>"><%= cvInitials(user.name) %></span>
+  </nav>
+  <main class="cv-main" id="mainContent">
+<% if (typeof cvNotice !== 'undefined' && cvNotice) { %><div class="cv-notice cv-notice--<%= cvNotice.kind %>" role="status" data-tprm-cv-notice><%= cvNotice.text %></div><% } %>

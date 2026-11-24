@@ -123,8 +123,8 @@
       <% if (i.messages.length) { %>
         <ol class="tprm-issue-thread" data-tprm-issue-thread>
           <% i.messages.forEach(m => { %>
-            <li data-tprm-issue-message="<%= m.author_kind %>">
-              <span class="meta text-xs"><%= m.author_kind === 'firm' ? (m.author_name || 'Consultant') : (m.author_name || 'The third party') %> · <%= evWhen(m.created_at) %></span>
+            <li data-tprm-issue-message="<%= m.author_kind %>"<%- m.internal ? ' data-tprm-issue-internal class="tprm-issue-internal"' : '' %>>
+              <span class="meta text-xs"><%= m.author_kind === 'firm' ? (m.author_name || 'Consultant') : m.author_kind === 'client' ? 'Client' + (m.author_name ? ', ' + m.author_name : '') : (m.author_name || 'The third party') %> · <%= evWhen(m.created_at) %><% if (m.internal) { %> · <span class="tprm-internal-tag">Internal</span> hidden from the client and the third party<% } else if (!m.client_visible) { %> · not shown to the client<% } %></span>
               <% if (m.proposed_fix) { %><div><span class="tpu-medium">Proposed fix:</span> <span class="tpu-pre"><%= m.proposed_fix %></span><%= m.proposed_date ? ' (by ' + tpf.day(m.proposed_date) + ')' : '' %></div><% } %>
               <% if (m.body) { %><div class="tpu-pre"><%= m.body %></div><% } %>
             </li>
@@ -142,9 +142,10 @@
           <% } %>
           <form method="POST" action="<%= evBase %>/issues/<%= i.id %>/reply" class="tprm-issue-reply" data-tprm-issue-reply>
             <input type="hidden" name="_csrf" value="<%= evCsrf %>">
-            <label class="sr-only" for="issue-reply-<%= i.id %>">Reply to the third party on <%= i.title %></label>
-            <textarea class="input" id="issue-reply-<%= i.id %>" name="body" rows="2" maxlength="4000" placeholder="Reply to the third party"></textarea>
-            <button class="btn btn-secondary btn-xs" type="submit">Send reply</button>
+            <label class="sr-only" for="issue-reply-<%= i.id %>">Comment on <%= i.title %></label>
+            <textarea class="input" id="issue-reply-<%= i.id %>" name="body" rows="2" maxlength="4000" placeholder="Write a comment. The third party and, once the recommendation is issued, the client see it."></textarea>
+            <label class="tprm-internal-switch"><input type="checkbox" name="internal" value="1" data-tprm-issue-internal-switch> Internal: only your firm sees it</label>
+            <button class="btn btn-secondary btn-xs" type="submit">Post</button>
           </form>
           <form method="POST" action="<%= evBase %>/issues/<%= i.id %>/withdraw" class="tpu-m-0" data-tprm-issue-withdraw>
             <input type="hidden" name="_csrf" value="<%= evCsrf %>"><input type="hidden" name="row_version" value="<%= i.row_version %>">

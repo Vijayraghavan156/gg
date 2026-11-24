@@ -1,4 +1,4 @@
-<%- include('partials/header', { title: page.thirdParty.name + ' · Third-party risk', user, ws, active, portalView }) %>
+<%- include('tprm_client_top', { title: page.thirdParty.name + ' · Third-party risk', cvNav: 'home' }) %>
 <%
   const p = page;
   const r = p.recommendation;
@@ -13,7 +13,7 @@
   const chosen = v.outcome || '';
   const showDivergence = !!chosen && chosen !== D.MORE_INFORMATION && chosen !== r.outcome;
 %>
-<div class="tpu-mb-10"><a class="text-xs tpu-back" href="<%= base %>">← Third-party risk</a></div>
+<div class="cv-top"><div class="cv-crumb"><a href="<%= base %>">Third parties</a> / <a href="<%= base %>/third-parties/<%= p.thirdParty.id %>"><%= p.thirdParty.name %></a> / <b>Recommendation</b></div></div>
 <div class="page-head cp-page-head" data-tprm-portal-recommendation="<%= r.id %>">
   <div>
     <div class="eyebrow"><%= typeLabel %> · version <%= r.version %></div>
@@ -166,4 +166,4 @@
   <% }) %>
 </div>
 <% } %>
-<%- include('partials/footer') %>
+<%- include('tprm_client_bottom') %>

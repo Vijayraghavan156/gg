@@ -755,3 +755,120 @@ test('deleting a client removes its decisions; restore verification counts them'
   const restoreCheck = fs.readFileSync(path.join(ROOT, 'lib', 'restore-check.js'), 'utf8');
   assert.match(restoreCheck.slice(restoreCheck.indexOf('SNAPSHOT_COUNT_TABLES'), restoreCheck.indexOf('LIVE_COUNT_MIN_RATIO')), /'tp_client_decisions'/);
 });
+
+test('client view: the third-party page shows only what was issued or released, and only to that client', async () => {
+  const c = await tprmClient('Client View Pages');
+  const ctx = await confirmed(c, 'Shown Party Co');
+  const kept = await uploadOne(ctx, 'released-cv.txt', 'released');
+  await release(ctx, kept);
+  await uploadOne(ctx, 'unreleased-cv.txt', 'not released');
+  await addFinding(ctx, { severity: 'high', title: 'CV finding title', description: 'Seen by the client', control_ref: 'A.5.1' });
+  const rid = await issued(ctx, 'approve_with_conditions');
+
+  const hidden = await confirmed(c, 'Hidden Draft Co');
+  const made = await consultant.session.post(rBase(hidden.ws, hidden.tp, hidden.a), { row_version: String((await assessmentRow(hidden.a)).row_version) });
+  assert.equal(made.status, 302);
+  const draft = (await recsOf(hidden.a)).pop();
+  assert.equal((await consultant.session.post(`${rBase(hidden.ws, hidden.tp, hidden.a)}/${draft.id}`, {
+    ...draftBody('approve', { rationale: 'SENTINEL-CV-DRAFT rationale' }), intent: 'save', row_version: String((await recRow(draft.id)).row_version) })).status, 302);
+
+  const owner = await sessionFor(c.owner);
+  const home = await owner.get(portal(c.id));
+  assert.equal(home.status, 200);
+  assert.match(home.text, /data-tprm-client-view/);
+  assert.match(home.text, new RegExp(`href="${portal(c.id)}/third-parties/${ctx.tp}" data-tprm-cv-party="${ctx.tp}"`));
+  assert.match(home.text, /data-tprm-cv-tile="stages"/);
+  assert.doesNotMatch(home.text, /SENTINEL-CV-DRAFT/);
+
+  const page = await owner.get(`${portal(c.id)}/third-parties/${ctx.tp}`);
+  assert.equal(page.status, 200);
+  assert.match(page.text, new RegExp(`data-tprm-cv-party-head="${ctx.tp}"`));
+  const docs = await owner.get(`${portal(c.id)}/third-parties/${ctx.tp}?tab=documents`);
+  assert.match(docs.text, /released-cv\.txt/);
+  assert.doesNotMatch(docs.text, /unreleased-cv\.txt/, 'a file not released stays with the consultants');
+  assert.match(docs.text, new RegExp(`/recommendations/${rid}/evidence/${kept.id}/download`));
+  const issues = await owner.get(`${portal(c.id)}/third-parties/${ctx.tp}?tab=issues`);
+  assert.match(issues.text, /CV finding title/);
+  const conds = await owner.get(`${portal(c.id)}/third-parties/${ctx.tp}?tab=conditions`);
+  assert.match(conds.text, /Enforce MFA for all admin accounts/);
+
+  const draftPage = await owner.get(`${portal(c.id)}/third-parties/${hidden.tp}?tab=reviews`);
+  assert.equal(draftPage.status, 200);
+  assert.doesNotMatch(draftPage.text, /SENTINEL-CV-DRAFT/, 'a draft recommendation is not shown');
+  assert.match(draftPage.text, /No recommendation issued yet/);
+
+  assert.equal((await owner.get(`${portal(c.id)}/third-parties/999999`)).status, 404);
+  const other = await tprmClient('Client View Other');
+  const otherCtx = await confirmed(other, 'Other Client Party');
+  assert.equal((await owner.get(`${portal(c.id)}/third-parties/${otherCtx.tp}`)).status, 404, 'another client\'s third party is not found');
+  assert.notEqual((await (await sessionFor(other.owner)).get(`${portal(c.id)}/third-parties/${ctx.tp}`)).status, 200, 'another client cannot open it');
+  assert.equal((await consultant.session.get(`${portal(c.id)}/third-parties/${ctx.tp}`)).status, 404, 'the portal page is for client users');
+});
+
+test('client view: tabs, filters and pages are plain links and forms', async () => {
+  const c = await tprmClient('Client View Lists');
+  await confirmed(c, 'Alpha Listed Co');
+  const owner = await sessionFor(c.owner);
+  for (const tab of ['waiting', 'renewals', 'ended']) {
+    const res = await owner.get(`${portal(c.id)}?tab=${tab}`);
+    assert.equal(res.status, 200);
+    assert.match(res.text, new RegExp(`data-tprm-cv-tab="${tab}"[^>]*>`));
+    assert.match(res.text, new RegExp(`class="is-on" aria-current="page" data-tprm-cv-tab="${tab}"`));
+  }
+  const found = await owner.get(`${portal(c.id)}?q=alpha`);
+  assert.match(found.text, /Alpha Listed Co/);
+  const none = await owner.get(`${portal(c.id)}?q=zzz-not-there`);
+  assert.match(none.text, /No third party matches these filters/);
+  assert.equal((await owner.get(`${portal(c.id)}?page=99&tier=bogus&stage=x`)).status, 200);
+  assert.match(found.text, /<form method="GET" action="[^"]+" class="cv-filters"/);
+});
+
+test('issue comments: the client sees and joins the conversation; internal notes and earlier comments stay hidden', async () => {
+  const issuesLib = require('../lib/tprm/issues');
+  const c = await tprmClient('Client View Comments');
+  const ctx = await confirmed(c, 'Comment Party Co');
+  await addFinding(ctx, { severity: 'medium', title: 'Comment finding', description: 'A gap', control_ref: 'A.8.1' });
+  const fid = Number((await db.prepare('SELECT id FROM tp_findings WHERE workspace_id=? AND assessment_id=? AND title=?').get(ctx.ws, ctx.a, 'Comment finding')).id);
+  assert.equal((await consultant.session.post(`${aBase(ctx.ws, ctx.tp, ctx.a)}/findings/${fid}/share`, { title: 'Shared comment issue', body: 'Please fix' })).status, 302);
+  const iid = Number((await db.prepare('SELECT id FROM tp_issues WHERE workspace_id=? AND finding_id=?').get(ctx.ws, fid)).id);
+  await db.prepare(`INSERT INTO tp_issue_messages (workspace_id, issue_id, author_kind, author_user_id, author_name, body, client_visible)
+    VALUES (?, ?, 'firm', ?, 'Earlier', 'SENTINEL-EARLIER-COMMENT', false)`).run(ctx.ws, iid, consultant.id);
+  assert.equal((await consultant.session.post(`${aBase(ctx.ws, ctx.tp, ctx.a)}/issues/${iid}/reply`, { body: 'SENTINEL-INTERNAL-NOTE', internal: '1' })).status, 302);
+  assert.equal((await consultant.session.post(`${aBase(ctx.ws, ctx.tp, ctx.a)}/issues/${iid}/reply`, { body: 'Shared reply for everyone' })).status, 302);
+  const firmPage = await consultant.session.get(`${aBase(ctx.ws, ctx.tp, ctx.a)}?step=evidence`);
+  assert.match(firmPage.text, /data-tprm-issue-internal-switch/);
+  const rid = await issued(ctx, 'approve');
+
+  const owner = await sessionFor(c.owner);
+  const page = await owner.get(`${portal(c.id)}/third-parties/${ctx.tp}?tab=issues`);
+  assert.equal(page.status, 200);
+  assert.match(page.text, /Shared reply for everyone/);
+  assert.doesNotMatch(page.text, /SENTINEL-INTERNAL-NOTE/, 'an internal note is not shown to the client');
+  assert.doesNotMatch(page.text, /SENTINEL-EARLIER-COMMENT/, 'comments written before clients could read them stay hidden');
+  assert.match(page.text, /data-tprm-cv-comment-form/);
+
+  const posted = await owner.post(`${portal(c.id)}/issues/${iid}/comments`, { body: 'Client question here', third_party_id: String(ctx.tp) });
+  assert.equal(posted.status, 302);
+  assert.match(toast(posted), /Comment added/);
+  const row = await db.prepare("SELECT author_kind, author_user_id, internal, client_visible FROM tp_issue_messages WHERE workspace_id=? AND issue_id=? AND body='Client question here'").get(ctx.ws, iid);
+  assert.deepEqual([row.author_kind, Number(row.author_user_id), row.internal, row.client_visible], ['client', c.owner.id, false, true]);
+
+  const vendorView = await issuesLib.vendorList(db, { workspaceId: ctx.ws, assessmentId: ctx.a });
+  const vendorBodies = vendorView[0].messages.map(m => m.body);
+  assert.ok(vendorBodies.includes('Client question here'), 'the supplier sees the client comment');
+  assert.ok(!vendorBodies.includes('SENTINEL-INTERNAL-NOTE'), 'the supplier does not see an internal note');
+  const firmView = await issuesLib.forAssessment(db, ctx.ws, ctx.a);
+  assert.ok(firmView[0].messages.some(m => m.body === 'SENTINEL-INTERNAL-NOTE' && m.internal), 'the firm sees its internal note');
+
+  const other = await tprmClient('Client View Comments Other');
+  const otherSession = await sessionFor(other.owner);
+  await otherSession.get(portal(other.id));
+  assert.equal((await otherSession.post(`${portal(other.id)}/issues/${iid}/comments`, { body: 'Not mine' })).status, 404, 'another client cannot comment on it');
+  assert.notEqual((await consultant.session.post(`${portal(c.id)}/issues/${iid}/comments`, { body: 'Firm via portal' })).status, 302);
+  assert.equal((await owner.post(`${portal(c.id)}/issues/${iid}/comments`, { body: '   ', third_party_id: String(ctx.tp) })).status, 302);
+
+  assert.equal((await decide(owner, ctx.ws, rid, { outcome: 'approve' })).status, 302);
+  const closed = await owner.post(`${portal(c.id)}/issues/${iid}/comments`, { body: 'Too late', third_party_id: String(ctx.tp) });
+  assert.match(toast(closed), /closed/);
+  assert.match((await owner.get(`${portal(c.id)}/third-parties/${ctx.tp}?tab=issues`)).text, /data-tprm-cv-thread-closed/);
+});

@@ -775,3 +775,6 @@ th[aria-sort="descending"] .tprm-sort::after { content: " \2193"; }
 .tprm-list-search .tpa-input { flex: 1 1 260px; max-width: 420px; }
 .tpa-comments { list-style: none; margin: 8px 0 0; padding: 0; }
 .tpa-comments li { display: grid; gap: 2px; padding: 6px 0; border-top: 1px solid var(--tp-rule, #e5e7eb); }
+.tprm-issue-internal { background: #fffaf0; border-radius: 6px; padding: 6px 8px; }
+.tprm-internal-tag { color: var(--tp-attention); font-weight: var(--tp-weight-medium); }
+.tprm-internal-switch { display: inline-flex; align-items: center; gap: 6px; font-size: var(--tp-size-sm); color: var(--tp-ink); margin: 6px 12px 6px 0; }

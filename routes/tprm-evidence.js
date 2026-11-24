@@ -291,8 +291,8 @@ function registerRoutes(app, deps) {
       try {
         const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
         const result = await issues[fn](db, actor, thirdParty.id, req.params.aid, req.params.iid, req.body);
-        if (verb !== 'withdraw') await issueMessages().issueFirmUpdate(db, { workspaceId: actor.ws.id, assessmentId: Number(req.params.aid), issueId: result.issueId, agreed: verb === 'agree' });
-        const message = verb === 'agree' && result.conditionAdded ? 'Fix agreed and added as a condition of the draft recommendation' : done;
+        if (verb !== 'withdraw' && !result.internal) await issueMessages().issueFirmUpdate(db, { workspaceId: actor.ws.id, assessmentId: Number(req.params.aid), issueId: result.issueId, agreed: verb === 'agree' });
+        const message = verb === 'agree' && result.conditionAdded ? 'Fix agreed and added as a condition of the draft recommendation' : result.internal ? 'Internal note added' : done;
         return res.redirect(withToast(issuesBack(actor, req, result.issueId), message));
       } catch (err) {
         if (err instanceof TprmError && (err.status === 400 || err.status === 409)) return res.redirect(withToast(issuesBack(actor, req, req.params.iid), err.message, 'error'));

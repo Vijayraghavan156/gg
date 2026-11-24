@@ -1,0 +1,150 @@
+<%
+  const p = party;
+  const t = p.thirdParty;
+  const base = '/workspaces/' + ws.id + '/client-portal/third-party-risk';
+  const self = base + '/third-parties/' + t.id;
+  const status = (text, tone, attrs) => include('partials/tprm_status', { text, tone, attrs });
+  const sevTag = s => '<span class="cv-tag cv-tier-' + s + '">' + escapeHtml(tp.TIER_LABELS[s] || s) + '</span>';
+  const initials = s => String(s || '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+  const OUTCOME = { approve: 'Approve', approve_with_conditions: 'Approve with conditions', reject: 'Do not approve', request_more_information: 'More information asked for' };
+  const COND = { open: 'Open', proof_submitted: 'Proof sent', verified: 'Done', changes_requested: 'Changes asked for', waived: 'Waived' };
+  const condTone = s => s === 'verified' ? 'good' : s === 'changes_requested' ? 'problem' : s === 'proof_submitted' ? 'attention' : 'quiet';
+  const latest = p.latest;
+  const tabs = [['overview', 'Overview'], ['reviews', 'Reviews', p.reviews.length], ['issues', 'Issues', p.issues.length], ['conditions', 'Conditions', p.conditions.length], ['documents', 'Documents', p.evidence.length]];
+  const kb = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  const val = v => v ? escapeHtml(v) : '<span class="cv-muted">Not recorded</span>';
+%>
+<%- include('tprm_client_top', { title: t.name + ' · Third-party risk', cvNav: 'home' }) %>
+<div class="cv-top">
+  <div class="cv-crumb"><a href="<%= base %>">Third parties</a> / <b><%= t.name %></b></div>
+  <div class="cv-actions"><% if (latest) { %><a class="cv-btn <%= p.approval && p.approval.pending === 'decision_needed' ? 'cv-btn-p' : '' %>" href="<%= base %>/recommendations/<%= latest.recommendation_id %>"><%= p.approval && p.approval.pending === 'decision_needed' ? 'Review and decide' : 'Latest recommendation' %></a><% } %></div>
+</div>
+
+<header class="cv-card cv-vh" data-tprm-cv-party-head="<%= t.id %>">
+  <span class="cv-vh-ic" aria-hidden="true"><%= initials(t.name) %></span>
+  <div class="cv-vh-t"><h1><%= t.name %></h1>
+    <div class="cv-muted"><%= [t.legal_name && t.legal_name !== t.name ? t.legal_name : null, t.category, tp.STATUS_LABELS[t.status]].filter(Boolean).join(' · ') %></div></div>
+  <div class="cv-vh-tags">
+    <% if (t.current_tier) { %><span class="cv-tag cv-tier-<%= t.current_tier %>"><%= tp.TIER_LABELS[t.current_tier] %> tier</span><% } %>
+    <% if (p.approval) { %><%- status(p.approval.pending ? p.approval.pendingLabel : p.approval.label, p.approval.pending ? p.approval.pendingTone : p.approval.tone, 'data-tprm-cv-approval="' + escapeHtml(p.approval.state) + '"') %><% } %>
+    <% if (latest && latest.residual_rating) { %><span class="cv-tag cv-res-<%= latest.residual_rating %>">Residual risk <%= tp.TIER_LABELS[latest.residual_rating].toLowerCase() %></span><% } %>
+  </div>
+</header>
+
+<nav class="cv-tabs" aria-label="<%= t.name %>" data-tprm-cv-party-tabs>
+  <% tabs.forEach(([k, label, n]) => { %><a href="<%= self %><%= k === 'overview' ? '' : '?tab=' + k %>" class="<%= tab === k ? 'is-on' : '' %>"<%- tab === k ? ' aria-current="page"' : '' %> data-tprm-cv-party-tab="<%= k %>"><%= label %><% if (n != null) { %> <small><%= n %></small><% } %></a><% }) %>
+</nav>
+
+<% if (tab === 'overview') { %>
+<div class="cv-cards4">
+  <section class="cv-card"><h3 class="cv-h4">Latest review</h3>
+    <% if (latest) { %><div class="cv-big cv-big-s"><%= OUTCOME[latest.outcome] || latest.outcome %></div><div class="cv-muted cv-small">Recommendation version <%= latest.version %>, issued <%= tpf.day(new Date(latest.issued_at).toISOString().slice(0, 10)) %></div>
+    <% } else { %><div class="cv-big cv-big-s">None yet</div><div class="cv-muted cv-small"><%= p.approval && p.approval.pending ? p.approval.pendingLabel : 'No recommendation has been issued' %></div><% } %></section>
+  <section class="cv-card"><h3 class="cv-h4">Documents <span>released to you</span></h3><div class="cv-big"><%= p.evidence.length %></div><div class="cv-muted cv-small"><%= p.evidence.length ? 'From the reviews of this third party' : 'None released yet' %></div></section>
+  <section class="cv-card"><h3 class="cv-h4">Conditions</h3><div class="cv-big"><%= p.conditionsDone %> <span class="cv-of">of <%= p.liveConditions.length %> done</span></div>
+    <div class="cv-prog"><b style="width:<%= p.liveConditions.length ? Math.round(p.conditionsDone / p.liveConditions.length * 100) : 0 %>%"></b></div></section>
+  <section class="cv-card"><h3 class="cv-h4">Open issues</h3><div class="cv-big<%= p.openIssues ? ' cv-warn' : '' %>"><%= p.openIssues %></div><div class="cv-muted cv-small">of <%= p.issues.length %> raised in reviews</div></section>
+</div>
+<div class="cv-ov">
+  <div>
+    <section class="cv-card"><h3 class="cv-h4">Supplier contact</h3>
+      <% if (t.primary_contact_name || t.primary_contact_email) { %><div class="cv-ppl"><span class="cv-av"><%= initials(t.primary_contact_name || t.primary_contact_email) %></span><div><b><%= t.primary_contact_name || 'Main contact' %></b><% if (t.primary_contact_email) { %><span class="cv-muted cv-small cv-block"><%= t.primary_contact_email %></span><% } %></div></div>
+      <% } else { %><p class="cv-muted cv-small">No contact recorded.</p><% } %></section>
+    <section class="cv-card cv-mt"><h3 class="cv-h4">Your consultants</h3>
+      <div class="cv-ppl"><span class="cv-av"><%= initials(p.firmName) %></span><div><b><%= p.firmName %></b><span class="cv-muted cv-small cv-block"><%= latest && latest.author_name ? 'Last recommendation by ' + latest.author_name : 'Third-party risk reviews' %></span></div></div></section>
+  </div>
+  <section class="cv-card">
+    <h3 class="cv-h4">Supplier information</h3>
+    <dl class="cv-kv">
+      <div><dt>Legal name</dt><dd><%- val(t.legal_name) %></dd></div>
+      <div><dt>Registration number</dt><dd><%- val(t.registration_number) %></dd></div>
+      <div><dt>Country</dt><dd><%- val(t.country) %></dd></div>
+      <div><dt>Website</dt><dd><%- val(t.website) %></dd></div>
+      <div><dt>Service type</dt><dd><%- val(t.category) %></dd></div>
+      <div><dt>Status</dt><dd><%= tp.STATUS_LABELS[t.status] %></dd></div>
+      <div><dt>Tier</dt><dd><%- t.current_tier ? escapeHtml(tp.TIER_LABELS[t.current_tier]) + (t.tier_source === 'provisional_from_client_label' ? ' <span class="cv-muted cv-small">provisional</span>' : '') : '<span class="cv-muted">Not set</span>' %></dd></div>
+      <div><dt>Last assessed</dt><dd><%- t.last_assessment_date ? escapeHtml(tpf.day(t.last_assessment_date)) : '<span class="cv-muted">Not yet</span>' %></dd></div>
+      <div><dt>Next review</dt><dd><%- t.next_due_date ? escapeHtml(tpf.day(t.next_due_date)) : '<span class="cv-muted">Not set</span>' %></dd></div>
+    </dl>
+    <% if (latest && latest.rationale) { %><div class="cv-grp"><div class="cv-gh">Why your consultants recommended this</div><div class="cv-gb cv-pre"><%= latest.rationale %></div></div><% } %>
+  </section>
+  <div>
+    <section class="cv-card"><h3 class="cv-h4">Latest decision</h3>
+      <% if (latest && latest.decision_outcome) { %><p><span class="cv-tag cv-ok"><%= OUTCOME[latest.decision_outcome] %></span></p><p class="cv-muted cv-small">Recorded<%= latest.decided_by_name ? ' by ' + latest.decided_by_name : '' %>, <%= tpf.day(new Date(latest.decided_at).toISOString().slice(0, 10)) %><%= latest.valid_until ? '. Valid until ' + tpf.day(latest.valid_until) + '.' : '.' %></p>
+      <% } else { %><p class="cv-muted cv-small"><%= latest ? 'No decision recorded on the latest recommendation yet.' : 'No decision yet.' %></p><% } %></section>
+    <section class="cv-card cv-mt"><h3 class="cv-h4">Key dates</h3><dl class="cv-kv1">
+      <% p.liveConditions.filter(c => c.owner === 'client' && !['verified', 'waived'].includes(c.status) && c.due_date).forEach(c => { %><div><dt>Your condition <%= c.position %> due</dt><dd class="<%= c.due_date < p.today ? 'cv-bad' : 'cv-warn' %>"><%= tpf.day(c.due_date) %></dd></div><% }) %>
+      <% if (latest && latest.valid_until) { %><div><dt>Approval valid until</dt><dd><%= tpf.day(latest.valid_until) %></dd></div><% } %>
+      <div><dt>Next review</dt><dd><%= t.next_due_date ? tpf.day(t.next_due_date) : 'Not set' %></dd></div>
+    </dl></section>
+    <section class="cv-card cv-mt"><h3 class="cv-h4">Recent activity</h3>
+      <% if (!p.activity.length) { %><p class="cv-muted cv-small">Nothing yet.</p><% } %>
+      <ul class="cv-feed"><% p.activity.forEach(a => { %><li><i></i><div><b><%= a.text %></b><span class="cv-muted cv-small cv-block"><%= [a.who, tpf.day(new Date(a.at).toISOString().slice(0, 10))].filter(Boolean).join(' · ') %></span></div></li><% }) %></ul></section>
+  </div>
+</div>
+<% } else if (tab === 'reviews') { %>
+<div class="cv-card cv-table">
+  <% if (!p.reviews.length) { %><div class="cv-empty"><strong>No recommendation issued yet</strong></div><% } else { %>
+  <div class="cv-scroll"><table><thead><tr><th>Review</th><th>Version</th><th>Issued</th><th>Recommended</th><th>Residual risk</th><th>Your decision</th><th>Valid until</th><th></th></tr></thead><tbody>
+  <% p.reviews.forEach(r => { %><tr data-tprm-cv-review="<%= r.recommendation_id %>"><td><b><%= r.type === 'reassessment' ? 'Reassessment' : 'Onboarding review' %></b></td><td><%= r.version %></td><td><%= tpf.day(new Date(r.issued_at).toISOString().slice(0, 10)) %></td><td><%= OUTCOME[r.outcome] || r.outcome %></td>
+    <td><%- r.residual_rating ? '<span class="cv-tag cv-res-' + r.residual_rating + '">' + escapeHtml(tp.TIER_LABELS[r.residual_rating]) + '</span>' : '-' %></td>
+    <td><%- r.decision_outcome ? escapeHtml(OUTCOME[r.decision_outcome]) + '<span class="cv-muted cv-small cv-block">' + escapeHtml(tpf.day(new Date(r.decided_at).toISOString().slice(0, 10))) + '</span>' : '<span class="cv-muted">Not yet</span>' %></td>
+    <td><%= r.valid_until ? tpf.day(r.valid_until) : '-' %></td><td class="cv-right"><a class="cv-btn" href="<%= base %>/recommendations/<%= r.recommendation_id %>">Open</a></td></tr><% }) %>
+  </tbody></table></div><% } %>
+</div>
+<% } else if (tab === 'issues') { %>
+<% if (!p.issues.length) { %><div class="cv-card cv-table"><div class="cv-empty"><strong>No issues raised in issued reviews</strong></div></div><% } %>
+<div class="cv-issues">
+<% p.issues.forEach(i => { const th = i.thread; %>
+  <section class="cv-card cv-issue" id="issue-<%= i.id %>" data-tprm-cv-issue="<%= i.id %>">
+    <div class="cv-issue-h">
+      <h3><%= i.title %></h3>
+      <div class="cv-vh-tags"><%- sevTag(i.severity) %><%- i.status === 'open' ? status('Open', 'attention') : status('Closed', 'good') %></div>
+    </div>
+    <% if (i.control_ref) { %><p class="cv-muted cv-small">Control <%= i.control_ref %></p><% } %>
+    <% if (i.description) { %><p class="cv-pre"><%= i.description %></p><% } %>
+    <% if (i.impact) { %><p class="cv-small"><b>Why it matters:</b> <%= i.impact %></p><% } %>
+    <% if (th && th.agreed_fix) { %><p class="cv-small" data-tprm-cv-agreed-fix><b>Fix agreed with the supplier:</b> <%= th.agreed_fix %><%= th.agreed_date ? ', by ' + tpf.day(th.agreed_date) : '' %></p><% } %>
+    <% if (th) { %>
+      <div class="cv-thread" data-tprm-cv-thread="<%= th.id %>">
+        <h4 class="cv-h4">Conversation <span>you, the supplier and <%= p.firmName %></span></h4>
+        <% if (!th.messages.length) { %><p class="cv-muted cv-small">No comments yet.</p><% } %>
+        <% th.messages.forEach(m => { const who = m.author_kind === 'client' ? (m.author_name || 'You') : m.author_kind === 'firm' ? (m.author_name || p.firmName) : (m.author_name || t.name); %>
+          <div class="cv-cmt" data-tprm-cv-message="<%= m.author_kind %>"><span class="cv-av"><%= initials(who) %></span><div><b><%= who %></b> <span class="cv-muted cv-small"><%= m.author_kind === 'client' ? 'Your organisation' : m.author_kind === 'firm' ? p.firmName : t.name %> · <%= tpf.day(new Date(m.created_at).toISOString().slice(0, 10)) %></span>
+            <% if (m.proposed_fix) { %><p class="cv-small"><b>Proposed fix:</b> <%= m.proposed_fix %><%= m.proposed_date ? ' (by ' + tpf.day(m.proposed_date) + ')' : '' %></p><% } %>
+            <% if (m.body) { %><p class="cv-pre"><%= m.body %></p><% } %></div></div>
+        <% }) %>
+        <% if (th.open) { %>
+          <form method="POST" action="<%= base %>/issues/<%= th.id %>/comments" class="cv-compose" data-tprm-cv-comment-form>
+            <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+            <input type="hidden" name="third_party_id" value="<%= t.id %>">
+            <label class="cv-sr" for="cv-cmt-<%= th.id %>">Comment on <%= i.title %></label>
+            <textarea class="cv-in" id="cv-cmt-<%= th.id %>" name="body" rows="2" maxlength="4000" required placeholder="Write a comment. <%= t.name %> and <%= p.firmName %> see it."></textarea>
+            <button class="cv-btn cv-btn-p" type="submit">Post comment</button>
+          </form>
+        <% } else { %><p class="cv-muted cv-small" data-tprm-cv-thread-closed>This review is closed, so comments can no longer be added.</p><% } %>
+      </div>
+    <% } %>
+    <% if (i.recommendation_id) { %><p class="cv-small cv-mt"><a class="cv-link" href="<%= base %>/recommendations/<%= i.recommendation_id %>">Open the recommendation</a></p><% } %>
+  </section>
+<% }) %>
+</div>
+<% } else if (tab === 'conditions') { %>
+<div class="cv-card cv-table">
+  <% if (!p.conditions.length) { %><div class="cv-empty"><strong>No conditions set</strong></div><% } else { %>
+  <div class="cv-scroll"><table><thead><tr><th>#</th><th>Condition</th><th>Who</th><th>Due</th><th>Status</th><th></th></tr></thead><tbody>
+  <% p.conditions.forEach(c => { const late = c.due_date && c.due_date < p.today && !['verified', 'waived'].includes(c.status); %><tr data-tprm-cv-condition="<%= c.id %>"><td><%= c.position %></td><td class="cv-wrap"><%= c.description %></td><td><%= c.owner === 'client' ? 'You' : 'Supplier' %></td>
+    <td class="<%= late ? 'cv-bad' : '' %>"><%= c.due_date ? tpf.day(c.due_date) : '-' %><%= late ? ', overdue' : '' %></td><td><%- status(COND[c.status] || c.status, condTone(c.status)) %></td>
+    <td class="cv-right"><a class="cv-btn" href="<%= base %>/recommendations/<%= c.recommendation_id %>#conditions"><%= c.owner === 'client' && ['open', 'changes_requested'].includes(c.status) ? 'Send proof' : 'Open' %></a></td></tr><% }) %>
+  </tbody></table></div><% } %>
+</div>
+<% } else if (tab === 'documents') { %>
+<div class="cv-card cv-table">
+  <% if (!p.evidence.length) { %><div class="cv-empty"><strong>No documents released to you yet</strong><p>Your consultants release documents with a recommendation.</p></div><% } else { %>
+  <div class="cv-scroll"><table><thead><tr><th>Document</th><th>Note</th><th>Size</th><th>Released</th><th></th></tr></thead><tbody>
+  <% p.evidence.forEach(e => { %><tr data-tprm-cv-document="<%= e.id %>"><td><span class="cv-ext"><%= (String(e.original_name).split('.').pop() || '').slice(0, 4).toUpperCase() %></span><%= e.original_name %></td><td class="cv-wrap"><%= e.description || '-' %></td><td><%= kb(Number(e.size_bytes) || 0) %></td>
+    <td><%= e.released_at ? tpf.day(new Date(e.released_at).toISOString().slice(0, 10)) : '-' %></td><td class="cv-right"><% if (e.recommendation_id) { %><a class="cv-btn" href="<%= base %>/recommendations/<%= e.recommendation_id %>/evidence/<%= e.id %>/download">Download</a><% } %></td></tr><% }) %>
+  </tbody></table></div><% } %>
+</div>
+<% } %>
+<%- include('tprm_client_bottom') %>

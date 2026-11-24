@@ -1,4 +1,4 @@
-<%- include('partials/header', { title: 'Concentration · Third-party risk', user, ws, active, portalView }) %>
+<%- include('tprm_client_top', { title: 'Concentration · Third-party risk', cvNav: 'reports' }) %>
 <%
   const s = summary;
   const base = '/workspaces/' + ws.id + '/client-portal/third-party-risk';
@@ -6,8 +6,7 @@
 %>
 <div class="page-head cp-page-head" data-tprm-portal-concentration>
   <div>
-    <a class="text-xs tpu-back" href="<%= base %>">← Third-party risk</a>
-    <div class="eyebrow tpu-mt-6">Client engagement</div>
+    <div class="cv-crumb tpu-mt-6"><a href="<%= base %>">Third parties</a> / <b>Concentration of services</b></div>
     <h1>Concentration of services</h1>
     <div class="page-subtitle">Where your organisation depends on the third parties it uses, from the register your consultants keep for you.</div>
   </div>
@@ -58,4 +57,4 @@
 <% }) %>
 <% } %>
 <% if (summary.fourth) { %><%- include('tprm_fourth_parties', { fourth: summary.fourth, mode: 'portal' }) %><% } %>
-<%- include('partials/footer') %>
+<%- include('tprm_client_bottom') %>

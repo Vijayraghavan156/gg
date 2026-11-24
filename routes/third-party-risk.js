@@ -172,6 +172,13 @@ function register(app, deps) {
 
   const PORTAL = '/workspaces/:wsId/client-portal/third-party-risk';
   const decisions = require('../lib/tprm/decisions');
+  const clientView = require('../lib/tprm/client-view');
+  app.use(PORTAL, (req, res, next) => {
+    const q = req.query || {};
+    const key = ['error', 'toast', 'notice'].find(k => typeof q[k] === 'string' && q[k]);
+    res.locals.cvNotice = key ? { text: String(q[key]).slice(0, 300), kind: key === 'error' || q.toastKind === 'error' ? 'error' : 'ok' } : null;
+    next();
+  });
   const portalNotFound = (req, res) => res.status(404).render('error', {
     user: req.user, ws: req.workspace,
     message: 'This page does not exist, or it is not available to your account.',
@@ -184,13 +191,39 @@ function register(app, deps) {
     res.render('tprm_portal_home', {
       user: req.user,
       ws: req.workspace,
-      active: 'client-portal',
-      portalView: 'third-party-risk',
-      overview: await decisions.portalOverview(db, req.workspace),
-      clientConditions: await require('../lib/tprm/conditions').clientOwnedOpen(db, req.workspace),
+      home: await clientView.home(db, req.workspace, req.query || {}),
+      cv: clientView,
       tp: tpPlacement,
-      labels: require('../lib/tprm/labels'),
     });
+  });
+
+  app.post(`${PORTAL}/issues/:iid/comments`, requireAuth, requireWorkspace, async (req, res, next) => {
+    try {
+      if (!portalReady(req, res)) return notFound(req, res);
+      const base = `/workspaces/${req.workspace.id}/client-portal/third-party-risk`;
+      let result;
+      try {
+        result = await require('../lib/tprm/issues').clientComment(db, req.workspace, req.user, req.params.iid, req.body || {});
+      } catch (err) {
+        if (err instanceof TprmError && err.status === 404) return portalNotFound(req, res);
+        if (err instanceof TprmError && (err.status === 400 || err.status === 409)) {
+          const tp = Number(req.body && req.body.third_party_id);
+          const back = Number.isSafeInteger(tp) && tp > 0 ? `${base}/third-parties/${tp}?tab=issues` : base;
+          return res.redirect(withToast(back, err.message, 'error'));
+        }
+        throw err;
+      }
+      await logAction(req.user.id, req.workspace.id, 'tprm_issue_client_comment', 'tp_issue', result.issueId, {}, auditCtx(req));
+      return res.redirect(withToast(`${base}/third-parties/${result.thirdPartyId}?tab=issues#issue-${result.findingId}`, 'Comment added'));
+    } catch (err) { return next(err); }
+  });
+
+  app.get(`${PORTAL}/third-parties/:tid`, requireAuth, requireWorkspace, async (req, res) => {
+    if (!portalReady(req, res)) return notFound(req, res);
+    const party = await clientView.thirdParty(db, req.workspace, req.params.tid);
+    if (!party) return portalNotFound(req, res);
+    const tab = ['overview', 'reviews', 'issues', 'conditions', 'documents'].includes(String(req.query.tab)) ? String(req.query.tab) : 'overview';
+    res.render('tprm_portal_party', { user: req.user, ws: req.workspace, party, tab, tp: tpPlacement });
   });
 
   app.get(`${PORTAL}/concentration`, requireAuth, requireWorkspace, async (req, res) => {
