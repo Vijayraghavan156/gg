@@ -4,7 +4,7 @@
   const t = h.tiles;
   const base = '/workspaces/' + ws.id + '/client-portal/third-party-risk';
   const status = (text, tone, attrs) => include('partials/tprm_status', { text, tone, attrs });
-  const qs = (over = {}) => { const p = new URLSearchParams(); const all = { tab: f.tab, tier: f.tier, stage: f.stage, service: f.service, q: f.q, ...over };
+  const qs = (over = {}) => { const p = new URLSearchParams(); const all = { tab: f.tab, tier: f.tier, stage: f.stage, service: f.service, owner: f.owner, q: f.q, ...over };
     Object.entries(all).forEach(([k, v]) => { if (v && !(k === 'tab' && v === 'all') && !(k === 'page' && Number(v) === 1)) p.set(k, v); }); const s = p.toString(); return s ? '?' + s : ''; };
   const tierTag = tier => tier ? '<span class="cv-tag cv-tier-' + tier + '">' + escapeHtml(tp.TIER_LABELS[tier]) + '</span>' : '<span class="cv-muted">Not set</span>';
   const residualTag = r => r ? '<span class="cv-tag cv-res-' + r + '">' + escapeHtml(tp.TIER_LABELS[r]) + '</span>' : '<span class="cv-muted">Not yet</span>';
@@ -21,6 +21,7 @@
   <div class="cv-crumb"><%= ws.brand_display_name || ws.client_name %> / <b>Third parties</b></div>
   <div class="cv-actions">
     <a class="cv-btn" href="<%= base %>/concentration" data-tprm-portal-concentration-link>Concentration of services</a>
+    <% if (canRequest) { %><a class="cv-btn cv-btn-p" href="<%= base %>/requests/new" data-tprm-cv-new-request>Request a new third party</a><% } %>
   </div>
 </div>
 
@@ -30,7 +31,7 @@
   <% }) %>
 </nav>
 
-<% if (f.tab !== 'ended' && (h.decisionsNeeded.length || h.ownConditions.length)) { %>
+<% if (!['ended', 'requests'].includes(f.tab) && (h.decisionsNeeded.length || h.ownConditions.length)) { %>
 <section class="cv-card cv-waiting" aria-label="Waiting on you">
   <% if (h.decisionsNeeded.length) { %>
     <div role="status" data-tprm-portal-decisions-needed>
@@ -89,10 +90,24 @@
 </div>
 <% } %>
 
+<% if (f.tab === 'requests') { %>
+<div class="cv-card cv-table" data-tprm-cv-requests>
+  <% if (!h.requests.length) { %><div class="cv-empty"><strong>No requests yet</strong><p>Ask your consultants to review a new supplier before you sign with them.<% if (canRequest) { %> <a class="cv-link" href="<%= base %>/requests/new">Request a new third party</a><% } %></p></div>
+  <% } else { %>
+  <div class="cv-scroll"><table><thead><tr><th>Supplier</th><th>Service</th><th>Asked by</th><th>Sent</th><th>Status</th><th></th></tr></thead><tbody>
+  <% h.requests.forEach(r => { %><tr data-tprm-cv-request="<%= r.id %>" data-tprm-cv-request-status="<%= r.status %>">
+    <td><b><%= r.name %></b><% if (r.owner_name) { %><span class="cv-muted cv-small cv-block">Owner: <%= r.owner_name %></span><% } %></td>
+    <td class="cv-wrap"><%= r.service_description %></td><td><%= r.requested_by_name || '-' %></td><td><%= tpf.day(new Date(r.requested_at).toISOString().slice(0, 10)) %></td>
+    <td><%- status(requestLabels[r.status], r.status === 'accepted' ? 'good' : r.status === 'declined' ? 'problem' : r.status === 'submitted' ? 'attention' : 'quiet') %><% if (r.status === 'declined' && r.decline_reason) { %><span class="cv-small cv-block"><%= r.decline_reason %></span><% } %></td>
+    <td class="cv-right"><% if (r.status === 'accepted' && r.third_party_id) { %><a class="cv-btn" href="<%= base %>/third-parties/<%= r.third_party_id %>">Open</a><% } else if (r.status === 'submitted' && canRequest) { %>
+      <form method="POST" action="<%= base %>/requests/<%= r.id %>/withdraw" class="cv-inline"><input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>"><input type="hidden" name="row_version" value="<%= r.row_version %>"><button class="cv-btn" type="submit">Withdraw</button></form><% } %></td></tr><% }) %>
+  </tbody></table></div><% } %>
+</div>
+<% } else { %>
 <form method="GET" action="<%= base %>" class="cv-filters" data-tprm-cv-filters>
   <% if (f.tab !== 'all') { %><input type="hidden" name="tab" value="<%= f.tab %>"><% } %>
   <label class="cv-sr" for="cv-q">Search</label>
-  <input class="cv-in cv-search" id="cv-q" type="search" name="q" value="<%= f.q %>" placeholder="Search name or service" autocomplete="off">
+  <input class="cv-in cv-search" id="cv-q" type="search" name="q" value="<%= f.q %>" placeholder="Search name, service or owner" autocomplete="off">
   <label class="cv-sr" for="cv-tier">Tier</label>
   <select class="cv-in" id="cv-tier" name="tier"><option value="">Any tier</option><% tp.TIERS.forEach(k => { %><option value="<%= k %>" <%= f.tier === k ? 'selected' : '' %>><%= tp.TIER_LABELS[k] %></option><% }) %></select>
   <% if (f.tab === 'all') { %>
@@ -101,8 +116,10 @@
   <% } %>
   <label class="cv-sr" for="cv-service">Service type</label>
   <select class="cv-in" id="cv-service" name="service"><option value="">Any service type</option><% h.serviceOptions.forEach(s => { %><option value="<%= s %>" <%= f.service === s ? 'selected' : '' %>><%= s %></option><% }) %></select>
+  <label class="cv-sr" for="cv-owner">Owner</label>
+  <select class="cv-in" id="cv-owner" name="owner"><option value="">Any owner</option><option value="me" <%= f.owner === 'me' ? 'selected' : '' %>>Owned by me</option></select>
   <button class="cv-btn" type="submit">Apply</button>
-  <% if (f.q || f.tier || f.stage || f.service) { %><a class="cv-link" href="<%= base %><%= qs({ q: '', tier: '', stage: '', service: '', page: 1 }) %>">Clear</a><% } %>
+  <% if (f.q || f.tier || f.stage || f.service || f.owner) { %><a class="cv-link" href="<%= base %><%= qs({ q: '', tier: '', stage: '', service: '', owner: '', page: 1 }) %>">Clear</a><% } %>
   <span class="cv-sp"></span>
   <span class="cv-muted cv-small" data-tprm-cv-count><%= h.total %> third part<%= h.total === 1 ? 'y' : 'ies' %></span>
 </form>
@@ -116,7 +133,7 @@
     </div>
   <% } else { %>
   <div class="cv-scroll"><table>
-    <thead><tr><th>Third party</th><th>Tier</th><th>Stage</th><th>Decision</th><th>Residual risk</th><th class="cv-num">Open issues</th><th>Conditions done</th><th>Next review</th><th></th></tr></thead>
+    <thead><tr><th>Third party</th><th>Tier</th><th>Stage</th><th>Decision</th><th>Residual risk</th><th class="cv-num">Open issues</th><th>Conditions done</th><th>Next review</th><th>Owner</th><th></th></tr></thead>
     <tbody>
     <% h.rows.forEach(r => { const ap = r.approval; const rec = r.recommendation;
          const due = r.status === 'in_use' ? tpLabels.due({ nextDueDate: r.next_due_date, lastAssessmentDate: r.last_assessment_date, inProgress: !!ap.openAssessment, today: h.today }) : null; %>
@@ -133,6 +150,7 @@
         <td class="cv-num"><%- rec ? (rec.open_findings ? '<span class="cv-warn">' + rec.open_findings + ' open</span>' : '0') : '<span class="cv-muted">-</span>' %></td>
         <td><%= rec && rec.conditions ? rec.conditions_done + ' of ' + rec.conditions : '-' %></td>
         <td><% if (due && due.label && !['in_progress', 'not_assessed'].includes(due.key)) { %><%- status(due.label, due.tone, 'data-tprm-portal-due="' + escapeHtml(due.key) + '"') %><% } else { %><span class="cv-muted">-</span><% } %></td>
+        <td><%- r.owner_name ? escapeHtml(r.owner_name) : '<span class="cv-muted">-</span>' %></td>
         <td class="cv-right"><% if (rec) { %><a class="cv-btn <%= ap.pending === 'decision_needed' ? 'cv-btn-p' : '' %>" href="<%= base %>/recommendations/<%= rec.recommendation_id %>" data-tprm-portal-open="<%= rec.recommendation_id %>"><%= ap.pending === 'decision_needed' ? 'Review and decide' : 'Recommendation' %></a><% } %></td>
       </tr>
     <% }) %>
@@ -144,4 +162,5 @@
   </div>
   <% } %>
 </div>
+<% } %>
 <%- include('tprm_client_bottom') %>

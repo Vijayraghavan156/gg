@@ -165,6 +165,7 @@ function register(app, deps) {
       approvals: await require('../lib/tprm/decisions').approvals(db, loaded.ws),
       stages: await require('../lib/tprm/pipeline').stagesForClient(db, loaded.ws.id),
       clientRulebooks: await require('../lib/tprm/rulebooks').currentForClient(db, loaded.ws.id),
+      clientRequestsOpen: await require('../lib/tprm/client-requests').list(db, loaded.ws.id, { open: true }),
       canManage: access.can(req.user, loaded.perms, 'tp.manage'),
       canSettings: access.can(req.user, loaded.perms, 'tp.settings'),
     });
@@ -191,7 +192,9 @@ function register(app, deps) {
     res.render('tprm_portal_home', {
       user: req.user,
       ws: req.workspace,
-      home: await clientView.home(db, req.workspace, req.query || {}),
+      home: await clientView.home(db, req.workspace, req.query || {}, req.user),
+      canRequest: await clientView.canEditDetails(db, req.workspace, req.user),
+      requestLabels: require('../lib/tprm/client-requests').STATUS_LABELS,
       cv: clientView,
       tp: tpPlacement,
     });
@@ -222,8 +225,81 @@ function register(app, deps) {
     if (!portalReady(req, res)) return notFound(req, res);
     const party = await clientView.thirdParty(db, req.workspace, req.params.tid);
     if (!party) return portalNotFound(req, res);
-    const tab = ['overview', 'reviews', 'issues', 'conditions', 'documents'].includes(String(req.query.tab)) ? String(req.query.tab) : 'overview';
-    res.render('tprm_portal_party', { user: req.user, ws: req.workspace, party, tab, tp: tpPlacement });
+    const tab = ['overview', 'scoping', 'reviews', 'issues', 'conditions', 'documents', 'contracts'].includes(String(req.query.tab)) ? String(req.query.tab) : 'overview';
+    const canEdit = await clientView.canEditDetails(db, req.workspace, req.user);
+    res.render('tprm_portal_party', { user: req.user, ws: req.workspace, party, tab, tp: tpPlacement, canEdit,
+      clientPeople: canEdit ? await tpRegister.clientPeople(db, req.workspace.id) : [], editing: req.query.edit === 'details' && canEdit });
+  });
+
+  const clientRequests = require('../lib/tprm/client-requests');
+  async function renderRequestForm(req, res, { values = {}, errors = [], status = 200 } = {}) {
+    const model = await clientRequests.modelFor(db, req.workspace);
+    return res.status(status).render('tprm_portal_request', {
+      user: req.user, ws: req.workspace, values, errors,
+      questions: clientRequests.questionsOf(model), people: await tpRegister.clientPeople(db, req.workspace.id),
+    });
+  }
+
+  app.get(`${PORTAL}/requests/new`, requireAuth, requireWorkspace, async (req, res, next) => {
+    try {
+      if (!portalReady(req, res)) return notFound(req, res);
+      if (!(await clientView.canEditDetails(db, req.workspace, req.user))) {
+        return res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal/third-party-risk?tab=requests`, 'Your role does not allow requesting a new third party.', 'error'));
+      }
+      return await renderRequestForm(req, res, { values: { owner_user_id: String(req.user.id) } });
+    } catch (err) { return next(err); }
+  });
+
+  app.post(`${PORTAL}/requests`, requireAuth, requireWorkspace, async (req, res, next) => {
+    try {
+      if (!portalReady(req, res)) return notFound(req, res);
+      const back = `/workspaces/${req.workspace.id}/client-portal/third-party-risk?tab=requests`;
+      if (!(await clientView.canEditDetails(db, req.workspace, req.user))) return res.redirect(withToast(back, 'Your role does not allow requesting a new third party.', 'error'));
+      try {
+        const r = await clientRequests.submit(db, req.workspace, req.user, req.body || {});
+        await logAction(req.user.id, req.workspace.id, 'tprm_client_request_submitted', 'tp_client_request', r.id, {}, auditCtx(req));
+        return res.redirect(withToast(back, `Request for ${r.name} sent to your consultants`));
+      } catch (err) {
+        if (err instanceof TprmError && err.status === 400) return await renderRequestForm(req, res, { values: req.body || {}, errors: err.errors || [err.message], status: 400 });
+        throw err;
+      }
+    } catch (err) { return next(err); }
+  });
+
+  app.post(`${PORTAL}/requests/:rid/withdraw`, requireAuth, requireWorkspace, async (req, res, next) => {
+    try {
+      if (!portalReady(req, res)) return notFound(req, res);
+      const back = `/workspaces/${req.workspace.id}/client-portal/third-party-risk?tab=requests`;
+      if (!(await clientView.canEditDetails(db, req.workspace, req.user))) return res.redirect(withToast(back, 'Your role does not allow this.', 'error'));
+      try {
+        await clientRequests.withdraw(db, req.workspace, req.user, req.params.rid, req.body || {});
+        await logAction(req.user.id, req.workspace.id, 'tprm_client_request_withdrawn', 'tp_client_request', Number(req.params.rid) || 0, {}, auditCtx(req));
+        return res.redirect(withToast(back, 'Request withdrawn'));
+      } catch (err) {
+        if (err instanceof TprmError && err.status === 404) return portalNotFound(req, res);
+        if (err instanceof TprmError && err.status === 409) return res.redirect(withToast(back, err.message, 'error'));
+        throw err;
+      }
+    } catch (err) { return next(err); }
+  });
+
+  app.post(`${PORTAL}/third-parties/:tid/details`, requireAuth, requireWorkspace, async (req, res, next) => {
+    try {
+      if (!portalReady(req, res)) return notFound(req, res);
+      const base = `/workspaces/${req.workspace.id}/client-portal/third-party-risk/third-parties/${Number(req.params.tid) || 0}`;
+      if (!(await clientView.canEditDetails(db, req.workspace, req.user))) {
+        return res.redirect(withToast(base, 'Your role does not allow changing these details.', 'error'));
+      }
+      try {
+        const r = await tpRegister.setClientDetails(db, req.workspace, req.user, req.params.tid, req.body || {});
+        if (!r.unchanged) await logAction(req.user.id, req.workspace.id, 'tprm_client_details_changed', 'tp_third_party', r.thirdPartyId, {}, auditCtx(req));
+        return res.redirect(withToast(base, r.unchanged ? 'No changes to save' : 'Details saved'));
+      } catch (err) {
+        if (err instanceof TprmError && err.status === 404) return portalNotFound(req, res);
+        if (err instanceof TprmError && (err.status === 400 || err.status === 409)) return res.redirect(withToast(`${base}?edit=details`, err.message, 'error'));
+        throw err;
+      }
+    } catch (err) { return next(err); }
   });
 
   app.get(`${PORTAL}/concentration`, requireAuth, requireWorkspace, async (req, res) => {

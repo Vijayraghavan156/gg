@@ -413,7 +413,10 @@ test('the third party\'s questionnaire page never shows the checklist; only the 
   sessions.push(anon);
   const vendorPage = await anon.get(`/vendor/q/${token}`);
   assert.equal(vendorPage.status, 200);
-  assert.doesNotMatch(vendorPage.text, new RegExp(`${SECRET}|Contract checklist|data-tprm-contract|Contract clause`));
+  assert.doesNotMatch(vendorPage.text, new RegExp(`${SECRET}|Contract checklist|data-tprm-contract`));
+  const vendorChecklist = await anon.get(`/vendor/q/${token}/contract`);
+  assert.equal(vendorChecklist.status, 200, 'the third party marks the clauses on its own page');
+  assert.doesNotMatch(vendorChecklist.text, new RegExp(SECRET), 'the reviewer\'s comment never reaches the third party');
 
   const offenders = [];
   const walk = dir => {
@@ -428,7 +431,7 @@ test('the third party\'s questionnaire page never shows the checklist; only the 
   for (const v of fs.readdirSync(path.join(ROOT, 'views')).filter(n => /portal|vendor/.test(n))) {
     assert.doesNotMatch(fs.readFileSync(path.join(ROOT, 'views', v), 'utf8'), /contractReview|contract-review|tprm_assessment_contract/, v);
   }
-  for (const f of ['routes/tprm-vendor.js', 'lib/tprm/vendor-answers.js', 'lib/tprm/decisions.js', 'routes/third-party-risk.js']) {
+  for (const f of ['lib/tprm/vendor-answers.js', 'lib/tprm/decisions.js', 'routes/third-party-risk.js']) {
     assert.doesNotMatch(fs.readFileSync(path.join(ROOT, f), 'utf8'), /contract-review/, f);
   }
 });

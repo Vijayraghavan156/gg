@@ -872,3 +872,120 @@ test('issue comments: the client sees and joins the conversation; internal notes
   assert.match(toast(closed), /closed/);
   assert.match((await owner.get(`${portal(c.id)}/third-parties/${ctx.tp}?tab=issues`)).text, /data-tprm-cv-thread-closed/);
 });
+
+test('client details: an owner at the client, business unit and volume, set by the firm or by the client', async () => {
+  const c = await tprmClient('Client View Details');
+  const tp = await addThirdParty(c.id, 'Details Party Co', 'in_use');
+  const row = async () => await db.prepare('SELECT client_owner_user_id, business_unit, service_volume, row_version FROM tp_third_parties WHERE workspace_id=? AND id=?').get(c.id, tp);
+  const other = await tprmClient('Client View Details Other');
+  const firmSave = async owner => await client.post(`/tprm/clients/${c.id}/third-parties/${tp}`, {
+    name: 'Details Party Co', status: 'in_use', client_owner_user_id: String(owner), business_unit: 'Retail operations', service_volume: 'About 10,000 a month',
+    row_version: String((await row()).row_version) });
+  const refused = await firmSave(other.owner.id);
+  assert.equal(refused.status, 400, 'a person from another client cannot own it');
+  assert.equal((await row()).client_owner_user_id, null);
+  assert.equal((await firmSave(c.other.id)).status, 302);
+  assert.deepEqual([Number((await row()).client_owner_user_id), (await row()).business_unit], [c.other.id, 'Retail operations']);
+  const firmPage = await client.get(`/tprm/clients/${c.id}/third-parties/${tp}`);
+  assert.match(firmPage.text, /data-tprm-client-owner-fact><dt>Owner at the client<\/dt><dd>[^<]*dec-coord/);
+
+  const owner = await sessionFor(c.owner);
+  const page = await owner.get(`${portal(c.id)}/third-parties/${tp}`);
+  assert.match(page.text, /data-tprm-cv-owner>[^<]*dec-coord/);
+  assert.match(page.text, /data-tprm-cv-edit-details/);
+  assert.match(page.text, /Not asked at this tier/);
+  const home = await owner.get(portal(c.id));
+  assert.match(home.text, /dec-coord-client-view-details@test\.local<\/td>/);
+  assert.doesNotMatch((await owner.get(`${portal(c.id)}?owner=me`)).text, new RegExp(`data-tprm-cv-party="${tp}"`), 'owned by someone else');
+
+  const saved = await owner.post(`${portal(c.id)}/third-parties/${tp}/details`, { client_owner_user_id: String(c.owner.id), business_unit: 'Cards', service_volume: '', row_version: String((await row()).row_version) });
+  assert.equal(saved.status, 302);
+  assert.match(toast(saved), /Details saved/);
+  assert.deepEqual([Number((await row()).client_owner_user_id), (await row()).business_unit, (await row()).service_volume], [c.owner.id, 'Cards', null]);
+  assert.match((await owner.get(`${portal(c.id)}?owner=me`)).text, new RegExp(`data-tprm-cv-party="${tp}"`));
+  const stale = await owner.post(`${portal(c.id)}/third-parties/${tp}/details`, { client_owner_user_id: '', row_version: '1' });
+  assert.match(toast(stale), /changed|reload/i);
+  const bad = await owner.post(`${portal(c.id)}/third-parties/${tp}/details`, { client_owner_user_id: String(other.owner.id), row_version: String((await row()).row_version) });
+  assert.match(toast(bad), /people at the client/);
+
+  const contributor = await sessionFor(c.contributor);
+  assert.doesNotMatch((await contributor.get(`${portal(c.id)}/third-parties/${tp}`)).text, /data-tprm-cv-edit-details/);
+  const blocked = await contributor.post(`${portal(c.id)}/third-parties/${tp}/details`, { client_owner_user_id: '', row_version: String((await row()).row_version) });
+  assert.match(toast(blocked), /does not allow/);
+  assert.equal(Number((await row()).client_owner_user_id), c.owner.id);
+});
+
+test('client view: the Scoping tab shows how the tier was set only once a recommendation is issued', async () => {
+  const c = await tprmClient('Client View Scoping');
+  const ctx = await confirmed(c, 'Scoping Party Co');
+  const owner = await sessionFor(c.owner);
+  const before = await owner.get(`${portal(c.id)}/third-parties/${ctx.tp}?tab=scoping`);
+  assert.equal(before.status, 200);
+  assert.match(before.text, /once your consultants issue a recommendation/);
+  assert.doesNotMatch(before.text, /data-tprm-cv-scoping=/);
+  await issued(ctx, 'approve');
+  const after = await owner.get(`${portal(c.id)}/third-parties/${ctx.tp}?tab=scoping`);
+  assert.match(after.text, new RegExp(`data-tprm-cv-scoping="${ctx.a}"`));
+  assert.match(after.text, /data-tprm-cv-deciding/);
+  assert.match(after.text, /Low tier/);
+});
+
+test('client requests: the client asks for a new third party, the firm adds it and the scoping starts from the client\'s answers', async () => {
+  const c = await tprmClient('Client View Requests');
+  const owner = await sessionFor(c.owner);
+  const form = await owner.get(`${portal(c.id)}/requests/new`);
+  assert.equal(form.status, 200);
+  assert.match(form.text, /data-tprm-cv-request-form/);
+  const body = { name: 'Requested Supplier Co', service_description: 'Nightly backups', business_unit: 'IT', service_volume: 'Four servers',
+    owner_user_id: String(c.owner.id), contact_email: 'ops@requested.example' };
+  const missing = await owner.post(`${portal(c.id)}/requests`, body);
+  assert.equal(missing.status, 400, 'every question that sets the tier must be answered');
+  assert.match(missing.text, /How much it matters/);
+  for (const [q, x] of Object.entries(LOW)) body[`answers[${q}]`] = x;
+  const sent = await owner.post(`${portal(c.id)}/requests`, body);
+  assert.equal(sent.status, 302);
+  assert.match(toast(sent), /sent to your consultants/);
+  const reqRow = await db.prepare("SELECT * FROM tp_client_requests WHERE workspace_id=? AND name='Requested Supplier Co'").get(c.id);
+  assert.equal(reqRow.status, 'submitted');
+  const tab = await owner.get(`${portal(c.id)}?tab=requests`);
+  assert.match(tab.text, new RegExp(`data-tprm-cv-request="${reqRow.id}" data-tprm-cv-request-status="submitted"`));
+
+  const contributor = await sessionFor(c.contributor);
+  await contributor.get(portal(c.id));
+  const blocked = await contributor.post(`${portal(c.id)}/requests`, { ...body, name: 'Contributor Supplier Co' });
+  assert.ok(blocked.status === 403 || /does not allow/.test(toast(blocked)), `a contributor cannot request (${blocked.status})`);
+  assert.equal((await db.prepare("SELECT COUNT(*)::int n FROM tp_client_requests WHERE name='Contributor Supplier Co'").get()).n, 0);
+
+  const firmHome = await consultant.session.get(`/tprm/clients/${c.id}`);
+  assert.match(firmHome.text, new RegExp(`data-tprm-client-request="${reqRow.id}"`));
+  const page = await consultant.session.get(`/tprm/clients/${c.id}/requests/${reqRow.id}`);
+  assert.equal(page.status, 200);
+  assert.match(page.text, /data-tprm-client-request-answers/);
+  const other = await tprmClient('Client View Requests Other');
+  assert.equal((await consultant.session.get(`/tprm/clients/${other.id}/requests/${reqRow.id}`)).status, 404);
+
+  const accepted = await consultant.session.post(`/tprm/clients/${c.id}/requests/${reqRow.id}/accept`, { row_version: String(reqRow.row_version) });
+  assert.equal(accepted.status, 302);
+  const tp = idIn(accepted.location, /third-parties\/(\d+)/);
+  const tpr = await db.prepare('SELECT name, status, business_unit, client_owner_user_id FROM tp_third_parties WHERE workspace_id=? AND id=?').get(c.id, tp);
+  assert.deepEqual([tpr.name, tpr.status, tpr.business_unit, Number(tpr.client_owner_user_id)], ['Requested Supplier Co', 'proposed', 'IT', c.owner.id]);
+  assert.equal((await db.prepare('SELECT status FROM tp_client_requests WHERE id=?').get(reqRow.id)).status, 'accepted');
+  const started = await consultant.session.post(`/tprm/clients/${c.id}/third-parties/${tp}/assessments`, {});
+  const a = idIn(started.location, /assessments\/(\d+)/);
+  const answers = (await assessmentRow(a)).answers;
+  for (const [q, x] of Object.entries(LOW)) assert.equal(answers[q], x, `${q} carried over from the request`);
+  assert.match((await owner.get(`${portal(c.id)}?tab=requests`)).text, new RegExp(`href="${portal(c.id)}/third-parties/${tp}"`));
+
+  const second = await owner.post(`${portal(c.id)}/requests`, { ...body, name: 'Declined Supplier Co' });
+  assert.equal(second.status, 302);
+  const r2 = await db.prepare("SELECT * FROM tp_client_requests WHERE workspace_id=? AND name='Declined Supplier Co'").get(c.id);
+  assert.equal((await consultant.session.post(`/tprm/clients/${c.id}/requests/${r2.id}/decline`, { reason: '', row_version: String(r2.row_version) })).status, 400);
+  assert.equal((await consultant.session.post(`/tprm/clients/${c.id}/requests/${r2.id}/decline`, { reason: 'Already covered by Quill', row_version: String(r2.row_version) })).status, 302);
+  assert.match((await owner.get(`${portal(c.id)}?tab=requests`)).text, /Already covered by Quill/);
+
+  const third = await owner.post(`${portal(c.id)}/requests`, { ...body, name: 'Withdrawn Supplier Co' });
+  assert.equal(third.status, 302);
+  const r3 = await db.prepare("SELECT * FROM tp_client_requests WHERE workspace_id=? AND name='Withdrawn Supplier Co'").get(c.id);
+  assert.match(toast(await owner.post(`${portal(c.id)}/requests/${r3.id}/withdraw`, { row_version: String(r3.row_version) })), /withdrawn/);
+  assert.equal((await db.prepare('SELECT status FROM tp_client_requests WHERE id=?').get(r3.id)).status, 'withdrawn');
+});

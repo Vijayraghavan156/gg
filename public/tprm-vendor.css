@@ -359,3 +359,6 @@ input.vq-file-input[type="file"]::file-selector-button { font: inherit; font-wei
 .vq-menu-form { margin: 0; }
 .vq-menu-form .vq-menu-item { width: 100%; border: 0; font: inherit; text-align: left; cursor: pointer; }
 .vq-report-note { margin: 10px 0 0; max-width: 75ch; color: var(--vq-ink2); font-size: 13.5px; }
+.vq-clause { border: 0; min-width: 0; margin: 0; }
+.vq-clause legend { padding: 0; float: left; width: 100%; }
+.vq-clause legend + * { clear: both; }

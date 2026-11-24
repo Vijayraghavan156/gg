@@ -13,6 +13,15 @@
 <%- include('tprm_client_nav', { tpClient, section: isDueView ? 'due' : 'register', canManage, canSettings, dueCount: list.counts.due,
   primaryAction: canManage ? { href: '/tprm/clients/' + tpClient.id + '/third-parties/new', label: 'Add third party' } : null }) %>
 <%- include('tprm_client_concentration_link') %>
+<% if (typeof clientRequestsOpen !== 'undefined' && clientRequestsOpen.length) { %>
+<div class="panel" data-tprm-client-requests>
+  <div class="panel-head"><h2>Requests from the client</h2><span class="meta"><%= clientRequestsOpen.length %></span></div>
+  <div class="table-scroll"><table class="t"><thead><tr><th>Supplier</th><th>Service</th><th>Asked by</th><th>Sent</th><th></th></tr></thead><tbody>
+  <% clientRequestsOpen.forEach(r => { %><tr data-tprm-client-request="<%= r.id %>"><td><strong><%= r.name %></strong></td><td><%= r.service_description %></td><td><%= r.requested_by_name || '-' %></td>
+    <td><%= tpf.day(new Date(r.requested_at).toISOString().slice(0, 10)) %></td><td class="tprm-right"><a class="btn btn-secondary btn-xs" href="/tprm/clients/<%= tpClient.id %>/requests/<%= r.id %>">Open</a></td></tr><% }) %>
+  </tbody></table></div>
+</div>
+<% } %>
 
 <div class="panel" data-tprm-register data-tprm-view="<%= f.view %>">
   <div class="panel-head">

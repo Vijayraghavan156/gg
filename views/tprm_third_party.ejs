@@ -110,6 +110,9 @@
         <div><dt>Website</dt><dd><%= dash(t.website) %></dd></div>
         <div><dt>Primary contact</dt><dd><% if (!t.primary_contact_name && !t.primary_contact_email) { %>-<% } %><%= t.primary_contact_name || '' %><% if (t.primary_contact_email) { %><span class="meta"><%= t.primary_contact_email %></span><% } %></dd></div>
         <div><dt>Client designation</dt><dd><%= t.client_designated_critical ? 'The client designates it as Critical' : 'None' %></dd></div>
+        <div data-tprm-client-owner-fact><dt>Owner at the client</dt><dd><%= typeof clientOwner !== 'undefined' && clientOwner ? clientOwner.name : '-' %></dd></div>
+        <div><dt>Business unit</dt><dd><%= dash(t.business_unit) %></dd></div>
+        <div><dt>Volume</dt><dd><%= dash(t.service_volume) %></dd></div>
       </dl>
     </div>
   </div>

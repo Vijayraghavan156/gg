@@ -1,0 +1,55 @@
+<%- include('partials/header', { title: 'Request: ' + request.name + ' · ' + tpClient.name, user, active }) %>
+<%
+  const r = request;
+  const dash = x => (x == null || x === '') ? '-' : x;
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const reqBase = '/tprm/clients/' + tpClient.id + '/requests/' + r.id;
+%>
+<%- include('tprm_client_nav', { tpClient, section: 'register', canManage, canSettings: false }) %>
+
+<div class="panel" data-tprm-client-request-page="<%= r.id %>" data-tprm-client-request-status="<%= r.status %>">
+  <div class="panel-head"><h2>Request: <%= r.name %></h2><%- include('partials/tprm_status', { text: labels[r.status], tone: r.status === 'submitted' ? 'attention' : r.status === 'accepted' ? 'good' : 'quiet' }) %></div>
+  <% if (errors && errors.length) { %>
+    <div class="panel-pad"><div class="callout tprm-callout-error" role="alert" data-tprm-form-errors><div class="callout-title">Nothing was saved</div><ul class="tprm-list"><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul></div></div>
+  <% } %>
+  <div class="panel-pad meta">Sent by <%= r.requested_by_name || 'the client' %> on <%= tpf.day(new Date(r.requested_at).toISOString().slice(0, 10)) %>.</div>
+  <dl class="tprm-dl panel-pad">
+    <div><dt>Legal name</dt><dd><%= dash(r.legal_name) %></dd></div>
+    <div><dt>Website</dt><dd><%= dash(r.website) %></dd></div>
+    <div><dt>Country</dt><dd><%= dash(r.country) %></dd></div>
+    <div><dt>Main contact</dt><dd><%= dash(r.contact_name) %><% if (r.contact_email) { %><span class="meta"><%= r.contact_email %></span><% } %></dd></div>
+    <div><dt>What they will do</dt><dd class="tpu-pre"><%= r.service_description %></dd></div>
+    <div><dt>Business unit</dt><dd><%= dash(r.business_unit) %></dd></div>
+    <div><dt>Volume</dt><dd><%= dash(r.service_volume) %></dd></div>
+    <div><dt>Planned start</dt><dd><%= r.planned_start ? tpf.day(r.planned_start) : '-' %></dd></div>
+    <div><dt>Owner at the client</dt><dd><%= dash(r.owner_name) %></dd></div>
+    <div><dt>Anything else</dt><dd class="tpu-pre"><%= dash(r.notes) %></dd></div>
+  </dl>
+  <% if (r.answerRows.length) { %>
+    <div class="panel-pad tprm-divide"><h3 class="tprm-sub">The client's scoping answers</h3>
+      <div class="meta text-xs">The assessment you start for this third party begins with these answers. Check them before you propose the tier.</div>
+      <dl class="tprm-dl tpu-mt-6" data-tprm-client-request-answers><% r.answerRows.forEach(a => { %><div><dt><%= a.text %></dt><dd><%= a.answer %></dd></div><% }) %></dl></div>
+  <% } %>
+  <% if (r.status === 'declined') { %><div class="panel-pad tprm-divide">Declined<%= r.decided_by_name ? ' by ' + r.decided_by_name : '' %>: <%= r.decline_reason %></div><% } %>
+  <% if (r.status === 'accepted' && r.third_party_id) { %><div class="panel-pad tprm-divide"><a href="/tprm/clients/<%= tpClient.id %>/third-parties/<%= r.third_party_id %>">Open the third party</a></div><% } %>
+  <% if (r.status === 'submitted' && canManage) { %>
+    <div class="panel-pad tprm-divide tprm-issue-actions">
+      <form method="POST" action="<%= reqBase %>/accept" class="tpu-m-0" data-tprm-client-request-accept>
+        <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= r.row_version %>">
+        <% if (duplicates && duplicates.length) { %>
+          <div class="callout tpu-attention-edge" role="alert" data-tprm-duplicate-warning><div class="callout-title tpu-attention-text">Possible duplicate</div>
+            This client already has <% duplicates.forEach((d, i) => { %><%= i ? ', ' : '' %><a href="/tprm/clients/<%= tpClient.id %>/third-parties/<%= d.id %>"><%= d.name %></a><% }) %>. You can still add it as a separate third party.</div>
+          <input type="hidden" name="confirm_duplicate" value="1">
+        <% } %>
+        <button class="btn btn-primary btn-xs" type="submit"><%= duplicates && duplicates.length ? 'Add anyway' : 'Add as a proposed third party' %></button>
+      </form>
+      <form method="POST" action="<%= reqBase %>/decline" class="tprm-issue-reply" data-tprm-client-request-decline>
+        <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= r.row_version %>">
+        <label class="sr-only" for="decline-reason">Why you are declining</label>
+        <textarea class="input" id="decline-reason" name="reason" rows="2" maxlength="1000" placeholder="Why you are declining. The client sees this."><%= typeof declineValue !== 'undefined' ? declineValue : '' %></textarea>
+        <button class="btn btn-secondary btn-xs" type="submit">Decline</button>
+      </form>
+    </div>
+  <% } %>
+</div>
+<%- include('partials/footer') %>

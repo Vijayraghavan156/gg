@@ -27,6 +27,7 @@
         <div class="vq-toolbar"><a class="vq-btn vq-btn--secondary" href="<%= base %>" data-vendor-issues-back>Questionnaire</a></div>
       </header>
 
+      <p class="vq-start-note" data-vendor-issues-readers>The reviewers and <%= p.clientName %> read these issues and your replies, once <%= p.clientName %> has the recommendation.</p>
       <% if (notice) { %><p class="vq-notice" role="status" data-vendor-notice><%= notice %></p><% } %>
       <% if (errorList.length) { %>
         <div class="vq-errors" role="alert" data-vendor-errors>

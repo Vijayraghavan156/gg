@@ -43,7 +43,7 @@
       <%- include('tprm_service_fields', { v }) %>
     <% } %>
 
-    <% const moreFilled = ['category', 'client_label', 'last_assessment_date', 'legal_name', 'registration_number', 'website', 'country', 'primary_contact_name', 'primary_contact_email'].some(k => val(k)) || isChecked('client_designated_critical'); %>
+    <% const moreFilled = ['category', 'client_label', 'last_assessment_date', 'legal_name', 'registration_number', 'website', 'country', 'primary_contact_name', 'primary_contact_email', 'business_unit', 'service_volume', 'client_owner_user_id'].some(k => val(k)) || isChecked('client_designated_critical'); %>
     <details class="tprm-full tprm-more" data-tprm-more-details<%= thirdParty || moreFilled ? ' open' : '' %>>
       <summary class="tprm-sub">More details <span class="meta text-xs">optional: category, the client's own rating, dates and contacts</span></summary>
       <div class="tprm-form-grid tprm-form-2">
@@ -68,6 +68,14 @@
         <div><label class="label" for="tp-country">Country</label><input class="input" id="tp-country" name="country" maxlength="100" value="<%= val('country') %>"></div>
         <div><label class="label" for="tp-contact">Primary contact</label><input class="input" id="tp-contact" name="primary_contact_name" maxlength="200" value="<%= val('primary_contact_name') %>"></div>
         <div><label class="label" for="tp-email">Contact email</label><input class="input" id="tp-email" type="email" name="primary_contact_email" maxlength="200" value="<%= val('primary_contact_email') %>"></div>
+        <div><label class="label" for="tp-owner">Owner at the client</label>
+          <select class="select" id="tp-owner" name="client_owner_user_id" data-tprm-client-owner>
+            <option value="">No owner named</option>
+            <% (typeof clientPeople !== 'undefined' ? clientPeople : []).forEach(u => { %><option value="<%= u.id %>" <%= String(val('client_owner_user_id')) === String(u.id) ? 'selected' : '' %>><%= u.name %> (<%= u.email %>)</option><% }) %>
+          </select>
+          <div class="meta text-xs tpu-mt-4">The person at the client who is answerable for this third party between reviews.</div></div>
+        <div><label class="label" for="tp-bu">Business unit</label><input class="input" id="tp-bu" name="business_unit" maxlength="100" value="<%= val('business_unit') %>" placeholder="For example: Retail banking operations"></div>
+        <div class="tprm-full"><label class="label" for="tp-volume">Volume</label><input class="input" id="tp-volume" name="service_volume" maxlength="200" value="<%= val('service_volume') %>" placeholder="For example: about 180,000 statements a month"></div>
 
       </div>
     </details>

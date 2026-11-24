@@ -673,3 +673,52 @@ test('the Files page lists every review\'s files, adds files to an open review a
   assert.equal(await db.prepare('SELECT 1 FROM tp_evidence WHERE id=?').get(ev.id), undefined);
   assert.equal((await get('/vendor/p/files')).status, 303, 'signed out, the Files page asks you to sign in');
 });
+
+test('contract clauses: the third party marks each clause; the firm sees it beside its own check; the client sees only the checked result', async () => {
+  const ctx = await linked('Contract Clauses Co');
+  const start = await vget(ctx.token);
+  assert.equal(start.status, 200);
+  assert.match(start.text, /data-vendor-contract-note/);
+  const page = await request('GET', `/vendor/q/${ctx.token}/contract`);
+  assert.equal(page.status, 200);
+  assert.match(page.text, /data-vendor-contract-form/);
+  assert.equal((await db.prepare('SELECT COUNT(*)::int n FROM tp_contract_reviews WHERE assessment_id=?').get(ctx.a)).n, 0, 'opening the page changes nothing');
+  const shownIds = [...page.text.matchAll(/data-vendor-clause="([A-Z]{2}-\d+)"/g)].map(m => m[1]);
+  assert.ok(shownIds.length > 10, 'the clauses come from the questionnaire\'s bank version');
+  const aft = aftOf(page.text);
+  const [c1, c2] = shownIds;
+  const bad = await postForm(ctx.token, '/contract', [[`rows[${c1}][status]`, 'maybe']], { aft });
+  assert.equal(bad.status, 400);
+  assert.equal((await db.prepare('SELECT COUNT(*)::int n FROM tp_contract_reviews WHERE assessment_id=?').get(ctx.a)).n, 0);
+  const ok = await postForm(ctx.token, '/contract', [[`rows[${c1}][status]`, 'in_contract'], [`rows[${c1}][reference]`, 'Clause 14.2'],
+    [`rows[${c2}][status]`, 'not_in_contract']], { aft });
+  assert.equal(ok.status, 303);
+  const rows = await db.prepare('SELECT * FROM tp_contract_reviews WHERE assessment_id=? ORDER BY position').all(ctx.a);
+  assert.ok(rows.length >= shownIds.length, 'the first save created the clauses');
+  const first = rows.find(r => r.clause_id === c1);
+  const saved = await db.prepare('SELECT vendor_status, vendor_reference, status FROM tp_contract_reviews WHERE id=?').get(first.id);
+  assert.deepEqual([saved.vendor_status, saved.vendor_reference, saved.status], ['in_contract', 'Clause 14.2', 'not_reviewed'], 'the reviewer\'s status is untouched');
+  assert.match((await request('GET', `/vendor/q/${ctx.token}/contract`)).text, /2 of \d+ marked/);
+
+  const firmCr = await consultant.session.get(`${aBase(ctx.ws, ctx.tp, ctx.a)}/contract-review`);
+  assert.match(firmCr.text, /data-tprm-clause-vendor="in_contract"/);
+
+  const CR = require('../lib/tprm/contract-review');
+  const ws = await db.prepare('SELECT * FROM workspaces WHERE id=?').get(ctx.ws);
+  await db.prepare(`UPDATE tp_contract_reviews SET status='present_satisfactory', contract_reference='MSA 14.2', comment='SENTINEL-FIRM-ONLY',
+    reviewed_by=?, reviewed_at=now() WHERE id=?`).run(consultant.id, first.id);
+  const shown = await CR.clientRows(db, ws, ctx.a);
+  assert.equal(shown.inContract, 1);
+  assert.equal(shown.rows[0].label, 'In contract');
+  assert.equal(shown.rows[0].reference, 'MSA 14.2');
+  assert.equal(shown.notChecked, 1, 'marked by the supplier, not yet checked');
+  assert.equal(JSON.stringify(shown).includes('SENTINEL-FIRM-ONLY'), false, 'the reviewer\'s comment never reaches the client');
+
+  await answerAll(ctx);
+  assert.equal((await submitLink(ctx.token)).status, 200);
+  const locked = await request('GET', `/vendor/q/${ctx.token}/contract`);
+  assert.match(locked.text, /data-vendor-contract-locked/);
+  const late = await postForm(ctx.token, '/contract', [[`rows[${c1}][status]`, 'partly']], { aft: aftOf(locked.text) });
+  assert.equal(late.status, 409);
+  assert.equal((await db.prepare('SELECT vendor_status FROM tp_contract_reviews WHERE id=?').get(first.id)).vendor_status, 'in_contract');
+});

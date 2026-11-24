@@ -1,0 +1,55 @@
+<%
+  const base = '/workspaces/' + ws.id + '/client-portal/third-party-risk';
+  const v = values || {};
+  const val = k => (v[k] == null ? '' : String(v[k]));
+  const ans = (v.answers && typeof v.answers === 'object') ? v.answers : {};
+  const scored = questions.filter(q => q.kind === 'criticality');
+  const other = questions.filter(q => q.kind !== 'criticality');
+  const field = (id, label, input, hint, req) => '<div class="cv-fl"><label for="' + id + '">' + escapeHtml(label) + (req ? ' <em>*</em>' : '') + '</label>' + input + (hint ? '<small>' + escapeHtml(hint) + '</small>' : '') + '</div>';
+  const inp = (name, max, ph, type) => '<input class="cv-in" id="rq-' + name + '" name="' + name + '" maxlength="' + max + '"' + (type ? ' type="' + type + '"' : '') + ' value="' + escapeHtml(val(name)) + '"' + (ph ? ' placeholder="' + escapeHtml(ph) + '"' : '') + '>';
+  const radios = q => '<div class="cv-rad" role="radiogroup">' + q.answers.map(a => '<label class="cv-rad-o"><input type="radio" name="answers[' + escapeHtml(q.id) + ']" value="' + escapeHtml(a.id) + '"' + (ans[q.id] === a.id ? ' checked' : '') + '> ' + escapeHtml(a.label) + '</label>').join('') + '</div>';
+%>
+<%- include('tprm_client_top', { title: 'Request a new third party', cvNav: 'home' }) %>
+<div class="cv-top"><div class="cv-crumb"><a href="<%= base %>?tab=requests">Requests</a> / <b>Request a new third party</b></div></div>
+<% if (errors.length) { %><div class="cv-notice cv-notice--error" role="alert" data-tprm-cv-request-errors><% errors.forEach(e => { %><div><%= e %></div><% }) %></div><% } %>
+<form method="POST" action="<%= base %>/requests" class="cv-two cv-mt" data-tprm-cv-request-form>
+  <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+  <div>
+    <section class="cv-card cv-fm"><h2 class="cv-h">1. About the supplier</h2><p class="cv-muted cv-small">Who they are. Your consultants check these against public registers.</p>
+      <div class="cv-fg">
+        <%- field('rq-name', 'Supplier name', inp('name', 200, 'For example: Orbit Cloud Backup'), '', true) %>
+        <%- field('rq-legal_name', 'Legal name', inp('legal_name', 200, 'As registered'), '') %>
+        <%- field('rq-website', 'Website', inp('website', 300, ''), '') %>
+        <%- field('rq-country', 'Country of registration', inp('country', 100, 'For example: India'), '') %>
+        <%- field('rq-contact_name', 'Main contact at the supplier', inp('contact_name', 200, 'Name and job title'), '') %>
+        <%- field('rq-contact_email', 'Contact email', inp('contact_email', 200, '', 'email'), 'The questionnaire link goes here') %>
+      </div></section>
+    <section class="cv-card cv-fm cv-mt"><h2 class="cv-h">2. The service</h2><p class="cv-muted cv-small">What they will do for you, in plain words.</p>
+      <div class="cv-fg">
+        <div class="cv-fl cv-full"><label for="rq-service_description">What will they do? <em>*</em></label><textarea class="cv-in" id="rq-service_description" name="service_description" rows="3" maxlength="2000"><%= val('service_description') %></textarea></div>
+        <%- field('rq-business_unit', 'Business unit', inp('business_unit', 100, 'For example: IT infrastructure'), '') %>
+        <%- field('rq-service_volume', 'Volume', inp('service_volume', 200, 'For example: daily backups of 4 servers'), '') %>
+        <%- field('rq-planned_start', 'Planned start', inp('planned_start', 10, '', 'date'), '') %>
+        <div class="cv-fl"><label for="rq-owner">Owner at your organisation</label><select class="cv-in" id="rq-owner" name="owner_user_id"><option value="">No owner named</option><% people.forEach(u => { %><option value="<%= u.id %>" <%= val('owner_user_id') === String(u.id) ? 'selected' : '' %>><%= u.name %></option><% }) %></select></div>
+      </div></section>
+    <% if (scored.length) { %><section class="cv-card cv-fm cv-mt" data-tprm-cv-request-scored><h2 class="cv-h">3. How much it matters</h2><p class="cv-muted cv-small">These answers set the tier and the questions the supplier is asked. Your consultants check them before anything goes to the supplier.</p>
+      <% scored.forEach(q => { %><fieldset class="cv-q"><legend><%= q.text %> <em>*</em></legend><%- radios(q) %></fieldset><% }) %></section><% } %>
+    <% if (other.length) { %><section class="cv-card cv-fm cv-mt"><h2 class="cv-h">4. A little more</h2><p class="cv-muted cv-small">Optional. These help choose the right questions.</p>
+      <% other.forEach(q => { %><fieldset class="cv-q"><legend><%= q.text %></legend><%- radios(q) %></fieldset><% }) %></section><% } %>
+    <section class="cv-card cv-fm cv-mt"><div class="cv-fl cv-full"><label for="rq-notes">Anything else your consultants should know</label><textarea class="cv-in" id="rq-notes" name="notes" rows="3" maxlength="2000"><%= val('notes') %></textarea></div>
+      <div class="cv-form-actions"><button class="cv-btn cv-btn-p" type="submit">Send to your consultants</button><a class="cv-link" href="<%= base %>?tab=requests">Cancel</a></div></section>
+  </div>
+  <aside>
+    <section class="cv-card"><h3 class="cv-h4">What happens next</h3>
+      <ol class="cv-steps">
+        <li><b>You send this request</b><span class="cv-muted cv-small">Today</span></li>
+        <li><b>Your consultants add the supplier</b><span class="cv-muted cv-small">Or tell you why not</span></li>
+        <li><b>They confirm the tier and the questions</b><span class="cv-muted cv-small">Starting from your answers here</span></li>
+        <li><b>The supplier answers and uploads</b><span class="cv-muted cv-small">Through their own link</span></li>
+        <li><b>Your consultants review and recommend</b><span class="cv-muted cv-small">You see issues and comments as they go</span></li>
+        <li><b>You record the decision</b><span class="cv-muted cv-small">On the recommendation page</span></li>
+      </ol></section>
+    <section class="cv-card cv-mt"><p class="cv-small cv-muted">Track this request on the Requests tab of your third-party home page.</p></section>
+  </aside>
+</form>
+<%- include('tprm_client_bottom') %>

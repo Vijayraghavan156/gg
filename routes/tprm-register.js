@@ -68,6 +68,7 @@ function registerRoutes(app, deps) {
     return renderPage(req, res, 'tprm_third_party_form', actor, {
       thirdParty, values, errors, duplicates,
       labels: Object.keys(settings.label_tier_map || {}),
+      clientPeople: await register.clientPeople(db, actor.ws.id),
       formAction: thirdParty ? `${base(actor)}/third-parties/${thirdParty.id}` : `${base(actor)}/third-parties`,
     }, status);
   }
@@ -111,6 +112,7 @@ function registerRoutes(app, deps) {
     ]);
     return renderPage(req, res, 'tprm_third_party', actor, {
       thirdParty, services, history, duplicates, today: register.today(actor),
+      clientOwner: thirdParty.client_owner_user_id ? (await register.clientPeople(db, actor.ws.id)).find(u => Number(u.id) === Number(thirdParty.client_owner_user_id)) || null : null,
       serviceErrors: [], serviceValues: {},
       assessmentList: await assessments.listForThirdParty(db, actor, thirdParty.id), at: assessments,
       approval: await decisions.currentApproval(db, actor.ws, thirdParty.id),
@@ -120,6 +122,38 @@ function registerRoutes(app, deps) {
       peoplePanel: { list: await vendorPeople.list(db, actor.ws.id, thirdParty.id), labels: vendorPeople.ROLE_LABELS, errors: [], values: {}, editErrors: {}, ...(extra.peoplePanel || {}) },
     }, status);
   }
+
+  const clientRequests = require('../lib/tprm/client-requests');
+  async function renderRequest(req, res, actor, extra = {}, status = 200) {
+    const request = await clientRequests.withAnswerLabels(db, actor.ws, await clientRequests.get(db, actor.ws.id, req.params.rid));
+    return renderPage(req, res, 'tprm_client_request', actor, { request, labels: clientRequests.FIRM_STATUS_LABELS,
+      errors: [], duplicates: [], canManage: access.can(actor.user, actor.perms, 'tp.manage'), ...extra }, status);
+  }
+
+  app.get('/tprm/clients/:wsId/requests/:rid', requireAuth, handler(async (req, res, actor) => renderRequest(req, res, actor)));
+
+  app.post('/tprm/clients/:wsId/requests/:rid/accept', requireAuth, handler(async (req, res, actor) => {
+    try {
+      const r = await clientRequests.accept(db, actor, req.params.rid, req.body);
+      if (r.needsConfirmation) return renderRequest(req, res, actor, { duplicates: r.duplicates });
+      await logAction(req.user.id, actor.ws.id, 'tprm_client_request_accepted', 'tp_client_request', Number(req.params.rid) || 0, { third_party_id: r.thirdPartyId }, auditCtx(req));
+      return res.redirect(withToast(`${base(actor)}/third-parties/${r.thirdPartyId}`, 'Added from the client\'s request. Start the assessment: the scoping starts from the client\'s answers.'));
+    } catch (err) {
+      if (err instanceof TprmError && (err.status === 400 || err.status === 409)) return renderRequest(req, res, actor, { errors: err.errors || [err.message] }, err.status);
+      throw err;
+    }
+  }, { permission: 'tp.manage' }));
+
+  app.post('/tprm/clients/:wsId/requests/:rid/decline', requireAuth, handler(async (req, res, actor) => {
+    try {
+      await clientRequests.decline(db, actor, req.params.rid, req.body);
+      await logAction(req.user.id, actor.ws.id, 'tprm_client_request_declined', 'tp_client_request', Number(req.params.rid) || 0, {}, auditCtx(req));
+      return res.redirect(withToast(base(actor), 'Request declined. The client sees your reason.'));
+    } catch (err) {
+      if (err instanceof TprmError && (err.status === 400 || err.status === 409)) return renderRequest(req, res, actor, { errors: err.errors || [err.message], declineValue: req.body.reason }, err.status);
+      throw err;
+    }
+  }, { permission: 'tp.manage' }));
 
   app.get('/tprm/clients/:wsId/third-parties/:tpId', requireAuth, handler(async (req, res, actor) => {
     const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);

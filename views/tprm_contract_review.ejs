@@ -53,7 +53,7 @@
     <input type="hidden" name="_csrf" value="<%= csrf %>"><% } else { %><div data-tprm-contract-readonly><% } %>
     <div class="table-scroll">
     <table class="t" data-tprm-contract-table>
-      <thead><tr><th class="tprm-cr-col-clause">Clause</th><th class="tpu-w-170">Status</th><th class="tprm-cr-col-ref">Contract reference and comment</th><th class="tpu-w-210">Finding</th></tr></thead>
+      <thead><tr><th class="tprm-cr-col-clause">Clause</th><th class="tpu-w-170">Status</th><th class="tprm-cr-col-ref">Contract reference and comment <span class="meta text-xs">once the third party has marked the clauses, the client sees each status and reference, never the comment</span></th><th class="tpu-w-210">Finding</th></tr></thead>
       <tbody>
       <% p.rows.forEach(r => { %>
         <tr id="clause-<%= r.clause_id %>" data-tprm-clause="<%= r.clause_id %>" data-tprm-clause-status="<%= r.status %>">
@@ -63,6 +63,7 @@
             <div class="text-sm tpu-mt-4"><%= r.requirement %></div>
             <% if (r.basis) { %><div class="meta text-xs">Basis: <%= r.basis %></div><% } %>
             <% if (r.reviewed_by_name) { %><div class="meta text-xs">Reviewed by <%= r.reviewed_by_name %>, <%= tpf.day(r.reviewed_at) %></div><% } %>
+            <% if (r.vendor_status) { %><div class="text-sm tpu-mt-4" data-tprm-clause-vendor="<%= r.vendor_status %>"><span class="tpu-medium">The third party says:</span> <%= cr.VENDOR_STATUS_LABELS[r.vendor_status] %><%= r.vendor_reference ? ', ' + r.vendor_reference : '' %><% if (r.status === 'not_reviewed' && cr.SUGGESTED_STATUS[r.vendor_status]) { %> <span class="meta text-xs">check it against the contract, then set the status</span><% } %></div><% } %>
           </td>
           <% if (p.canEdit) { %>
           <td>

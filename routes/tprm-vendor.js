@@ -10,6 +10,7 @@ const vendorAnswers = require('../lib/tprm/vendor-answers');
 const conditionLinks = require('../lib/tprm/condition-links');
 const messages = require('../lib/tprm/messages');
 const issues = require('../lib/tprm/issues');
+const contractChecklist = require('../lib/tprm/contract-review');
 const vendorSheet = require('../lib/tprm/vendor-sheet');
 const vendorSession = require('../lib/tprm/vendor-session');
 const vendorPortal = require('../lib/tprm/vendor-portal');
@@ -216,12 +217,15 @@ function registerRoutes(app, { db }) {
     data.sheetLimitBytes = vendorSheet.LIMITS.fileBytes;
     const aft = aftFor(req, ctx.tokenHash);
     const issueCount = await issues.vendorCount(db, ctx.workspaceId, ctx.assessmentId);
+    const contractInfo = ctx.mode === 'answering' ? await contractChecklist.vendorPage(db, { workspaceId: ctx.workspaceId, assessmentId: ctx.assessmentId,
+      thirdPartyId: ctx.thirdPartyId, assessmentClosed: false }) : null;
     const frame = await vendorPortal.frameFor(db, { firm: data.firm, session: req.vsession, person: req.vperson, workspaceId: ctx.workspaceId,
       thirdPartyId: ctx.thirdPartyId, reviewer: ctx.issuer, active: ctx.mode === 'answering' ? null : 'review',
       review: ctx.mode === 'answering' ? null : { base: req.vbase, issues: issueCount.total > 0, issuesWaiting: issueCount.waiting, group: `Questionnaire for ${ctx.clientName}` },
       linkHome: req.vsession ? null : { action: `${req.vbase}/home`, aft } });
     return page(res, status, {
       frame,
+      contractInfo: contractInfo && contractInfo.total ? contractInfo : null,
       p: data,
       token: req.vtoken,
       base: req.vbase,
@@ -417,6 +421,7 @@ function registerRoutes(app, { db }) {
       if (go === 'review') return res.redirect(303, `${here}?view=review&notice=${notice}`);
       if (go === 'documents') return res.redirect(303, `${here}?view=documents&notice=${notice}`);
       if (go === 'issues') return res.redirect(303, `${here}/issues`);
+      if (go === 'contract') return res.redirect(303, `${here}/contract`);
       const portalGo = { home: 'home', pissues: 'issues', people: 'people', files: 'files' }[go];
       if (portalGo) {
         if (req.vsession) return res.redirect(303, `${PORTAL}${portalGo}`);
@@ -626,6 +631,42 @@ function registerRoutes(app, { db }) {
   }
 
   const issueContext = req => (req.vassessment ? issues.vendorContextFor(db, req.vassessment) : issues.vendorContext(db, req.vkey));
+
+  async function renderContract(req, res, vctx, { status = 200, errors = [], notice = null, values = null } = {}) {
+    const c = await contractChecklist.vendorPage(db, vctx);
+    if (!c) return invalidPage(res);
+    const p = await issues.vendorPage(db, vctx);
+    const aft = aftFor(req, vctx.tokenHash);
+    const frame = await vendorPortal.frameFor(db, { firm: p.firm, session: req.vsession, person: req.vperson, workspaceId: vctx.workspaceId,
+      thirdPartyId: vctx.thirdPartyId, active: null, review: { base: req.vbase, label: 'Contract clauses' },
+      linkHome: req.vsession ? null : { action: `${req.vbase}/home`, aft } });
+    return renderView(res, status, 'tprm_vendor_contract', {
+      p, c, frame, labels: contractChecklist.VENDOR_STATUS_LABELS, statuses: contractChecklist.VENDOR_STATUSES,
+      token: req.vtoken, base: req.vbase, signedIn: req.vperson || null, aft, errors, notice, values,
+    });
+  }
+
+  vroute('get', 'i', '/contract', guarded(limiter, async (req, res) => {
+    const vctx = await issueContext(req);
+    if (!vctx) return invalidPage(res);
+    return renderContract(req, res, vctx, { notice: req.query.notice === 'saved' ? 'Saved. You can change these until you send the questionnaire.' : req.query.notice === 'same' ? 'No changes to save.' : null });
+  }));
+
+  vroute('post', 'i', '/contract', guarded(postLimiter, async (req, res) => {
+    if (!sameOrigin(req)) return renderState(res, 403, 'forbidden');
+    const vctx = await issueContext(req);
+    if (!vctx) return invalidPage(res);
+    if (isMultipart(req) || !aftOk(req, vctx.tokenHash)) return renderState(res, 403, 'forbidden');
+    let result;
+    try {
+      result = await contractChecklist.vendorSave(db, vctx, req.body, { person: req.vperson });
+    } catch (err) {
+      if (err instanceof TprmError && (err.status === 400 || err.status === 409)) return renderContract(req, res, vctx, { status: err.status, errors: err.errors || [err.message], values: req.body.rows || null });
+      if (err instanceof TprmError && err.status === 404) return invalidPage(res);
+      throw err;
+    }
+    return res.redirect(303, `${req.vbase}/contract?notice=${result.changed ? 'saved' : 'same'}`);
+  }));
 
   vroute('get', 'i', '/issues', guarded(limiter, async (req, res) => {
     const vctx = await issueContext(req);
@@ -898,7 +939,7 @@ function registerRoutes(app, { db }) {
 
 function goTarget(value) {
   const v = Array.isArray(value) ? String(value[0] ?? '') : String(value ?? '');
-  if (['start', 'review', 'documents', 'issues', 'home', 'pissues', 'people', 'files'].includes(v)) return v;
+  if (['start', 'review', 'documents', 'issues', 'contract', 'home', 'pissues', 'people', 'files'].includes(v)) return v;
   return /^[A-Z]{2,6}-[0-9]{1,4}$/.test(v) ? v : null;
 }
 
