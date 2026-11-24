@@ -19,6 +19,47 @@
 </div>
 
 <%- include('partials/tprm_home_tabs', { current: 'pipeline', reviewCount: typeof reviewCount === 'number' ? reviewCount : null }) %>
+<% const hb = typeof hub !== 'undefined' && hub ? hub : null;
+   const fxDonut = (parts, total, label) => { const r = 34, C = 2 * Math.PI * r; let a = 0; let out = '<svg class="fx-donut" viewBox="0 0 92 92" aria-hidden="true"><circle cx="46" cy="46" r="' + r + '" class="tr"/>';
+     if (total > 0) parts.forEach(pp => { if (!pp.count) return; const l = C * pp.count / total; out += '<circle cx="46" cy="46" r="' + r + '" class="sg fx-c-' + pp.cls + '" stroke-dasharray="' + l.toFixed(2) + ' ' + (C - l).toFixed(2) + '" stroke-dashoffset="' + (-a).toFixed(2) + '" transform="rotate(-90 46 46)"/>'; a += l; });
+     return out + '<text x="46" y="51" text-anchor="middle">' + label + '</text></svg>'; };
+   const stageCls = { scope: 'grey', third_party: 'amber', consultant: 'teal', reviewer: 'blue', client: 'green' };
+   const fxTier = t => t ? '<span class="fx-tag fx-t-' + t + '">' + (tierLabels[t] || t) + '</span>' : '<span class="fx-muted">-</span>'; %>
+<% if (hb) { %>
+<div class="fx-hub" data-tprm-hub>
+  <section class="fx-card fx-tile" data-tprm-hub-tile="stages"><h3 class="fx-h4">Open reviews <span>by stage</span></h3>
+    <div class="fx-donut-row"><%- fxDonut(hb.stages.map(s => ({ count: s.count, cls: stageCls[s.key] })), hb.total, String(hb.total)) %>
+      <ul class="fx-legend"><% hb.stages.forEach(s => { %><li><i class="fx-c-<%= stageCls[s.key] %>"></i><%= s.label %><b><%= s.count %></b></li><% }) %></ul></div>
+    <div class="fx-foot"><div>Days since the last change, with the supplier<b><%= hb.supplierDays == null ? '-' : hb.supplierDays %></b></div><div>Days since the last change, with your team<b><%= hb.teamDays == null ? '-' : hb.teamDays %></b></div></div></section>
+  <section class="fx-card fx-tile" data-tprm-hub-tile="you"><h3 class="fx-h4">Waiting on you <span><%= user.name %></span></h3>
+    <div class="fx-big<%= hb.waitingOnYou ? ' fx-warn' : '' %>"><%= hb.waitingOnYou %></div><div class="fx-muted fx-sm">item<%= hb.waitingOnYou === 1 ? '' : 's' %> in My work below</div>
+    <div class="fx-foot"><% hb.waitingBreakdown.forEach(([l, n]) => { %><div><%= l %><b><%= n %></b></div><% }) %></div></section>
+  <section class="fx-card fx-tile" data-tprm-hub-tile="late"><h3 class="fx-h4">Late and due soon</h3>
+    <div class="fx-big<%= hb.late ? ' fx-bad' : '' %>"><%= hb.late %></div><div class="fx-muted fx-sm">review<%= hb.late === 1 ? '' : 's' %> past the due date</div>
+    <div class="fx-foot"><div>Due in the next 30 days<b><%= hb.dueSoon %></b></div><div>Conditions overdue<b<%- hb.conditionsOverdue ? ' class="fx-bad"' : '' %>><%= hb.conditionsOverdue %></b></div><div>Questionnaire links ending this week<b><%= hb.linksExpiring %></b></div></div></section>
+  <div class="fx-stack">
+    <section class="fx-card" data-tprm-hub-tile="clients"><h3 class="fx-h4">Open reviews by client</h3>
+      <% if (!hb.byClient.length) { %><p class="fx-muted fx-sm">No review is open.</p><% } %>
+      <% hb.byClient.forEach(c => { %><div class="fx-hbar"><a href="/tprm/clients/<%= c.id %>"><%= c.name %></a><span class="bar"><b style="width:<%= Math.round(c.open / hb.maxOpen * 100) %>%"></b></span><em><%= c.open %></em></div><% }) %></section>
+    <section class="fx-card" data-tprm-hub-tile="decisions"><h3 class="fx-h4">Client decisions this quarter <span>all clients</span></h3>
+      <div class="fx-mini3"><div><b class="fx-ok"><%= hb.decisions.approved %></b><span>Approved</span></div><div><b class="fx-warn"><%= hb.decisions.conditions %></b><span>With conditions</span></div><div><b class="fx-bad"><%= hb.decisions.rejected %></b><span>Not approved</span></div></div></section>
+  </div>
+</div>
+
+<h2 class="fx-section-h" id="my-work">My work <span><%= hb.work.length %> item<%= hb.work.length === 1 ? '' : 's' %>, late first</span></h2>
+<div class="fx-table" data-tprm-my-work>
+  <% if (!hb.work.length) { %><div class="fx-empty" data-tprm-my-work-empty>Nothing is waiting on you.</div><% } else { %>
+  <div class="table-scroll"><table><thead><tr><th>What to do</th><th>Third party</th><th>Client</th><th>Tier</th><th>Waiting</th><th>Due</th><th></th></tr></thead><tbody>
+  <% hb.work.forEach(w => { %><tr<%- w.late ? ' class="is-late"' : '' %> data-tprm-work-item="<%= w.kind %>">
+    <td><b><%= w.what %></b><% if (w.detail) { %><span class="fx-sub"><%= w.detail %></span><% } %></td>
+    <td><%= w.thirdParty %><span class="fx-sub"><%= w.sub %></span></td><td><%= w.client %></td><td><%- fxTier(w.tier) %></td>
+    <td><%= w.since === 0 ? 'today' : w.since + ' day' + (w.since === 1 ? '' : 's') %></td>
+    <td><% if (w.due) { %><span class="<%= w.late ? 'fx-bad' : '' %>"><%= day(w.due) %></span><% } else { %><span class="fx-muted">-</span><% } %></td>
+    <td class="tprm-right"><a class="btn btn-secondary btn-xs" href="<%= w.href %>">Open</a></td></tr><% }) %>
+  </tbody></table></div><% } %>
+</div>
+<h2 class="fx-section-h">All open reviews <span>every client you can reach</span></h2>
+<% } %>
 
 <section class="tpa tprm-pipeline" aria-labelledby="pipeline-title" data-tprm-pipeline>
   <h2 class="sr-only" id="pipeline-title">Open assessments</h2>
@@ -71,28 +112,23 @@
 </section>
 
 <div class="tprm-stack">
-<div class="panel">
-  <div class="panel-head"><h2>Clients</h2><span class="meta"><%= clients.length %></span></div>
-  <% if (!clients.length) { %>
-    <div class="empty-state" data-tprm-empty>
-      <div class="empty-title">No client has third-party risk switched on yet</div>
-      <div class="meta">Choose "Third-party risk" when you create a client<%= availableClients.length ? ', or switch it on for an existing client below' : '' %>.</div>
-    </div>
-  <% } else { %>
-    <div class="table-scroll" data-tprm-client-list><table class="t">
-      <thead><tr><th>Client</th><th>Sector</th><th></th></tr></thead>
-      <tbody>
-      <% clients.forEach(c => { %>
-        <tr data-tprm-client-row="<%= c.id %>">
-          <td><a href="/tprm/clients/<%= c.id %>"><%= c.name %></a></td>
-          <td class="meta"><%= c.sector || '-' %></td>
-          <td class="tprm-right"><a href="/tprm/clients/<%= c.id %>">Open register</a></td>
-        </tr>
-      <% }) %>
-      </tbody>
-    </table></div>
-  <% } %>
-</div>
+<h2 class="fx-section-h">Clients <span><%= clients.length %></span></h2>
+<% if (!clients.length) { %>
+  <div class="fx-card"><div class="empty-state" data-tprm-empty>
+    <div class="empty-title">No client has third-party risk switched on yet</div>
+    <div class="meta">Choose "Third-party risk" when you create a client<%= availableClients.length ? ', or switch it on for an existing client below' : '' %>.</div>
+  </div></div>
+<% } else { const cardBy = new Map(((hb && hb.clients) || []).map(c => [Number(c.id), c])); %>
+  <div class="fx-cards3" data-tprm-client-list>
+  <% clients.forEach(c => { const k = cardBy.get(Number(c.id)) || { parties: 0, open: 0, late: 0, waitingClient: 0, requests: 0 }; %>
+    <section class="fx-card fx-tile" data-tprm-client-row="<%= c.id %>">
+      <h3 class="fx-h4"><a href="/tprm/clients/<%= c.id %>"><%= c.name %></a><span><%= c.sector || '' %></span></h3>
+      <div class="fx-mini3"><div><b><%= k.parties %></b><span>Third parties</span></div><div><b class="<%= k.open ? 'fx-warn' : '' %>"><%= k.open %></b><span>Open reviews</span></div><div><b class="<%= k.late ? 'fx-bad' : '' %>"><%= k.late %></b><span>Late</span></div></div>
+      <div class="fx-foot"><div>Waiting on the client<b><%= k.waitingClient ? k.waitingClient + ' decision' + (k.waitingClient === 1 ? '' : 's') : 'none' %></b></div><div>Requests to add<b><%= k.requests %></b></div><div><a href="/tprm/clients/<%= c.id %>">Open register</a></div></div>
+    </section>
+  <% }) %>
+  </div>
+<% } %>
 
 <% if (availableClients.length) { %>
 <div class="panel" data-tprm-available>
@@ -121,6 +157,7 @@
     · <a href="/tprm/settings/letterhead" data-tprm-letterhead-link>Letterhead</a>
     · <a href="/tprm/settings/rulebooks" data-tprm-rulebooks-link>Rulebooks</a>
     · <a href="/tprm/settings/two-person" data-tprm-two-person-link>Two-person rules</a>
+    · <a href="/tprm/settings/marking-guides" data-tprm-marking-guides-link>Marking guides</a>
     · <a href="/tprm/concentration" data-tprm-firm-concentration-link>Concentration across clients</a>
   <% } %>
   </p>

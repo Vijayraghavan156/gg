@@ -989,3 +989,68 @@ test('client requests: the client asks for a new third party, the firm adds it a
   assert.match(toast(await owner.post(`${portal(c.id)}/requests/${r3.id}/withdraw`, { row_version: String(r3.row_version) })), /withdrawn/);
   assert.equal((await db.prepare('SELECT status FROM tp_client_requests WHERE id=?').get(r3.id)).status, 'withdrawn');
 });
+
+test('firm home: tiles and My work, counting only clients the person can reach', async () => {
+  const c = await tprmClient('Firm Home Reach');
+  const owner = await sessionFor(c.owner);
+  await owner.get(portal(c.id));
+  const body = { name: 'Hub Request Co', service_description: 'Statement printing' };
+  for (const [q, x] of Object.entries(LOW)) body[`answers[${q}]`] = x;
+  assert.equal((await owner.post(`${portal(c.id)}/requests`, body)).status, 302);
+  const hidden = Number((await db.prepare(`INSERT INTO workspaces (firm_id,client_name,frameworks,engagement_outcome)
+    VALUES (?,?,'["iso27001"]','certification_support')`).run(firmId, 'Firm Home Unreachable')).lastInsertRowid);
+  await db.prepare('INSERT INTO tp_client_settings (workspace_id, enabled) VALUES (?, true)').run(hidden);
+  const outsider = await makeUser('hub-outsider-owner@test.local', { type: 'client', workspaceId: hidden, memberRole: 'client_owner' });
+  await db.prepare(`INSERT INTO tp_client_requests (workspace_id, name, service_description, requested_by) VALUES (?, 'SENTINEL-UNREACHABLE-REQUEST', 'x', ?)`).run(hidden, outsider.id);
+
+  const home = await consultant.session.get('/tprm');
+  assert.equal(home.status, 200);
+  assert.match(home.text, /data-tprm-hub/);
+  assert.match(home.text, /data-tprm-my-work/);
+  assert.match(home.text, /data-tprm-work-item="request"[\s\S]*?Hub Request Co/);
+  assert.doesNotMatch(home.text, /SENTINEL-UNREACHABLE-REQUEST/, 'a client the consultant is not on stays out of My work');
+  assert.match(home.text, /data-tprm-pipeline[\s\S]*data-tprm-client-list/, 'the pipeline still comes before the client list');
+});
+
+test('register: tiles, extra columns, and starting assessments for several ticked third parties at once', async () => {
+  const c = await tprmClient('Register Bulk Client');
+  const a1 = await addThirdParty(c.id, 'Bulk One Co', 'proposed');
+  const a2 = await addThirdParty(c.id, 'Bulk Two Co', 'in_use');
+  const page = await consultant.session.get(`/tprm/clients/${c.id}`);
+  assert.equal(page.status, 200);
+  assert.match(page.text, /data-tprm-register-tiles/);
+  assert.match(page.text, /data-tprm-bulk/);
+  assert.match(page.text, new RegExp(`name="ids" value="${a1}" form="tp-bulk"`));
+  const started = await consultant.session.post(`/tprm/clients/${c.id}/third-parties/bulk-start`, { ids: [String(a1), String(a2)], _tp_confirmed: '1' });
+  assert.equal(started.status, 302);
+  assert.match(toast(started), /2 assessments started/);
+  const types = (await db.prepare('SELECT type FROM tp_assessments WHERE workspace_id=? ORDER BY third_party_id').all(c.id)).map(r => r.type);
+  assert.deepEqual(types.sort(), ['onboarding', 'reassessment']);
+  const again = await consultant.session.post(`/tprm/clients/${c.id}/third-parties/bulk-start`, { ids: String(a1), _tp_confirmed: '1' });
+  assert.match(toast(again), /0 assessments started\. 1 not started: This third party already has an open assessment/);
+  const other = await tprmClient('Register Bulk Other');
+  const foreign = await addThirdParty(other.id, 'Foreign Bulk Co', 'proposed');
+  const cross = await consultant.session.post(`/tprm/clients/${c.id}/third-parties/bulk-start`, { ids: String(foreign), _tp_confirmed: '1' });
+  assert.match(toast(cross), /0 assessments started/);
+  assert.equal((await db.prepare('SELECT COUNT(*)::int n FROM tp_assessments WHERE workspace_id=?').get(other.id)).n, 0, 'another client\'s third party is never started');
+});
+
+test('firm third-party page: summary cards and the Issues, Conditions, Documents and Contracts tabs', async () => {
+  const c = await tprmClient('Firm Party Page');
+  const ctx = await confirmed(c, 'Firm Page Co');
+  const kept = await uploadOne(ctx, 'firm-released.txt', 'released');
+  await release(ctx, kept);
+  await uploadOne(ctx, 'firm-unreleased.txt', 'not released');
+  await addFinding(ctx, { severity: 'high', title: 'Firm page finding', description: 'Seen by the firm', control_ref: 'A.5.1' });
+  await issued(ctx, 'approve_with_conditions');
+  const base = `/tprm/clients/${c.id}/third-parties/${ctx.tp}`;
+  const page = await consultant.session.get(base);
+  assert.equal(page.status, 200);
+  assert.match(page.text, /data-tprm-party-cards/);
+  for (const t of ['issues', 'conditions', 'documents', 'contracts']) assert.match(page.text, new RegExp(`data-tprm-tab="${t}"`));
+  const docs = await consultant.session.get(`${base}?tab=documents`);
+  assert.match(docs.text, /firm-released\.txt[\s\S]*?Released|Released[\s\S]*?firm-released\.txt/);
+  assert.match(docs.text, /firm-unreleased\.txt/, 'the firm sees files it has not released');
+  assert.match((await consultant.session.get(`${base}?tab=issues`)).text, /Firm page finding/);
+  assert.match((await consultant.session.get(`${base}?tab=conditions`)).text, /Enforce MFA for all admin accounts/);
+});

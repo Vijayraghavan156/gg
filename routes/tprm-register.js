@@ -112,6 +112,7 @@ function registerRoutes(app, deps) {
     ]);
     return renderPage(req, res, 'tprm_third_party', actor, {
       thirdParty, services, history, duplicates, today: register.today(actor),
+      party: await require('../lib/tprm/firm-party').build(db, actor.ws, thirdParty.id),
       clientOwner: thirdParty.client_owner_user_id ? (await register.clientPeople(db, actor.ws.id)).find(u => Number(u.id) === Number(thirdParty.client_owner_user_id)) || null : null,
       serviceErrors: [], serviceValues: {},
       assessmentList: await assessments.listForThirdParty(db, actor, thirdParty.id), at: assessments,
@@ -122,6 +123,27 @@ function registerRoutes(app, deps) {
       peoplePanel: { list: await vendorPeople.list(db, actor.ws.id, thirdParty.id), labels: vendorPeople.ROLE_LABELS, errors: [], values: {}, editErrors: {}, ...(extra.peoplePanel || {}) },
     }, status);
   }
+
+  app.post('/tprm/clients/:wsId/third-parties/bulk-start', requireAuth, handler(async (req, res, actor) => {
+    const raw = req.body && req.body.ids;
+    const ids = [...new Set((Array.isArray(raw) ? raw : raw ? [raw] : []).map(Number).filter(n => Number.isSafeInteger(n) && n > 0))].slice(0, 50);
+    if (!ids.length) return res.redirect(withToast(base(actor), 'Tick at least one third party first.', 'error'));
+    let started = 0;
+    const skipped = [];
+    for (const id of ids) {
+      try {
+        const tp = await register.getThirdParty(db, actor, id);
+        await assessments.start(db, actor, tp.id);
+        started += 1;
+      } catch (err) {
+        if (!(err instanceof TprmError)) throw err;
+        skipped.push(err.status === 404 ? 'one that was not found' : err.message.replace(/\.$/, ''));
+      }
+    }
+    if (started) await logAction(req.user.id, actor.ws.id, 'tprm_bulk_assessments_started', 'workspace', actor.ws.id, { started, asked: ids.length }, auditCtx(req));
+    const msg = `${started} assessment${started === 1 ? '' : 's'} started` + (skipped.length ? `. ${skipped.length} not started: ${[...new Set(skipped)].join('; ')}` : '');
+    return res.redirect(withToast(base(actor), msg, started ? undefined : 'error'));
+  }, { permission: 'tp.manage' }));
 
   const clientRequests = require('../lib/tprm/client-requests');
   async function renderRequest(req, res, actor, extra = {}, status = 200) {

@@ -50,6 +50,7 @@ function register(app, deps) {
   }
   app.use(['/tprm', '/workspaces/:wsId/client-portal/third-party-risk'], (req, res, next) => {
     res.locals.tpLabels = require('../lib/tprm/labels');
+    res.locals.canEditGuides = !!(req.user && access.isFirmUser(req.user) && access.firmCan(req.user, 'tp.settings'));
     res.locals.tpf = format.forZone('UTC', { ymdInZone });
     const render = res.render.bind(res);
     res.render = (view, options, callback) => {
@@ -95,7 +96,9 @@ function register(app, deps) {
       });
     }
     const clients = await access.listFirmClients(lookup, req.user);
+    const pipelineView = await require('../lib/tprm/pipeline').pipeline(lookup, req.user, { query: req.query || {} });
     res.render('tprm_home', {
+      hub: await require('../lib/tprm/firm-home').build(lookup, req.user, pipelineView, clients.enabled),
       user: req.user,
       active: 'tprm-portfolio',
       clients: clients.enabled,
@@ -109,7 +112,7 @@ function register(app, deps) {
         : access.firmCan(req.user, 'tp.manage')
           ? (await require('../lib/tprm/questionnaire-review').reviewQueue(lookup, req.user)).length : null,
       canAiSettings: access.firmCan(req.user, 'tp.settings'),
-      pipelineView: await require('../lib/tprm/pipeline').pipeline(lookup, req.user, { query: req.query || {} }),
+      pipelineView,
       waitingLabels: require('../lib/tprm/pipeline').WAITING_LABELS,
     });
   });
@@ -152,7 +155,10 @@ function register(app, deps) {
     const loaded = await access.loadFirmWorkspace(lookup, req.user, req.params.wsId);
     if (!loaded) return notFound(req, res);
     const actor = { user: req.user, perms: loaded.perms, ws: loaded.ws };
+    const regApprovals = await require('../lib/tprm/decisions').approvals(db, loaded.ws);
+    const regStages = await require('../lib/tprm/pipeline').stagesForClient(db, loaded.ws.id);
     res.render('tprm_client_home', {
+      regTiles: await require('../lib/tprm/register-hub').tiles(db, loaded.ws, { approvals: regApprovals, stages: regStages }),
       user: req.user,
       active: 'tprm-portfolio',
       tpClient: {
@@ -162,10 +168,12 @@ function register(app, deps) {
       },
       tp: tpPlacement,
       registerList: await tpRegister.listThirdParties(db, actor, req.query),
-      approvals: await require('../lib/tprm/decisions').approvals(db, loaded.ws),
-      stages: await require('../lib/tprm/pipeline').stagesForClient(db, loaded.ws.id),
+      approvals: regApprovals,
+      stages: regStages,
       clientRulebooks: await require('../lib/tprm/rulebooks').currentForClient(db, loaded.ws.id),
       clientRequestsOpen: await require('../lib/tprm/client-requests').list(db, loaded.ws.id, { open: true }),
+      regExtras: await require('../lib/tprm/register-hub').extras(db, loaded.ws.id),
+      wsLead: loaded.ws.lead_consultant_id ? ((await db.prepare('SELECT name FROM users WHERE id = ?').get(loaded.ws.lead_consultant_id)) || {}).name || null : null,
       canManage: access.can(req.user, loaded.perms, 'tp.manage'),
       canSettings: access.can(req.user, loaded.perms, 'tp.settings'),
     });

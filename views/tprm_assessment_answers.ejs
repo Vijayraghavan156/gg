@@ -136,7 +136,16 @@
           <p class="tpw-pos tpa-meta"><%= r.sectionTitle %></p>
           <p class="tpa-q-title"><span class="tpa-code"><%= r.question_id %></span> <span class="tpa-strong" data-tprm-answer-theme><%= r.theme %></span> <span class="tpa-meta-inline"><% if (r.iso27001) { %>ISO 27001 <%= r.iso27001 %><% } %></span></p>
           <p class="tpa-q-text"><%= r.question %></p>
-          <% if (r.benchmark) { %><p class="tpa-meta" data-tprm-answer-benchmark>Benchmark (firm only): <%= r.benchmark %></p><% } %>
+          <div class="fx-guide" data-tprm-marking-guide="<%= r.question_id %>">
+            <p class="fx-guide-h">Marking guide <span><%= r.guide ? 'your firm\'s guide' + (r.guide.updated_by_name ? ', by ' + r.guide.updated_by_name : '') : 'from the question bank' %> · only your firm sees it</span></p>
+            <% if (r.guide) { %><ul class="fx-guide-list">
+              <% if (r.guide.satisfactory) { %><li><b>Satisfactory:</b> <%= r.guide.satisfactory %></li><% } %>
+              <% if (r.guide.partly) { %><li><b>Partly:</b> <%= r.guide.partly %></li><% } %>
+              <% if (r.guide.red_flags) { %><li><b>Red flags:</b> <%= r.guide.red_flags %></li><% } %>
+            </ul><% } else if (r.guidance) { %><p class="fx-sm"><%= r.guidance %></p><% } %>
+            <% if (r.benchmark) { %><p class="fx-sm" data-tprm-answer-benchmark>Benchmark (firm only): <%= r.benchmark %></p><% } %>
+            <% if (typeof canEditGuides !== 'undefined' && canEditGuides) { %><a class="fx-link" href="/tprm/settings/marking-guides?q=<%= encodeURIComponent(r.question_id) %>#guide-<%= r.question_id %>"><%= r.guide ? 'Change the guide' : 'Write a guide for this question' %></a><% } %>
+          </div>
           <% if (r.reasons.length) { %><p class="tpa-meta" data-tprm-answer-reasons>Needs judgement: <%= r.reasons.map(k => k === 'ai' && r.aiSuggestion ? 'AI review suggests ' + rv.conclusionLabels[r.aiSuggestion.conclusion].toLowerCase() : rv.reasonLabels[k].toLowerCase()).join(', ') %>.</p><% } %>
 
           <div class="tpw-answer">

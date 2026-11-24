@@ -24,9 +24,17 @@
   const materialCount = services.filter(s => s.material).length;
   const nextDue = t.status === 'in_use' ? tpLabels.due({ nextDueDate: t.next_due_date, lastAssessmentDate: t.last_assessment_date, inProgress: !!openAssessment, today }) : null;
 
+  const pf = typeof party !== 'undefined' && party ? party : null;
+  const fxTag = (k, label) => '<span class="fx-tag fx-t-' + k + '">' + label + '</span>';
+  const OUT = { approve: 'Approve', approve_with_conditions: 'Approve with conditions', reject: 'Do not approve' };
+  const initials = v => String(v || '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
   const tabs = [
     { key: 'overview', label: 'Overview' },
     { key: 'assessments', label: 'Assessments', count: assessmentList.length },
+    { key: 'issues', label: 'Issues', count: pf ? pf.findings.length : 0 },
+    { key: 'conditions', label: 'Conditions', count: pf ? pf.conditions.length : 0 },
+    { key: 'documents', label: 'Documents', count: pf ? pf.documents.length : 0 },
+    { key: 'contracts', label: 'Contracts' },
     { key: 'services', label: 'Services', count: services.length },
   ];
   const pp = typeof peoplePanel !== 'undefined' && peoplePanel ? peoplePanel : null;
@@ -96,6 +104,31 @@
 <div class="tprm-steps">
 
 <section <%- tabAttrs('overview') %> id="overview">
+  <% if (pf) { const lr = pf.latestRec; %>
+  <div class="fx-cards4" data-tprm-party-cards>
+    <section class="fx-card"><h3 class="fx-h4">Last review <span><%= lr ? (pf.assessments.find(a => Number(a.id) === Number(lr.assessment_id)) || {}).type === 'reassessment' ? 'Reassessment' : 'Onboarding' : '' %></span></h3>
+      <% if (lr) { %><div class="fx-big fx-big-s"><%= OUT[lr.outcome] || lr.outcome %></div><div class="fx-muted fx-sm">Issued <%= tpf.day(new Date(lr.issued_at).toISOString().slice(0, 10)) %><%= lr.author_name ? ' by ' + lr.author_name : '' %><%= lr.reviewer_name ? ', checked by ' + lr.reviewer_name : '' %></div>
+      <% } else { %><div class="fx-big fx-big-s">None issued</div><div class="fx-muted fx-sm"><%= pf.open ? 'A review is in progress' : 'No review yet' %></div><% } %></section>
+    <section class="fx-card"><h3 class="fx-h4">Conditions</h3><div class="fx-big"><%= pf.conditionsDone %> <span class="fx-of">of <%= pf.liveConditions.length %> met</span></div>
+      <div class="fx-prog"><b style="width:<%= pf.liveConditions.length ? Math.round(pf.conditionsDone / pf.liveConditions.length * 100) : 0 %>%"></b></div></section>
+    <section class="fx-card"><h3 class="fx-h4">Documents <span><%= pf.documents.length %> held, <%= pf.released %> released</span></h3><div class="fx-big"><%= pf.expiring.length %> <span class="fx-of">expire in 12 months</span></div>
+      <div class="fx-muted fx-sm"><%= pf.expiring.map(e => e.label + ' ' + tpf.day(e.date)).join(', ') || 'Nothing expiring' %></div></section>
+    <section class="fx-card"><h3 class="fx-h4">Open findings</h3><div class="fx-big<%= pf.openFindings ? ' fx-warn' : '' %>"><%= pf.openFindings %></div><div class="fx-muted fx-sm">of <%= pf.findings.length %> raised</div></section>
+  </div>
+  <div class="fx-ov">
+  <div>
+    <section class="fx-card"><h3 class="fx-h4">At <%= t.name %></h3>
+      <% const people = pp ? pp.list : []; if (!people.length) { %><p class="fx-muted fx-sm"><%= t.primary_contact_name ? t.primary_contact_name + (t.primary_contact_email ? ', ' + t.primary_contact_email : '') : 'No one yet' %></p><% } %>
+      <% people.slice(0, 4).forEach(x => { %><div class="fx-ppl"><span class="fx-av"><%= initials(x.name) %></span><div><b><%= x.name %></b><span><%= [x.job_title, x.role === 'main' ? 'main contact' : null].filter(Boolean).join(' · ') %></span><span><%= x.email %></span></div></div><% }) %></section>
+    <section class="fx-card fx-mt"><h3 class="fx-h4">At the client</h3>
+      <div class="fx-ppl"><span class="fx-av"><%= initials(typeof clientOwner !== 'undefined' && clientOwner ? clientOwner.name : '?') %></span><div><b><%= typeof clientOwner !== 'undefined' && clientOwner ? clientOwner.name : 'No owner named' %></b><span>Owner</span></div></div>
+      <% if (pf.decisionOwner) { %><div class="fx-ppl"><span class="fx-av"><%= initials(pf.decisionOwner) %></span><div><b><%= pf.decisionOwner %></b><span>Decision owner</span></div></div><% } %></section>
+    <section class="fx-card fx-mt"><h3 class="fx-h4">Your team</h3>
+      <div class="fx-ppl"><span class="fx-av"><%= initials(pf.lead || '?') %></span><div><b><%= pf.lead || 'Not set' %></b><span>Lead consultant</span></div></div>
+      <% if (pf.reviewer) { %><div class="fx-ppl"><span class="fx-av"><%= initials(pf.reviewer) %></span><div><b><%= pf.reviewer %></b><span>Second person</span></div></div><% } %></section>
+  </div>
+  <div>
+  <% } %>
   <div class="tprm-stack">
     <div class="panel" data-tprm-facts>
       <div class="panel-head"><h2>Details</h2></div>
@@ -116,7 +149,67 @@
       </dl>
     </div>
   </div>
+  <% if (pf) { %>
+    <% if (services.length) { %><section class="fx-card fx-mt" data-tprm-party-services><h3 class="fx-h4">Services <span><%= services.length %></span></h3>
+      <% services.forEach(sv => { %><div class="fx-svc"><b><%= sv.description %></b><span class="fx-muted fx-sm"><%= [sv.hosting_countries ? 'Data held in ' + sv.hosting_countries : null, sv.data_access, sv.material ? 'material outsourcing' : null, sv.sole_source ? 'only supplier' : null].filter(Boolean).join(' · ') %></span></div><% }) %></section><% } %>
+    <% if (pf.scoping) { const sc = pf.scoping; %><section class="fx-card fx-mt" data-tprm-party-scoping><h3 class="fx-h4">How the tier was set <span><%= sc.confirmedBy ? 'confirmed by ' + sc.confirmedBy : 'not confirmed yet' %></span></h3>
+      <div class="fx-table fx-flat"><table><thead><tr><th>Question</th><th>Answer</th><th>Points to</th></tr></thead><tbody>
+      <% sc.criticality.forEach(r => { %><tr<%- r.deciding ? ' class="is-late"' : '' %>><td><%= r.text %></td><td><%= r.answer %></td><td><%- r.tier ? fxTag(String(r.tier).toLowerCase(), r.tier) : '-' %><%= r.deciding ? ' sets the tier' : '' %></td></tr><% }) %>
+      </tbody></table></div></section><% } %>
+    <section class="fx-card fx-mt" data-tprm-party-assurance><h3 class="fx-h4">Assurance <span>from the supplier's answers</span></h3>
+      <% const iso = pf.reports.find(r => r.kind === 'iso27001'); const soc = pf.reports.find(r => r.kind === 'soc2_type2'); const ins = pf.insurance; const insF = ins && ins.fields ? ins.fields : {}; %>
+      <dl class="fx-kv"><div><dt>ISO 27001</dt><dd><%= iso ? (iso.expires_on ? 'Valid to ' + tpf.day(iso.expires_on) : 'Provided') + (iso.check_status === 'accepted' ? ', checked' : ', not checked yet') : 'Not provided' %></dd></div>
+        <div><dt>SOC 2 Type II</dt><dd><%= soc ? (soc.period_end ? 'Period to ' + tpf.day(soc.period_end) : 'Provided') + (soc.check_status === 'accepted' ? ', checked' : ', not checked yet') : 'Not provided' %></dd></div>
+        <div><dt>Cyber insurance</dt><dd><%= !ins ? 'Not asked at this tier' : ins.response === 'yes' ? ([insF.sum_insured, insF.insurer, insF.policy_period].filter(Boolean).join(', ') || 'Held') : 'Not held' %></dd></div></dl></section>
+  </div>
+  <div>
+    <section class="fx-card" data-tprm-party-next><h3 class="fx-h4">Next steps</h3>
+      <% if (!pf.next.length) { %><p class="fx-muted fx-sm">Nothing waiting.</p><% } %>
+      <div class="fx-todo"><% pf.next.forEach(n => { %><div><div class="fx-todo-t"><b><%= n.text %></b><span class="<%= n.late ? 'fx-bad' : '' %>"><%= String(n.sub).replace(/\d{4}-\d{2}-\d{2}/g, d => tpf.day(d)) %></span></div><% if (n.href) { %><a class="btn btn-<%= n.primary ? 'primary' : 'secondary' %> btn-xs" href="<%= tpHref %>/<%= n.href %>">Open</a><% } %></div><% }) %></div></section>
+    <section class="fx-card fx-mt"><h3 class="fx-h4">Recent activity <a class="fx-link" href="<%= tpHref %>?tab=history">all</a></h3>
+      <div class="fx-feed"><% history.slice(0, 6).forEach(e => { %><div><i></i><div><b><%= actionLabels[e.action] || e.action %></b><span><%= e.actor_name || 'Unknown user' %> · <%= tpf.day(new Date(e.created_at).toISOString().slice(0, 10)) %></span></div></div><% }) %></div></section>
+  </div>
+  </div>
+  <% } %>
 </section>
+
+<% if (pf) { %>
+<section <%- tabAttrs('issues') %> id="issues">
+  <div class="fx-table" data-tprm-party-issues>
+  <% if (!pf.findings.length) { %><div class="fx-empty">No findings in any review of <%= t.name %>.</div><% } else { %>
+  <div class="table-scroll"><table><thead><tr><th>Finding</th><th>Control</th><th>Severity</th><th>Status</th><th>Shared with the supplier</th><th></th></tr></thead><tbody>
+  <% pf.findings.forEach(f => { %><tr data-tprm-party-finding="<%= f.id %>"><td><b><%= f.title %></b><% if (f.description) { %><span class="fx-sub"><%= f.description %></span><% } %></td><td><%= f.control_ref || '-' %></td>
+    <td><%- fxTag(f.severity, f.severity.charAt(0).toUpperCase() + f.severity.slice(1)) %></td><td><%= f.status === 'open' ? 'Open' : 'Closed' %></td><td><%= f.issue_id ? 'Yes' : 'No' %></td>
+    <td class="tprm-right"><a class="btn btn-secondary btn-xs" href="<%= tpHref %>/assessments/<%= f.assessment_id %>?step=evidence<%= f.issue_id ? '#issue-' + f.issue_id : '' %>">Open</a></td></tr><% }) %>
+  </tbody></table></div><% } %></div>
+</section>
+<section <%- tabAttrs('conditions') %> id="conditions">
+  <div class="fx-table" data-tprm-party-conditions>
+  <% if (!pf.conditions.length) { %><div class="fx-empty">No conditions set in an issued recommendation.</div><% } else { %>
+  <div class="table-scroll"><table><thead><tr><th>#</th><th>Condition</th><th>Who</th><th>Due</th><th>Status</th><th></th></tr></thead><tbody>
+  <% pf.conditions.forEach(c => { const late = c.due_date && c.due_date < pf.today && !['verified', 'waived'].includes(c.status); %><tr<%- late ? ' class="is-late"' : '' %>><td><%= c.position %></td><td><%= c.description %><span class="fx-sub">Recommendation version <%= c.version %></span></td>
+    <td><%= c.owner === 'client' ? 'Client' : 'Third party' %></td><td class="<%= late ? 'fx-bad' : '' %>"><%= c.due_date ? tpf.day(c.due_date) : '-' %></td><td><%= ({ open: 'Open', proof_submitted: 'Proof sent', verified: 'Met', changes_requested: 'Changes asked for', waived: 'Waived' })[c.status] || c.status %></td>
+    <td class="tprm-right"><a class="btn btn-secondary btn-xs" href="<%= tpHref %>/assessments/<%= c.assessment_id %>?step=decision#conditions">Open</a></td></tr><% }) %>
+  </tbody></table></div><% } %></div>
+</section>
+<section <%- tabAttrs('documents') %> id="documents">
+  <div class="fx-table" data-tprm-party-documents>
+  <% if (!pf.documents.length) { %><div class="fx-empty">No documents yet.</div><% } else { %>
+  <div class="table-scroll"><table><thead><tr><th>Document</th><th>From</th><th>Note</th><th>Added</th><th>Client sees it</th><th></th></tr></thead><tbody>
+  <% pf.documents.forEach(d => { %><tr><td><b><%= d.original_name %></b></td><td><%= d.from_supplier ? 'Third party' : 'Your team' %></td><td><%= d.description || '-' %></td><td><%= tpf.day(new Date(d.created_at).toISOString().slice(0, 10)) %></td>
+    <td><%= d.released_to_client ? 'Released' : 'No' %></td><td class="tprm-right"><a class="btn btn-secondary btn-xs" href="<%= tpHref %>/assessments/<%= d.assessment_id %>/evidence/<%= d.id %>/download">Download</a></td></tr><% }) %>
+  </tbody></table></div><% } %></div>
+</section>
+<section <%- tabAttrs('contracts') %> id="contracts">
+  <div class="fx-card" data-tprm-party-contracts>
+    <h3 class="fx-h4">Contract clauses</h3>
+    <% const withChecklist = pf.open || pf.assessments[0]; %>
+    <% if (!withChecklist) { %><p class="fx-muted fx-sm">Start a review to check the contract clauses.</p>
+    <% } else { %><p class="fx-sm">The clause checklist belongs to each review. The third party marks which clauses the contract has, and your team checks them against the contract.</p>
+      <p><a class="btn btn-secondary btn-xs" href="<%= tpHref %>/assessments/<%= withChecklist.id %>/contract-review">Open the checklist of the <%= pf.open ? 'open review' : 'latest review' %></a></p><% } %>
+  </div>
+</section>
+<% } %>
 
 <% if (pp) { %>
 <section <%- tabAttrs('people') %> id="people">

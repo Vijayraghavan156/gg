@@ -9,17 +9,47 @@
   const sortTh = (key, label, cls) => '<th data-tp-sort="' + key + '"' + ariaSort(key) + (cls ? ' class="' + cls + '"' : '') + '><a class="tprm-sort" href="' + sortHref(key).replace(/&/g, '&amp;') + '">' + label + '</a></th>';
   const tierRank = { critical: 1, high: 2, medium: 3, low: 4 };
   const statusRank = { proposed: 1, in_use: 2, exited: 3 };
+  const rx = typeof regExtras !== 'undefined' && regExtras ? regExtras : new Map();
+  const rt = typeof regTiles !== 'undefined' && regTiles ? regTiles : null;
+  const bulk = canManage && !isDueView;
+  const fxTier = t => t ? '<span class="fx-tag fx-t-' + t + '">' + ({ critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low' })[t] + '</span>' : '';
+  const fxDonut = (parts, total, label) => { const r = 34, C = 2 * Math.PI * r; let a = 0; let out = '<svg class="fx-donut" viewBox="0 0 92 92" aria-hidden="true"><circle cx="46" cy="46" r="' + r + '" class="tr"/>';
+    if (total > 0) parts.forEach(pp => { if (!pp.count) return; const l = C * pp.count / total; out += '<circle cx="46" cy="46" r="' + r + '" class="sg fx-c-' + pp.cls + '" stroke-dasharray="' + l.toFixed(2) + ' ' + (C - l).toFixed(2) + '" stroke-dashoffset="' + (-a).toFixed(2) + '" transform="rotate(-90 46 46)"/>'; a += l; });
+    return out + '<text x="46" y="51" text-anchor="middle">' + label + '</text></svg>'; };
 %>
 <%- include('tprm_client_nav', { tpClient, section: isDueView ? 'due' : 'register', canManage, canSettings, dueCount: list.counts.due,
   primaryAction: canManage ? { href: '/tprm/clients/' + tpClient.id + '/third-parties/new', label: 'Add third party' } : null }) %>
 <%- include('tprm_client_concentration_link') %>
+<% if (typeof wsLead !== 'undefined' && wsLead) { %><p class="fx-muted fx-sm" data-tprm-ws-lead>Lead consultant: <%= wsLead %></p><% } %>
 <% if (typeof clientRequestsOpen !== 'undefined' && clientRequestsOpen.length) { %>
-<div class="panel" data-tprm-client-requests>
-  <div class="panel-head"><h2>Requests from the client</h2><span class="meta"><%= clientRequestsOpen.length %></span></div>
-  <div class="table-scroll"><table class="t"><thead><tr><th>Supplier</th><th>Service</th><th>Asked by</th><th>Sent</th><th></th></tr></thead><tbody>
-  <% clientRequestsOpen.forEach(r => { %><tr data-tprm-client-request="<%= r.id %>"><td><strong><%= r.name %></strong></td><td><%= r.service_description %></td><td><%= r.requested_by_name || '-' %></td>
-    <td><%= tpf.day(new Date(r.requested_at).toISOString().slice(0, 10)) %></td><td class="tprm-right"><a class="btn btn-secondary btn-xs" href="/tprm/clients/<%= tpClient.id %>/requests/<%= r.id %>">Open</a></td></tr><% }) %>
-  </tbody></table></div>
+<section class="fx-card fx-mb" data-tprm-client-requests>
+  <h2 class="fx-h4">Requests from the client <span><%= clientRequestsOpen.length %> new</span></h2>
+  <div class="fx-todo">
+  <% clientRequestsOpen.forEach(r => { %><div data-tprm-client-request="<%= r.id %>"><span class="fx-tag fx-t-new">New</span>
+    <div class="fx-todo-t"><b><%= r.name %></b><span><%= r.service_description %> · asked by <%= r.requested_by_name || 'the client' %> on <%= tpf.day(new Date(r.requested_at).toISOString().slice(0, 10)) %></span></div>
+    <a class="btn btn-secondary btn-xs" href="/tprm/clients/<%= tpClient.id %>/requests/<%= r.id %>">Open</a>
+    <% if (canManage) { %><form method="POST" action="/tprm/clients/<%= tpClient.id %>/requests/<%= r.id %>/accept" class="tpu-m-0"><input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>"><input type="hidden" name="row_version" value="<%= r.row_version %>"><button class="btn btn-primary btn-xs" type="submit">Add as proposed</button></form><% } %>
+  </div><% }) %>
+  </div>
+</section>
+<% } %>
+<% if (rt && !isDueView) { %>
+<div class="fx-hub" data-tprm-register-tiles>
+  <section class="fx-card fx-tile"><h3 class="fx-h4">By tier <span>third parties in use or proposed</span></h3>
+    <div class="fx-donut-row"><%- fxDonut(rt.tiers, rt.total, String(rt.total)) %><ul class="fx-legend"><% rt.tiers.forEach(x => { %><li><i class="fx-c-<%= x.cls %>"></i><%= x.label %><b><%= x.count %></b></li><% }) %></ul></div>
+    <div class="fx-foot"><div>Provisional, from the client's label<b><%= rt.provisional %></b></div></div></section>
+  <section class="fx-card fx-tile"><h3 class="fx-h4">Client decisions</h3>
+    <div class="fx-donut-row"><%- fxDonut(rt.decisions, rt.total, String(rt.total)) %><ul class="fx-legend"><% rt.decisions.forEach(x => { %><li><i class="fx-c-<%= x.cls %>"></i><%= x.label %><b><%= x.count %></b></li><% }) %></ul></div>
+    <div class="fx-foot"><div>Approvals ending in 90 days<b<%- rt.approvalsEnding ? ' class="fx-warn"' : '' %>><%= rt.approvalsEnding %></b></div></div></section>
+  <section class="fx-card fx-tile"><h3 class="fx-h4">Open reviews</h3><div class="fx-big"><%= rt.open.total %></div>
+    <div class="fx-muted fx-sm"><%= rt.open.supplier %> with the supplier, <%= rt.open.team %> with your team, <%= rt.open.client %> with the client</div>
+    <div class="fx-foot"><div>Reassessments overdue<b<%- rt.open.late ? ' class="fx-bad"' : '' %>><%= rt.open.late %></b></div><div>Questionnaire links ending this week<b><%= rt.open.links %></b></div><div>Clarifications open<b><%= rt.open.clarifications %></b></div></div></section>
+  <div class="fx-stack">
+    <section class="fx-card"><h3 class="fx-h4">Open findings <span>by severity</span></h3>
+      <% rt.findings.forEach(x => { %><div class="fx-hbar"><span><%= ({ critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low' })[x.key] %></span><span class="bar"><b style="width:<%= Math.round(x.count / rt.findingsMax * 100) %>%"></b></span><em><%= x.count %></em></div><% }) %></section>
+    <section class="fx-card"><h3 class="fx-h4">Due in the next 90 days</h3>
+      <div class="fx-mini3"><div><b><%= rt.due.reassessments %></b><span>Reassessments</span></div><div><b class="<%= rt.due.conditions ? 'fx-warn' : '' %>"><%= rt.due.conditions %></b><span>Conditions</span></div><div><b><%= rt.due.certificates %></b><span>Certificates expiring</span></div></div></section>
+  </div>
 </div>
 <% } %>
 
@@ -75,12 +105,21 @@
       <% } %>
     </div>
   <% } else { %>
+    <% if (bulk) { %>
+    <form method="POST" action="/tprm/clients/<%= tpClient.id %>/third-parties/bulk-start" id="tp-bulk" class="panel-pad tprm-divide-b fx-bulk" data-tprm-bulk>
+      <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+      <span class="meta">Tick third parties with no open review, then</span>
+      <%- include('partials/tprm_confirm_fields', { title: 'Start an assessment for each ticked third party?', body: 'An onboarding assessment starts for each proposed third party and a reassessment for each one in use. You are the lead on each.', action: 'Start assessments' }) %>
+      <button class="btn btn-secondary btn-xs" type="submit" data-tprm-bulk-start>Start assessments</button>
+    </form>
+    <% } %>
     <div class="table-scroll">
     <table class="t tprm-register-table" data-tprm-register-table data-tp-list>
       <thead><tr>
-        <%- sortTh('name', 'Third party') %><%- sortTh('status', 'Status') %><%- sortTh('tier', 'Tier') %>
+        <% if (bulk) { %><th class="tprm-cb-col"><span class="sr-only">Tick</span></th><% } %><%- sortTh('name', 'Third party') %><%- sortTh('status', 'Status') %><%- sortTh('tier', 'Tier') %>
         <th>Assessment</th>
         <th>Client decision</th>
+        <% if (!isDueView) { %><th>Residual</th><th class="tprm-right">Open findings</th><th>Client owner</th><th>Lead</th><% } %>
         <%- sortTh('last_assessed', 'Last assessed') %><%- sortTh('next_due', 'Next due') %><%- sortTh('services', 'Services', 'tprm-right') %>
       </tr></thead>
       <tbody>
@@ -88,6 +127,7 @@
         <tr data-tprm-row="<%= r.id %>" data-tp-row data-tp-text="<%= [r.name, r.legal_name, r.category, r.client_label].filter(Boolean).join(' ').toLowerCase() %>"
           data-tp-sort-name="<%= String(r.name || '').toLowerCase() %>" data-tp-sort-status="<%= statusRank[r.status] || 9 %>" data-tp-sort-tier="<%= tierRank[r.current_tier] || 5 %>"
           data-tp-sort-last_assessed="<%= tpf.ymd(r.last_assessment_date) %>" data-tp-sort-next_due="<%= tpf.ymd(r.next_due_date) %>" data-tp-sort-services="<%= r.service_count %>">
+          <% if (bulk) { %><td class="tprm-cb-col"><label class="sr-only" for="bulk-<%= r.id %>">Tick <%= r.name %></label><input type="checkbox" id="bulk-<%= r.id %>" name="ids" value="<%= r.id %>" form="tp-bulk"<%= r.status === 'exited' || (stages && stages.get(Number(r.id))) ? ' disabled' : '' %> data-tprm-bulk-tick></td><% } %>
           <td><a href="/tprm/clients/<%= tpClient.id %>/third-parties/<%= r.id %>"><%= r.name %></a>
             <% if (r.category || r.client_label) { %><div class="meta text-xs"><%= [r.category, r.client_label ? 'Client label: ' + r.client_label : null].filter(Boolean).join(' · ') %></div><% } %></td>
           <td><%= tp.STATUS_LABELS[r.status] %></td>
@@ -102,6 +142,12 @@
             <% if (ap.pending) { %><%- include('partials/tprm_status', { text: tpLabels.pending(ap.pending, 'firm'), tone: ap.pendingTone, as: 'div', attrs: 'data-tprm-pending="' + ap.pending + '"' }) %><% } %>
             <% if (ap.conditions) { %><%- include('partials/tprm_status', { text: ap.conditions.label, tone: ap.conditions.state === 'overdue' ? 'problem' : ap.conditions.state === 'met' ? 'good' : 'quiet', as: 'div', attrs: 'data-tprm-conditions-state="' + ap.conditions.state + '"' }) %><% } %>
           <% } %></td>
+          <% if (!isDueView) { const x = rx.get(Number(r.id)) || {}; %>
+          <td><%- x.residual ? fxTier(x.residual) : '<span class="meta">-</span>' %></td>
+          <td class="num tprm-right"><%- x.open_findings ? '<span class="fx-warn">' + x.open_findings + '</span>' : '<span class="meta">0</span>' %></td>
+          <td><%= x.owner_name || '-' %></td>
+          <td><%= x.lead_name || '-' %></td>
+          <% } %>
           <td><%= tpf.day(r.last_assessment_date) || '-' %></td>
           <% const dl = r.status === 'in_use' ? tpLabels.due({ nextDueDate: r.next_due_date, lastAssessmentDate: r.last_assessment_date, inProgress: !!(ap && ap.openAssessment), today: list.today }) : null; %>
           <td><% if (dl && (r.due || dl.label)) { %><%- include('partials/tprm_status', { text: dl.label || 'No due date', tone: dl.tone, attrs: (r.due ? 'data-tprm-due ' : '') + 'data-tprm-due-state="' + dl.key + '"' }) %>

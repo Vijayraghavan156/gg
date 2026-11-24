@@ -190,6 +190,53 @@ function register(app, deps) {
       throw err;
     }
   });
+  const guides = require('../lib/tprm/marking-guides');
+  const GUIDE_BASE = '/tprm/settings/marking-guides';
+  async function renderGuides(req, res, { errors = [], values = null, status = 200 } = {}) {
+    const questionnaires = require('../lib/tprm/questionnaires');
+    const latest = await questionnaires.latestBankVersion(db);
+    const bank = latest ? await questionnaires.bankContent(db, latest.id) : { questions: [] };
+    const saved = await guides.forFirm(db, firmId(req));
+    const q = String(req.query.q || (values && values.question_id) || '').trim().slice(0, 100);
+    const domain = String(req.query.domain || '').trim().slice(0, 100);
+    const all = (bank.questions || []).map(x => ({ id: x.id, theme: x.theme, question: x.question, domain: x.set === 'Base' ? x.domain : x.pack,
+      guidance: x.guidance || '', benchmark: x.benchmark || '', guide: saved.get(x.id) || null }));
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const shown = all.filter(x => (!domain || x.domain === domain) && words.every(w => `${x.id} ${x.theme} ${x.question}`.toLowerCase().includes(w)));
+    return res.status(status).render('tprm_marking_guides', {
+      user: req.user, active: 'tprm-portfolio', q, domain, domains: [...new Set(all.map(x => x.domain).filter(Boolean))],
+      shown: shown.slice(0, 40), more: Math.max(0, shown.length - 40), total: all.length, written: saved.size,
+      canEdit: access.firmCan(req.user, guides.PERMISSION), errors, values, bankVersion: latest ? latest.version : null,
+    });
+  }
+
+  app.get(GUIDE_BASE, requireAuth, async (req, res, next) => {
+    try {
+      if (!access.isFirmUser(req.user) || !access.firmCan(req.user, 'tp.view') || !req.user.firm_id) {
+        return res.status(403).render('error', { user: req.user, message: 'Marking guides are for consulting-team accounts.' });
+      }
+      return await renderGuides(req, res);
+    } catch (err) { return next(err); }
+  });
+
+  app.post(`${GUIDE_BASE}/:qid`, requireAuth, async (req, res, next) => {
+    try {
+      if (!access.isFirmUser(req.user) || !access.firmCan(req.user, guides.PERMISSION) || !req.user.firm_id) {
+        return res.status(403).render('error', { user: req.user, message: 'Only a manager can change the marking guides.' });
+      }
+      const qid = String(req.params.qid);
+      try {
+        const r = await guides.save(db, req.user, qid, req.body || {});
+        await logAction(req.user.id, null, 'tprm_marking_guide_saved', 'tp_marking_guide', null, { question_id: qid, cleared: !!r.cleared }, auditCtx(req));
+        return res.redirect(withToast(`${GUIDE_BASE}?q=${encodeURIComponent(qid)}#guide-${qid}`, r.cleared ? 'Guide removed' : 'Guide saved'));
+      } catch (err) {
+        if (err instanceof TprmError && err.status === 400) { req.query.q = qid; return await renderGuides(req, res, { errors: err.errors || [err.message], values: { ...req.body, question_id: qid }, status: 400 }); }
+        if (err instanceof TprmError && (err.status === 409 || err.status === 404)) return res.redirect(withToast(`${GUIDE_BASE}?q=${encodeURIComponent(qid)}`, err.message, 'error'));
+        throw err;
+      }
+    } catch (err) { return next(err); }
+  });
+
   const TP_BASE = '/tprm/settings/two-person';
   const twoPerson = require('../lib/tprm/two-person');
   const tpForbidden = (req, res) => res.status(403).render('error', {

@@ -119,6 +119,10 @@ function registerRoutes(app, deps) {
     const file = await evidence.evidenceFile(db, actor, req.params.tpId, req.params.aid, req.params.eid);
     const target = resolveUploadPath(file.stored_path, actor.ws.firm_id);
     if (!target || !fs.existsSync(target)) {
+      if (req.query.inline === '1') {
+        res.set('X-Content-Type-Options', 'nosniff');
+        return res.status(404).type('text/plain; charset=utf-8').end(Buffer.from('This file is missing from storage, so it cannot be shown. Contact your administrator.', 'utf8'));
+      }
       return res.status(404).render('error', { user: req.user, message: 'This file is missing from storage. Contact your administrator.' });
     }
     res.set('X-Content-Type-Options', 'nosniff');

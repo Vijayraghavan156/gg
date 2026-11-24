@@ -722,3 +722,34 @@ test('contract clauses: the third party marks each clause; the firm sees it besi
   assert.equal(late.status, 409);
   assert.equal((await db.prepare('SELECT vendor_status FROM tp_contract_reviews WHERE id=?').get(first.id)).vendor_status, 'in_contract');
 });
+
+test('marking guides: a manager writes one per question; reviewers see it; the supplier and the client never do', async () => {
+  const ctx = await submitted('Marking Guide Co');
+  const q = await qRow(ctx.a);
+  const qid = q.sections[0].ids[0];
+  const SECRET = `SENTINEL-GUIDE-${crypto.randomBytes(4).toString('hex')}`;
+  await client.get('/tprm/settings/marking-guides');
+  const saved = await client.post(`/tprm/settings/marking-guides/${qid}`, { satisfactory: SECRET, partly: 'Some gaps', red_flags: 'A template' });
+  assert.equal(saved.status, 302, toast(saved));
+  const settings = await client.get(`/tprm/settings/marking-guides?q=${qid}`);
+  assert.match(settings.text, new RegExp(`data-tprm-guide-row="${qid}"[\\s\\S]*?${SECRET}`));
+  const refused = await consultant.session.post(`/tprm/settings/marking-guides/${qid}`, { satisfactory: 'not allowed' });
+  assert.equal(refused.status, 403, 'only a manager changes the guides');
+  const review = await firmPage(ctx);
+  assert.match(review.text, new RegExp(`data-tprm-marking-guide="${qid}"[\\s\\S]*?${SECRET}`), 'the reviewer sees the guide beside the answer');
+  const vendorView = await vget(ctx.token);
+  assert.doesNotMatch(vendorView.text, new RegExp(SECRET));
+  assert.doesNotMatch((await request('GET', `/vendor/q/${ctx.token}/spreadsheet`)).text || '', new RegExp(SECRET));
+  const offenders = [];
+  for (const dir of ['routes', 'lib', 'views']) {
+    for (const f of fs.readdirSync(path.join(__dirname, '..', dir), { recursive: true })) {
+      const full = path.join(__dirname, '..', dir, String(f));
+      if (!/\.(js|ejs)$/.test(full) || fs.statSync(full).isDirectory()) continue;
+      if (/marking-guides|tp_marking_guides/.test(fs.readFileSync(full, 'utf8'))) offenders.push(path.join(dir, String(f)));
+    }
+  }
+  assert.deepEqual(offenders.sort(), ['lib/restore-check.js', 'lib/tprm/marking-guides.js', 'lib/tprm/questionnaire-review.js', 'routes/tprm-settings.js',
+    'views/tprm_assessment_answers.ejs', 'views/tprm_home.ejs', 'views/tprm_marking_guides.ejs'].sort(), 'only firm pages read the guides');
+  const cleared = await client.post(`/tprm/settings/marking-guides/${qid}`, { satisfactory: '', partly: '', red_flags: '' });
+  assert.match(toast(cleared), /removed/);
+});
