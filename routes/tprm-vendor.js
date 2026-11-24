@@ -110,7 +110,7 @@ function removeFiles(files) {
   }
 }
 
-const smallForm = express.urlencoded({ extended: true, limit: BODY_LIMITS.formBytes, parameterLimit: 50 });
+const smallForm = express.urlencoded({ extended: true, limit: BODY_LIMITS.formBytes, parameterLimit: 400 });
 
 function bodyGuard(req, res, next) {
   if (!isPost(req)) return next();

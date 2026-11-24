@@ -674,6 +674,21 @@ test('the Files page lists every review\'s files, adds files to an open review a
   assert.equal((await get('/vendor/p/files')).status, 303, 'signed out, the Files page asks you to sign in');
 });
 
+test('contract clauses: the whole form, every clause with its reference, saves in one go', async () => {
+  const ctx = await linked('Full Contract Form Co');
+  const page = await request('GET', `/vendor/q/${ctx.token}/contract`);
+  const ids = [...page.text.matchAll(/data-vendor-clause="([A-Z]{2}-\d+)"/g)].map(m => m[1]);
+  assert.ok(ids.length > 25, `enough clauses to pass the old field limit (${ids.length})`);
+  const fields = ids.flatMap((id, i) => [[`rows[${id}][status]`, i % 2 ? 'not_in_contract' : 'in_contract'], [`rows[${id}][reference]`, i % 2 ? '' : `Clause ${i + 1}.1`]]);
+  const res = await postForm(ctx.token, '/contract', fields, { aft: aftOf(page.text) });
+  assert.equal(res.status, 303, res.text.slice(0, 300));
+  assert.doesNotMatch(res.text, /too large/i);
+  const marked = await db.prepare('SELECT COUNT(*)::int n FROM tp_contract_reviews WHERE assessment_id=? AND vendor_status IS NOT NULL').get(ctx.a);
+  assert.equal(marked.n, ids.length);
+  const last = await db.prepare('SELECT vendor_reference FROM tp_contract_reviews WHERE assessment_id=? AND clause_id=?').get(ctx.a, ids[ids.length - 1 - ((ids.length - 1) % 2)]);
+  assert.match(last.vendor_reference, /^Clause \d+\.1$/);
+});
+
 test('contract clauses: the third party marks each clause; the firm sees it beside its own check; the client sees only the checked result', async () => {
   const ctx = await linked('Contract Clauses Co');
   const start = await vget(ctx.token);
