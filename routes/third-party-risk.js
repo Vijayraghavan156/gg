@@ -173,6 +173,7 @@ function register(app, deps) {
       clientRulebooks: await require('../lib/tprm/rulebooks').currentForClient(db, loaded.ws.id),
       clientRequestsOpen: await require('../lib/tprm/client-requests').list(db, loaded.ws.id, { open: true }),
       regExtras: await require('../lib/tprm/register-hub').extras(db, loaded.ws.id),
+      leads: access.can(req.user, loaded.perms, 'tp.manage') ? await require('../lib/tprm/assessments').leadCandidates(db, loaded.ws) : [],
       wsLead: loaded.ws.lead_consultant_id ? ((await db.prepare('SELECT name FROM users WHERE id = ?').get(loaded.ws.lead_consultant_id)) || {}).name || null : null,
       canManage: access.can(req.user, loaded.perms, 'tp.manage'),
       canSettings: access.can(req.user, loaded.perms, 'tp.settings'),
@@ -208,6 +209,27 @@ function register(app, deps) {
     });
   });
 
+  app.post(`${PORTAL}/findings/:fid/comments`, requireAuth, requireWorkspace, async (req, res, next) => {
+    try {
+      if (!portalReady(req, res)) return notFound(req, res);
+      const base = `/workspaces/${req.workspace.id}/client-portal/third-party-risk`;
+      let result;
+      try {
+        result = await require('../lib/tprm/finding-comments').clientAdd(db, req.workspace, req.user, req.params.fid, req.body || {});
+      } catch (err) {
+        if (err instanceof TprmError && err.status === 404) return portalNotFound(req, res);
+        if (err instanceof TprmError && (err.status === 400 || err.status === 409)) {
+          const tp = Number(req.body && req.body.third_party_id);
+          return res.redirect(withToast(Number.isSafeInteger(tp) && tp > 0 ? `${base}/third-parties/${tp}?tab=issues` : base, err.message, 'error'));
+        }
+        throw err;
+      }
+      await logAction(req.user.id, req.workspace.id, 'tprm_finding_client_comment', 'tp_finding', result.findingId, {}, auditCtx(req));
+      await require('../lib/tprm/messages').clientFindingComment(db, { workspaceId: req.workspace.id, assessmentId: result.assessmentId, commentId: result.id });
+      return res.redirect(withToast(`${base}/third-parties/${result.thirdPartyId}?tab=issues#issue-${result.findingId}`, 'Comment added'));
+    } catch (err) { return next(err); }
+  });
+
   app.post(`${PORTAL}/issues/:iid/comments`, requireAuth, requireWorkspace, async (req, res, next) => {
     try {
       if (!portalReady(req, res)) return notFound(req, res);
@@ -225,6 +247,7 @@ function register(app, deps) {
         throw err;
       }
       await logAction(req.user.id, req.workspace.id, 'tprm_issue_client_comment', 'tp_issue', result.issueId, {}, auditCtx(req));
+      await require('../lib/tprm/messages').clientCommented(db, { workspaceId: req.workspace.id, assessmentId: result.assessmentId, issueId: result.issueId });
       return res.redirect(withToast(`${base}/third-parties/${result.thirdPartyId}?tab=issues#issue-${result.findingId}`, 'Comment added'));
     } catch (err) { return next(err); }
   });
@@ -266,6 +289,7 @@ function register(app, deps) {
       try {
         const r = await clientRequests.submit(db, req.workspace, req.user, req.body || {});
         await logAction(req.user.id, req.workspace.id, 'tprm_client_request_submitted', 'tp_client_request', r.id, {}, auditCtx(req));
+        await require('../lib/tprm/messages').clientRequested(db, { workspaceId: req.workspace.id, requestId: r.id });
         return res.redirect(withToast(back, `Request for ${r.name} sent to your consultants`));
       } catch (err) {
         if (err instanceof TprmError && err.status === 400) return await renderRequestForm(req, res, { values: req.body || {}, errors: err.errors || [err.message], status: 400 });

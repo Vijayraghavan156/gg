@@ -1,0 +1,47 @@
+<%- include('partials/header', { title: 'Publish the question bank · Third-party risk', user, active }) %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; const names = { theme: 'Theme', question: 'Question', guidance: 'Guidance', evidence: 'Evidence asked for', evidence_mandatory: 'Evidence required', min_tier: 'Lowest tier', benchmark: 'Benchmark', iso27001: 'ISO 27001' }; const show = (k, val) => (k === 'evidence_mandatory' ? (val ? 'Yes' : 'No') : (val == null || val === '' ? '(empty)' : val)); %>
+<nav class="tprm-crumbs" aria-label="Breadcrumb"><a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><a href="/tprm/settings/question-bank">Question bank</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><span aria-current="page">Review and publish</span></nav>
+<div class="tprm-head" data-tprm-bank-publish>
+  <div class="tprm-head-main">
+    <h1 class="page-title">Review and publish</h1>
+    <p class="tprm-status-line">Publishing makes this version <%= nextVersion %>. New questionnaires use it; ones already prepared keep version <%= st.latest.version %> or earlier.</p>
+  </div>
+</div>
+<% if (st.stale) { %><div class="callout tprm-callout-error fx-mt" role="alert" data-tprm-bank-stale><p>A newer version was published after this draft was started. Discard the draft and start again from the latest version.</p></div><% } %>
+<% if (errors.length) { %><div class="callout tprm-callout-error fx-mt" role="alert" data-tprm-bank-errors><p>Fix these before publishing:</p><ul><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul></div><% } %>
+
+<% if (!d.count) { %>
+<p class="fx-mt">The draft has no changes yet. <a href="/tprm/settings/question-bank">Back to the question bank</a></p>
+<% } else { %>
+<% if (d.changed.length) { %>
+<h2 class="fx-section-h">Changed <span><%= d.changed.length %></span></h2>
+<div class="fx-table" data-tprm-bank-changed>
+  <table><thead><tr><th>Number</th><th>What</th><th>Published</th><th>Draft</th></tr></thead><tbody>
+  <% d.changed.forEach(c => { c.fields.forEach((k, i) => { %>
+    <tr><% if (i === 0) { %><td class="fx-nowrap" rowspan="<%= c.fields.length %>"><a href="/tprm/settings/question-bank/questions/<%= encodeURIComponent(c.id) %>"><b><%= c.id %></b></a></td><% } %><td><%= names[k] || k %></td><td class="fx-sm fx-muted"><%= show(k, byId.get(c.id)[k]) %></td><td class="fx-sm"><%= show(k, draftById.get(c.id)[k]) %></td></tr>
+  <% }) }) %>
+  </tbody></table>
+</div>
+<% } %>
+<% if (d.added.length) { %>
+<h2 class="fx-section-h">Added <span><%= d.added.length %></span></h2>
+<div class="fx-table" data-tprm-bank-added><table><tbody>
+  <% d.added.forEach(id => { const q = draftById.get(id); %><tr><td class="fx-nowrap"><a href="/tprm/settings/question-bank/questions/<%= encodeURIComponent(id) %>"><b><%= id %></b></a></td><td><%= q.theme %><span class="fx-sub"><%= q.question %></span></td><td><%= q.set === 'Base' ? q.domain : q.pack %><span class="fx-sub">From <%= q.min_tier %></span></td></tr><% }) %>
+</tbody></table></div>
+<% } %>
+<% if (d.retired.length) { %>
+<h2 class="fx-section-h">Retired <span><%= d.retired.length %></span></h2>
+<div class="fx-table" data-tprm-bank-retired-list><table><tbody>
+  <% d.retired.forEach(id => { const q = byId.get(id); %><tr><td><b><%= id %></b></td><td><%= q.theme %><span class="fx-sub"><%= q.question %></span></td></tr><% }) %>
+</tbody></table></div>
+<% } %>
+<% if (!st.stale && !errors.length) { %>
+<form method="POST" action="/tprm/settings/question-bank/publish" class="fx-card fx-mt fx-guide-form" data-tprm-bank-publish-form>
+  <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= st.draft.row_version %>">
+  <label class="label" for="qb-note">Note for the version history <span class="meta text-xs">optional</span></label><input class="input" id="qb-note" name="note" maxlength="300" placeholder="For example: insurance questions reworded after the client review">
+  <%- include('partials/tprm_confirm_fields', { title: 'Publish version ' + nextVersion + '?', body: 'Every new questionnaire for every client will use it. It cannot be unpublished, but a later version can change it again.', action: 'Publish' }) %>
+  <div class="fx-actions"><button class="btn btn-primary" type="submit">Publish version <%= nextVersion %></button><a class="fx-sm" href="/tprm/settings/question-bank">Keep editing</a></div>
+</form>
+<% } %>
+<% } %>
+<%- include('partials/footer') %>

@@ -60,6 +60,19 @@
       <label class="tprm-check"><input type="checkbox" name="vendor_reminders" value="1"<%= (intervalValues && intervalValues.vendor_reminders_shown === '1' ? intervalValues.vendor_reminders === '1' : settings.vendor_reminders !== false) ? ' checked' : '' %>> <span>Remind third parties by email 7 days and 1 day before their questionnaire link stops working, and once if it stops unanswered</span></label>
     </div>
   </div>
+  <div class="panel tpu-mb-14" data-tprm-auto-reassess>
+    <div class="panel-head"><h2>Start reassessments automatically</h2></div>
+    <div class="panel-pad">
+      <% const av = intervalValues && intervalValues.auto_reassess_shown === '1' ? intervalValues : null;
+         const autoOn = av ? av.auto_reassess === '1' : settings.auto_reassess_days != null;
+         const autoDays = av ? (av.auto_reassess_days || '') : (settings.auto_reassess_days || 30); %>
+      <input type="hidden" name="auto_reassess_shown" value="1">
+      <label class="tprm-check"><input type="checkbox" name="auto_reassess" value="1"<%= autoOn ? ' checked' : '' %>> Start each reassessment automatically before it is due</label>
+      <div class="tpu-mt-10"><label class="label" for="auto-days">Days before the due date</label>
+        <input class="input fx-select-s" id="auto-days" name="auto_reassess_days" inputmode="numeric" value="<%= autoDays %>"></div>
+      <div class="meta text-xs tpu-mt-4">Checked every hour. The lead of the last review leads the new one, and the scoping starts from the last review's answers. Third parties with a review already open are skipped.</div>
+    </div>
+  </div>
   <div class="tpu-end"><button class="btn btn-primary" type="submit">Save settings</button></div>
 </form>
 <% if (typeof rulebooksPanel !== 'undefined' && rulebooksPanel) { %><%- include('tprm_client_rulebooks') %><% } %>

@@ -64,6 +64,12 @@ function registerRoutes(app, { db, requireAuth, handler, renderAssessment }) {
     return res.redirect(withToast(back, `Questionnaire closed as not returned${result.revoked.length ? ': the link no longer works' : ''}`));
   }), { permission: 'tp.manage' }));
 
+  app.post(`${BASE}/remind`, requireAuth, handler(step(async (req, res, actor, thirdParty, back) => {
+    const a = await require('../lib/tprm/assessments').getAssessment(db, actor, thirdParty.id, req.params.aid);
+    const r = await require('../lib/tprm/messages').manualReminder(db, { workspaceId: actor.ws.id, assessmentId: a.id });
+    return res.redirect(withToast(back, r.sent ? `Reminder sent to ${r.recipient || 'the third party'}` : `No reminder sent: ${r.reason}`, r.sent ? undefined : 'error'));
+  }), { permission: 'tp.manage' }));
+
   app.post(`${BASE}/links/:lid/revoke`, requireAuth, handler(step(async (req, res, actor, thirdParty, back) => {
     await questionnaires.revokeLink(db, actor, thirdParty.id, req.params.aid, req.params.lid, req.body);
     return res.redirect(withToast(back, 'Link revoked: it no longer opens the questionnaire'));

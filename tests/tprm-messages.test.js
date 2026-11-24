@@ -433,3 +433,55 @@ test('5. the decision: needed and reminded once to the decision owner; the decis
     assert.equal((await sent(c.id, ctx.a)).length, before);
   } finally { process.env.EMAIL_DELIVERY_DISABLED = '0'; }
 });
+
+test('6. the firm hears about a client\'s request to add a supplier, once', async () => {
+  const was = process.env.EMAIL_DELIVERY_DISABLED;
+  process.env.EMAIL_DELIVERY_DISABLED = '0';
+  try {
+    const c = await tprmClient('Message Request Client');
+    await db.prepare('UPDATE workspaces SET lead_consultant_id = ? WHERE id = ?').run(consultant.id, c.id);
+    const rid = Number((await db.prepare(`INSERT INTO tp_client_requests (workspace_id, name, service_description, requested_by) VALUES (?, 'Orbit Backup', 'Nightly backups', ?) RETURNING id`)
+      .get(c.id, c.owner.id)).id);
+    await messages.clientRequested(db, { workspaceId: c.id, requestId: rid });
+    await messages.clientRequested(db, { workspaceId: c.id, requestId: rid });
+    const rows = await mails(c.id, 'tprm:consultant_client_request');
+    assert.equal(rows.length, 1, 'one email to the lead, not two');
+    assert.match(`${rows[0].subject}`, /Request to add Orbit Backup/);
+  } finally {
+    process.env.EMAIL_DELIVERY_DISABLED = was;
+  }
+});
+
+test('7. a manager rewords an email; sent emails and the preview use it; going back to the standard removes it', async () => {
+  const was = process.env.EMAIL_DELIVERY_DISABLED;
+  process.env.EMAIL_DELIVERY_DISABLED = '0';
+  try {
+    await client.get('/tprm/settings/emails');
+    const saved = await client.post('/tprm/settings/emails/vendor_invitation', { subject: 'Questionnaire for {client} from our team', headline: '', opening: 'SENTINEL-OPENING for {supplier}.', closing: '' });
+    assert.equal(saved.status, 302, toast(saved));
+    assert.equal((await consultant.session.post('/tprm/settings/emails/vendor_invitation', { subject: 'x' })).status, 403, 'only a manager rewords emails');
+    const preview = await client.get('/tprm/settings/emails/vendor_invitation/preview');
+    assert.equal(preview.status, 200);
+    assert.match(preview.text, /SENTINEL-OPENING for Lumen Print &amp; Mail\./);
+    const c = await tprmClient('Reworded Email Client');
+    const ctx = await linked(c, 'Reworded Supplier', { send_email: '1' });
+    const rows = await db.prepare(`SELECT subject, body_html AS html FROM email_outbox WHERE workspace_id=? AND related_type='tp_vendor_request' ORDER BY id`).all(c.id);
+    assert.ok(rows.length >= 1, 'the invitation was sent');
+    assert.equal(rows[rows.length - 1].subject, 'Questionnaire for Reworded Email Client from our team');
+    assert.match(rows[rows.length - 1].html || '', /SENTINEL-OPENING for Reworded Supplier\./);
+    assert.ok(ctx.token);
+    const reset = await client.post('/tprm/settings/emails/vendor_invitation', { reset: '1' });
+    assert.match(toast(reset), /standard/);
+    assert.doesNotMatch((await client.get('/tprm/settings/emails/vendor_invitation/preview')).text, /SENTINEL-OPENING/);
+  } finally {
+    process.env.EMAIL_DELIVERY_DISABLED = was;
+  }
+});
+
+test('8. a firm\'s own words keep their paragraphs', () => {
+  const m = email.renderTprmEmail('vendor_reminder_7', { toName: 'Priya', firmName: 'Firm', clientName: 'Acme', until: '1 Dec', sentDay: '1 Nov', url: 'https://app.example/x' },
+    { opening: 'First paragraph for {client}.\n\nSecond paragraph.' });
+  const text = email.stripHtml(m.html);
+  assert.match(m.html, /First paragraph for Acme\.<\/p>[\s\S]*?<p[^>]*>Second paragraph\.<\/p>/);
+  assert.ok(text.includes('Second paragraph.'));
+});

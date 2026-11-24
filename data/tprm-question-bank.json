@@ -1,6 +1,6 @@
 {
- "version": "2026-11-24 version 6",
- "source": "TPRM Question Bank (draft).xlsx, approved 20 Nov 2026; answer types, benchmarks, report coverage and evidence rules from \"TPRM questions vs ISO 27001 and SOC 2.xlsx\", 22 Nov 2026; version 3: the \"Cloud & Hosting\" module renamed \"Hosting Platform & Cloud Provider\", internal notes moved out of the third party's text into the firm-only benchmark, report_partly_supported dropped; version 4: base and module questions no longer assume an Indian client (the India-specific expectations moved to the firm-only benchmark), answer hints that did not fit the Yes / No / Not applicable control fixed, and the unverified Central Bank timeline out of UAE-03; version 6: tick-box fields for questions with a fixed set of choices",
+ "version": "2026-11-24 version 7",
+ "source": "TPRM Question Bank (draft).xlsx, approved 20 Nov 2026; answer types, benchmarks, report coverage and evidence rules from \"TPRM questions vs ISO 27001 and SOC 2.xlsx\", 22 Nov 2026; version 3: the \"Cloud & Hosting\" module renamed \"Hosting Platform & Cloud Provider\", internal notes moved out of the third party's text into the firm-only benchmark, report_partly_supported dropped; version 4: base and module questions no longer assume an Indian client (the India-specific expectations moved to the firm-only benchmark), answer hints that did not fit the Yes / No / Not applicable control fixed, and the unverified Central Bank timeline out of UAE-03; version 6: tick-box fields for questions with a fixed set of choices; version 7: the cyber insurance question GOV-07 is asked of High-tier suppliers too",
  "questions": [
   {
    "id": "GOV-01",
@@ -286,10 +286,10 @@
    "guidance": "A good answer includes: the insurer, the sum insured, the policy period and whether client claims are covered.",
    "evidence": "Certificate of insurance or policy schedule",
    "evidence_mandatory": true,
-   "min_tier": "Critical",
+   "min_tier": "High",
    "iso27001": "Cl. 6.1.3",
-   "status": "Changed in version 5",
-   "change_note": "Four details asked for in guidance given fields shown on Yes.",
+   "status": "Changed in version 7",
+   "change_note": "Asked of High-tier suppliers too, not only Critical.",
    "source": "Original pack, Tier tabs",
    "delivery_models": "Vendor-hosted",
    "answered_by": "Vendor",

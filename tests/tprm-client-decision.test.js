@@ -1054,3 +1054,74 @@ test('firm third-party page: summary cards and the Issues, Conditions, Documents
   assert.match((await consultant.session.get(`${base}?tab=issues`)).text, /Firm page finding/);
   assert.match((await consultant.session.get(`${base}?tab=conditions`)).text, /Enforce MFA for all admin accounts/);
 });
+
+test('finding conversations: the client and the firm talk about a finding that was not shared with the third party', async () => {
+  const c = await tprmClient('Finding Talk Client');
+  const ctx = await confirmed(c, 'Finding Talk Co');
+  await addFinding(ctx, { severity: 'medium', title: 'Unshared talk finding', description: 'A gap', control_ref: 'A.8.2' });
+  const fid = Number((await db.prepare('SELECT id FROM tp_findings WHERE workspace_id=? AND assessment_id=? AND title=?').get(ctx.ws, ctx.a, 'Unshared talk finding')).id);
+  const rid = await issued(ctx, 'approve');
+  const owner = await sessionFor(c.owner);
+  const page = await owner.get(`${portal(c.id)}/third-parties/${ctx.tp}?tab=issues`);
+  assert.match(page.text, new RegExp(`data-tprm-cv-finding-thread="${fid}"`));
+  const posted = await owner.post(`${portal(c.id)}/findings/${fid}/comments`, { body: 'Why is this medium?', third_party_id: String(ctx.tp) });
+  assert.equal(posted.status, 302);
+  assert.match(toast(posted), /Comment added/);
+  const firm = await consultant.session.get(`${aBase(ctx.ws, ctx.tp, ctx.a)}?step=evidence`);
+  assert.match(firm.text, new RegExp(`data-tprm-finding-notes="${fid}"[\\s\\S]*?Why is this medium\\?`));
+  const reply = await consultant.session.post(`${aBase(ctx.ws, ctx.tp, ctx.a)}/findings/${fid}/client-reply`, { body: 'Because the gap touches customer data.' });
+  assert.match(toast(reply), /Reply sent to the client/);
+  assert.match((await owner.get(`${portal(c.id)}/third-parties/${ctx.tp}?tab=issues`)).text, /Because the gap touches customer data\./);
+  const other = await tprmClient('Finding Talk Other');
+  const os = await sessionFor(other.owner);
+  await os.get(portal(other.id));
+  assert.equal((await os.post(`${portal(other.id)}/findings/${fid}/comments`, { body: 'Not mine' })).status, 404);
+  assert.equal((await decide(owner, ctx.ws, rid, { outcome: 'approve' })).status, 302);
+  assert.match(toast(await owner.post(`${portal(c.id)}/findings/${fid}/comments`, { body: 'Late', third_party_id: String(ctx.tp) })), /closed/);
+});
+
+test('automatic reassessments: started before they are due, by the last lead or the client lead, once, and only where switched on', async () => {
+  const auto = require('../lib/tprm/auto-reassess');
+  const c = await tprmClient('Auto Reassess Client');
+  await db.prepare('UPDATE workspaces SET lead_consultant_id = ? WHERE id = ?').run(consultant.id, c.id);
+  const soon = await addThirdParty(c.id, 'Due Soon Co', 'in_use');
+  const later = await addThirdParty(c.id, 'Due Later Co', 'in_use');
+  const today = dates.todayFor(await wsRow(c.id));
+  const plus = n => new Date(Date.parse(`${today}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+  await db.prepare('UPDATE tp_third_parties SET next_due_date = ? WHERE id = ?').run(plus(10), soon);
+  await db.prepare('UPDATE tp_third_parties SET next_due_date = ? WHERE id = ?').run(plus(90), later);
+  const permissionsFor = async u => new Set(rbac.rolePermissions(rbac.normalizeRole(u.firm_role)));
+  const count = async tp => (await db.prepare('SELECT COUNT(*)::int n FROM tp_assessments WHERE workspace_id=? AND third_party_id=?').get(c.id, tp)).n;
+  await auto.run(db, { permissionsFor });
+  assert.equal(await count(soon), 0, 'off until a manager switches it on');
+  const settingsPage = await client.get(`/tprm/clients/${c.id}/settings`);
+  assert.match(settingsPage.text, /data-tprm-auto-reassess/);
+  await db.prepare('UPDATE tp_client_settings SET auto_reassess_days = 30 WHERE workspace_id = ?').run(c.id);
+  await auto.run(db, { permissionsFor });
+  await auto.run(db, { permissionsFor });
+  assert.equal(await count(soon), 1, 'started once');
+  assert.equal(await count(later), 0, 'not yet within 30 days');
+  const a = await db.prepare('SELECT type, status, lead_consultant_id FROM tp_assessments WHERE workspace_id=? AND third_party_id=?').get(c.id, soon);
+  assert.deepEqual([a.type, a.status, Number(a.lead_consultant_id)], ['reassessment', 'scoping', consultant.id]);
+});
+
+test('document checks: old evidence, the wrong kind of file and the same file given for many answers are flagged', async () => {
+  const checks = require('../lib/tprm/document-checks');
+  assert.match(checks.kindCheck('Approved policy document showing version, approver and review date', 'policy.png').text, /this is an image/);
+  assert.match(checks.kindCheck('Certificate of insurance or policy schedule', 'insurance.xlsx').text, /this is a spreadsheet/);
+  assert.equal(checks.kindCheck('Asset register extract', 'assets.xlsx'), null, 'a register can be a spreadsheet');
+  assert.equal(checks.kindCheck('Architecture or data-flow diagram for the service', 'flow.png'), null, 'a diagram can be an image');
+  const c = await tprmClient('Document Check Client');
+  const ctx = await confirmed(c, 'Document Check Co');
+  const img = await uploadOne(ctx, 'policy-list.csv', 'a,b\n1,2');
+  const doc = await uploadOne(ctx, 'old-policy.txt', 'policy text');
+  const bankById = new Map([['GOV-01', { evidence: 'Approved policy document showing version, approver and review date' }], ['GOV-02', { evidence: 'Organisation chart' }]]);
+  const rows = [
+    { question_id: 'GOV-01', evidence_date: '2024-01-15', files: [{ id: img.id }, { id: doc.id }] },
+    { question_id: 'GOV-02', files: [{ id: doc.id }] }, { question_id: 'GOV-03', files: [{ id: doc.id }] }, { question_id: 'GOV-04', files: [{ id: doc.id }] },
+  ];
+  const map = await checks.forRows(db, ctx.ws, rows, { bankById, reports: [{ evidence_id: doc.id, certificate_expires_on: '2025-01-01' }], today: '2026-11-24' });
+  const keys = id => (map.get(Number(id)) || []).map(x => x.key).sort();
+  assert.deepEqual(keys(img.id), ['kind', 'old']);
+  assert.deepEqual(keys(doc.id), ['expired', 'old', 'reused']);
+});

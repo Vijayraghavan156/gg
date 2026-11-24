@@ -512,6 +512,11 @@
         <% owners.forEach(o => { %><option value="<%= o.id %>" <%= Number(a.client_decision_owner_id) === Number(o.id) ? 'selected' : '' %>><%= o.name %> (<%= rbac.ROLE_LABELS[rbac.normalizeRole(o.role)] || o.role %>)</option><% }) %>
       </select>
       <% if (!owners.length) { %><div class="meta text-xs tpu-mt-4">No client sponsor or coordinator has a login for this client yet.</div><% } %></div>
+    <% if (typeof leads !== 'undefined' && leads.length) { %><div><label class="label" for="lead-consultant">Lead consultant</label>
+      <select class="select" id="lead-consultant" name="lead_consultant_id" data-tprm-lead-select>
+        <% if (!a.lead_consultant_id) { %><option value="">Not set</option><% } %>
+        <% leads.forEach(l => { %><option value="<%= l.id %>" <%= Number(a.lead_consultant_id) === Number(l.id) ? 'selected' : '' %>><%= l.name %></option><% }) %>
+      </select></div><% } %>
     <div><button class="btn btn-secondary" type="submit">Save details</button></div>
   </form>
   <% if (typeof canCancel !== 'undefined' && !canCancel) { %>

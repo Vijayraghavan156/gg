@@ -11,8 +11,8 @@ const Q = id => BANK.questions.find(q => q.id === id);
 const READ_BY_ID = ['AIS-01', 'FTP-01', 'FTP-02', 'FTP-03', 'FTP-04', 'FTP-05', 'FTP-06', 'FTP-07', 'PRM-06', 'GDP-04', 'FIN-03',
   'DOR-06', 'DOR-07', 'PFR-02', 'RBI-02', 'SEB-05', 'UAE-01', 'UAE-02', 'SAM-01'];
 
-test('bank version 6: every question once, the two answer types only, fields that fit their question', () => {
-  assert.match(BANK.version, /version 6/);
+test('bank version 7: every question once, the two answer types only, fields that fit their question', () => {
+  assert.match(BANK.version, /version 7/);
   const ids = BANK.questions.map(q => q.id);
   assert.equal(new Set(ids).size, ids.length, 'every id once');
   for (const q of BANK.questions) {
@@ -162,10 +162,28 @@ test('bank version 6: tick boxes where the question has a fixed set of choices; 
       for (const k of expected[q.id]) assert.ok(!v5Keys.has(k), `${q.id}.${k}: a new key, so a typed answer from version 5 is never read as ticks`);
       continue;
     }
+    if (q.id === 'GOV-07') {
+      const { min_tier: t, status: st, change_note: cn, ...rest } = q;
+      const { min_tier: t5, status: st5, change_note: cn5, ...rest5 } = V5_BY_ID.get(q.id);
+      assert.deepEqual(rest, rest5, 'GOV-07: only its tier and notes changed since version 5');
+      continue;
+    }
     assert.deepEqual(q, V5_BY_ID.get(q.id), `${q.id}: unchanged`);
   }
   for (const id of ['NIS-02', 'UKF-02']) assert.ok(!Q(id).fields, `${id}: one answer only, left as text`);
   for (const id of ['GDP-01', 'UKG-01', 'DIF-02', 'KSP-01']) {
     assert.ok(!Q(id).fields.find(f => f.kind === 'multi').options.includes('Other'), `${id}: the law's closed list, no Other`);
   }
+});
+
+test('bank version 7: the cyber insurance question is asked of High-tier suppliers too; nothing else changed since version 6', () => {
+  const V6 = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'tprm-question-bank-v6.json'), 'utf8'));
+  assert.match(V6.version, /version 6/);
+  assert.equal(Q('GOV-07').min_tier, 'High');
+  const V6_BY_ID = new Map(V6.questions.map(q => [q.id, q]));
+  for (const q of BANK.questions) {
+    if (q.id === 'GOV-07') continue;
+    assert.deepEqual(q, V6_BY_ID.get(q.id), `${q.id}: unchanged since version 6`);
+  }
+  assert.deepEqual(BANK.contract_checklist, V6.contract_checklist);
 });

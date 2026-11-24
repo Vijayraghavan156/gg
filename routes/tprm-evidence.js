@@ -290,6 +290,19 @@ function registerRoutes(app, deps) {
     }
   }, { permission: 'tp.manage' }));
 
+  app.post(`${BASE}/findings/:fid/client-reply`, requireAuth, handler(async (req, res, actor) => {
+    const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+    const back = `/tprm/clients/${actor.ws.id}/third-parties/${thirdParty.id}/assessments/${Number(req.params.aid)}?step=evidence#finding-${Number(req.params.fid) || 0}`;
+    try {
+      const r = await require('../lib/tprm/finding-comments').firmAdd(db, actor, req.params.aid, req.params.fid, req.body);
+      if (deps.logAction) await deps.logAction(req.user.id, actor.ws.id, 'tprm_finding_firm_reply', 'tp_finding', r.findingId, {}, require('../lib/http-helpers').auditCtx(req));
+      return res.redirect(withToast(back, 'Reply sent to the client'));
+    } catch (err) {
+      if (err instanceof TprmError && (err.status === 400 || err.status === 409)) return res.redirect(withToast(back, err.message, 'error'));
+      throw err;
+    }
+  }, { permission: 'tp.manage' }));
+
   for (const [verb, fn, done] of [['reply', 'firmReply', 'Reply sent'], ['agree', 'agree', 'Fix agreed'], ['withdraw', 'withdraw', 'Issue withdrawn']]) {
     app.post(`${BASE}/issues/:iid/${verb}`, requireAuth, handler(async (req, res, actor) => {
       try {

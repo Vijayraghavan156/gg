@@ -395,6 +395,9 @@ const CSV_UPLOAD_EXTENSIONS = new Set(['csv']);
 const csvUpload = {
   single: field => inspectedUpload(rawCsvUpload.single(field),CSV_UPLOAD_EXTENSIONS)
 };
+const xlsxUpload = {
+  single: field => inspectedUpload(rawCsvUpload.single(field), new Set(['xlsx']))
+};
 
 function resolveUploadPath(storedPath, firmId) {
   if (!storedPath) return null;
@@ -803,16 +806,17 @@ require('./routes/third-party-risk').register(app, { db, requireAuth, requireWor
 require('./routes/tprm-rulebooks').register(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces, logAction });
 require('./routes/tprm-relationships').register(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces });
 require('./routes/tprm-register').register(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces, logAction, csvUpload });
-require('./routes/tprm-settings').register(app, { db, requireAuth, logAction });
+require('./routes/tprm-settings').register(app, { db, requireAuth, logAction, xlsxUpload });
 require('./routes/tprm-conditions').register(app, { db, requireAuth, requireWorkspace, getWorkspace, permissionsFor, listWorkspaces, upload, resolveUploadPath, logAction });
 for (const r of ['tprm-reassessment', 'tprm-contract-review']) require(`./routes/${r}`).register(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces, logAction });
 require('./routes/tprm-assessments').register(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces });
-require('./routes/tprm-evidence').register(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces, upload, resolveUploadPath });
+require('./routes/tprm-evidence').register(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces, upload, resolveUploadPath, logAction });
 require('./routes/tprm-recommendations').register(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces });
 require('./routes/tprm-report').register(app, { db, requireAuth, requireWorkspace, getWorkspace, permissionsFor, listWorkspaces, logAction, upload });
 require('./lib/tprm/ai-review').configure({ resolveUploadPath });
 jobs.registerJob('tprmAiReviews', async () => `${await require('./lib/tprm/ai-review').processQueue(db)} AI review(s) run`);
 jobs.registerJob('tprmReminders', async () => `${await require('./lib/tprm/messages').reminders(db)} TPRM reminder(s) sent`);
+jobs.registerJob('tprmAutoReassess', async () => `${await require('./lib/tprm/auto-reassess').run(db, { permissionsFor })} reassessment(s) started automatically`);
 
 require('./routes/performance').register(app, { db, requireAuth, requireWorkspace, requirePermission, logAction, upload });
 

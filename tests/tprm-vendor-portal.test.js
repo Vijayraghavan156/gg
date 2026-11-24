@@ -753,3 +753,30 @@ test('marking guides: a manager writes one per question; reviewers see it; the s
   const cleared = await client.post(`/tprm/settings/marking-guides/${qid}`, { satisfactory: '', partly: '', red_flags: '' });
   assert.match(toast(cleared), /removed/);
 });
+
+test('lead and reminders: change the lead of one review or several, and send a questionnaire reminder by hand, once a day', async () => {
+  const ctx = await linked('Lead Reminder Co');
+  const outbox = () => (fs.existsSync(process.env.EMAIL_DEV_OUTBOX || '') ? fs.readFileSync(process.env.EMAIL_DEV_OUTBOX, 'utf8') : '');
+  const before = (outbox().match(/Reminder: security questionnaire/g) || []).length;
+  const sent = await consultant.session.post(`${qBase(ctx)}/remind`, {});
+  assert.equal(sent.status, 302);
+  assert.match(toast(sent), /Reminder sent to Priya Vendor/);
+  const again = await consultant.session.post(`${qBase(ctx)}/remind`, {});
+  assert.match(toast(again), /already went today/);
+  if (process.env.EMAIL_DEV_OUTBOX) assert.equal((outbox().match(/Reminder: security questionnaire/g) || []).length, before + 1, 'one email, not two');
+
+  const a = await assessmentRow(ctx.a);
+  const details = await consultant.session.post(`${aBase(ctx.ws, ctx.tp, ctx.a)}/details`, { lead_consultant_id: String(senior.id), due_date: '', client_decision_owner_id: '', row_version: String(a.row_version) });
+  assert.equal(details.status, 302, toast(details));
+  assert.equal(Number((await assessmentRow(ctx.a)).lead_consultant_id), senior.id);
+  const outsider = Number((await db.prepare(`INSERT INTO users (email,password_hash,name,user_type,firm_id,firm_role,active) VALUES ('lead-outsider@test.local','x','Outsider','firm',?, 'consultant',1)`).run(firmId)).lastInsertRowid);
+  const refused = await consultant.session.post(`${aBase(ctx.ws, ctx.tp, ctx.a)}/details`, { lead_consultant_id: String(outsider), due_date: '', client_decision_owner_id: '', row_version: String((await assessmentRow(ctx.a)).row_version) });
+  assert.notEqual(Number((await assessmentRow(ctx.a)).lead_consultant_id), outsider, 'someone not on the client cannot lead');
+  assert.ok([302, 400].includes(refused.status));
+
+  const bulk = await consultant.session.post(`/tprm/clients/${ctx.ws}/third-parties/bulk-lead`, { ids: String(ctx.tp), lead: String(consultant.id), _tp_confirmed: '1' });
+  assert.match(toast(bulk), /Lead changed on 1 review/);
+  assert.equal(Number((await assessmentRow(ctx.a)).lead_consultant_id), consultant.id);
+  const remind = await consultant.session.post(`/tprm/clients/${ctx.ws}/third-parties/bulk-remind`, { ids: String(ctx.tp), _tp_confirmed: '1' });
+  assert.match(toast(remind), /0 reminders sent\. Not sent: Lead Reminder Co: a reminder already went today/);
+});

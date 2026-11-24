@@ -1,0 +1,33 @@
+<%- include('partials/header', { title: 'Emails · Third-party risk', user, active }) %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; const groups = ['the third party', 'the client', 'your team']; %>
+<nav class="tprm-crumbs" aria-label="Breadcrumb"><a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><span aria-current="page">Emails</span></nav>
+<div class="tprm-head" data-tprm-email-templates>
+  <div class="tprm-head-main">
+    <h1 class="page-title">Emails</h1>
+    <p class="tprm-status-line">Change the subject and heading of each email, and add your own opening and closing words. The standard middle stays, so dates, links and details are never lost.</p>
+    <p class="fx-muted fx-sm">Placeholders: {client}, {supplier}, {firm}, {name} (the person it goes to) and {due} (the due date, where the email has one).</p>
+  </div>
+</div>
+<% groups.forEach(g => { const items = list.filter(x => x.audience === g); if (!items.length) return; %>
+  <h2 class="fx-section-h">To <%= g %> <span><%= items.length %></span></h2>
+  <% items.forEach(x => { const s = x.saved || {}; const isOpen = open === x.kind; %>
+    <details class="fx-card fx-mt" id="email-<%= x.kind %>" data-tprm-email-row="<%= x.kind %>"<%= isOpen ? ' open' : '' %>>
+      <summary class="fx-email-sum"><span><b><%= x.label.charAt(0).toUpperCase() + x.label.slice(1) %></b><span class="fx-muted fx-sm fx-block">Subject: <%= x.saved && x.saved.subject ? x.saved.subject : x.subject %></span></span>
+        <span class="fx-tag<%= x.saved ? ' fx-t-new' : '' %>"><%= x.saved ? 'Changed by ' + (x.saved.updated_by_name || 'your firm') : 'Standard wording' %></span></summary>
+      <div class="fx-email-body">
+        <iframe class="fx-email-preview" title="Preview of <%= x.label %>" sandbox src="/tprm/settings/emails/<%= x.kind %>/preview" loading="lazy"></iframe>
+        <% if (canEdit) { %>
+        <form method="POST" action="/tprm/settings/emails/<%= x.kind %>" class="fx-guide-form" data-tprm-email-form="<%= x.kind %>">
+          <input type="hidden" name="_csrf" value="<%= csrf %>"><% if (x.saved) { %><input type="hidden" name="row_version" value="<%= x.saved.row_version %>"><% } %>
+          <label class="label" for="em-s-<%= x.kind %>">Subject <span class="meta text-xs">blank keeps the standard</span></label><input class="input" id="em-s-<%= x.kind %>" name="subject" maxlength="<%= limits.subject %>" value="<%= s.subject || '' %>" placeholder="<%= x.subject %>">
+          <label class="label" for="em-h-<%= x.kind %>">Heading</label><input class="input" id="em-h-<%= x.kind %>" name="headline" maxlength="<%= limits.headline %>" value="<%= s.headline || '' %>">
+          <label class="label" for="em-o-<%= x.kind %>">Your opening words <span class="meta text-xs">after the greeting</span></label><textarea class="input" id="em-o-<%= x.kind %>" name="opening" rows="3" maxlength="<%= limits.opening %>"><%= s.opening || '' %></textarea>
+          <label class="label" for="em-c-<%= x.kind %>">Your closing words</label><textarea class="input" id="em-c-<%= x.kind %>" name="closing" rows="3" maxlength="<%= limits.closing %>"><%= s.closing || '' %></textarea>
+          <div class="fx-actions"><button class="btn btn-primary btn-xs" type="submit">Save</button><% if (x.saved) { %><button class="btn btn-ghost btn-xs" type="submit" name="reset" value="1" data-tprm-email-reset>Back to the standard</button><% } %><span class="fx-muted fx-sm">The preview updates after you save.</span></div>
+        </form>
+        <% } %>
+      </div>
+    </details>
+  <% }) %>
+<% }) %>
+<%- include('partials/footer') %>

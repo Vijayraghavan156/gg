@@ -1,0 +1,94 @@
+<%- include('partials/header', { title: 'Question bank · Third-party risk', user, active }) %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; const ymd = d => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d || '').slice(0, 10)); const L = st.latest; const D = st.draft; const used = inUse.get(Number(L.version)) || 0; %>
+<nav class="tprm-crumbs" aria-label="Breadcrumb"><a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><span aria-current="page">Question bank</span></nav>
+<div class="tprm-head" data-tprm-question-bank>
+  <div class="tprm-head-main">
+    <h1 class="page-title">Question bank</h1>
+    <p class="tprm-status-line" data-tprm-bank-status>Version <%= L.version %>, published <%= ymd(L.published_at) %><%= L.published_by_name ? ' by ' + L.published_by_name : '' %>. <%= (L.content.questions || []).length %> questions. <%= used %> questionnaire<%= used === 1 ? '' : 's' %> use this version.</p>
+    <p class="fx-muted fx-sm">One bank serves every client. Changes are made in a draft and reach new questionnaires only when you publish. Questionnaires already prepared keep the version they started with.</p>
+  </div>
+  <div class="tprm-head-actions">
+    <a class="btn btn-secondary" href="/tprm/settings/question-bank/export.xlsx" data-tprm-bank-export>Download Excel</a>
+    <% if (canEdit && !D) { %>
+      <form method="POST" action="/tprm/settings/question-bank/draft" data-tprm-bank-start><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn btn-primary" type="submit">Start a draft</button></form>
+    <% } else if (canEdit && D) { %>
+      <a class="btn btn-primary" href="/tprm/settings/question-bank/publish" data-tprm-bank-review>Review and publish</a>
+    <% } %>
+  </div>
+</div>
+
+<% if (D) { %>
+<div class="fx-card fx-mt" data-tprm-bank-draft>
+  <p><b>Draft open.</b> Based on version <%= D.base_version %>, started by <%= D.created_by_name || 'a manager' %>; last change by <%= D.updated_by_name || 'a manager' %> on <%= ymd(D.updated_at) %>. <%= st.diff.count ? `${st.diff.changed.length} changed, ${st.diff.added.length} added, ${st.diff.retired.length} retired.` : 'No changes yet.' %></p>
+  <% if (st.stale) { %><p class="fx-bad" role="alert" data-tprm-bank-stale>A newer version was published after this draft was started. Discard it and start again from the latest version.</p><% } %>
+  <% if (canEdit) { %>
+  <div class="fx-actions">
+    <form method="POST" action="/tprm/settings/question-bank/import" enctype="multipart/form-data" class="fx-actions" data-tprm-bank-import>
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <label class="sr-only" for="qb-sheet">Excel file</label><input id="qb-sheet" type="file" name="sheet" accept=".xlsx" required>
+      <button class="btn btn-secondary btn-xs" type="submit">Upload changes from Excel</button>
+    </form>
+    <form method="POST" action="/tprm/settings/question-bank/draft/discard" data-tprm-bank-discard><input type="hidden" name="_csrf" value="<%= csrf %>"><%- include('partials/tprm_confirm_fields', { title: 'Discard the draft?', body: 'Every change in it is lost. The published version stays as it is.', action: 'Discard', tone: 'problem' }) %><button class="btn btn-ghost btn-xs" type="submit">Discard draft</button></form>
+  </div>
+  <% } %>
+</div>
+<% } else if (canEdit) { %>
+<p class="fx-muted fx-sm fx-mt">To change many questions at once, download the Excel file, change it and upload it. The upload starts a draft for you.</p>
+<form method="POST" action="/tprm/settings/question-bank/import" enctype="multipart/form-data" class="fx-actions" data-tprm-bank-import>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label class="sr-only" for="qb-sheet">Excel file</label><input id="qb-sheet" type="file" name="sheet" accept=".xlsx" required>
+  <button class="btn btn-secondary btn-xs" type="submit">Upload changes from Excel</button>
+</form>
+<% } %>
+
+<h2 class="fx-section-h"><%= D ? 'Questions in the draft' : 'Questions' %> <span><%= view.rows.length %> shown</span></h2>
+<form method="GET" action="/tprm/settings/question-bank" class="fx-filters" data-tprm-bank-filter>
+  <label class="sr-only" for="qb-q">Search</label><input class="input" id="qb-q" type="search" name="q" value="<%= view.term %>" placeholder="Number or words, for example IAM-03 or backup" autocomplete="off">
+  <label class="sr-only" for="qb-set">Set</label><select class="select" id="qb-set" name="set"><option value="">Every set</option><% sets.forEach(s => { %><option value="<%= s %>"<%= view.set === s ? ' selected' : '' %>><%= s === 'Base' ? 'Base questions' : s === 'Module' ? 'Modules' : 'Rulebooks' %></option><% }) %></select>
+  <button class="btn btn-secondary btn-xs" type="submit">Show</button>
+  <% if (view.term || view.set) { %><a class="fx-sm" href="/tprm/settings/question-bank">Clear</a><% } %>
+</form>
+<div class="fx-table" data-tprm-bank-table>
+  <table>
+    <thead><tr><th>Number</th><th>Question</th><th>Section</th><th>Lowest tier</th><th>Evidence</th><% if (D) { %><th>In the draft</th><% } %><th></th></tr></thead>
+    <tbody>
+    <% view.rows.forEach(r => { const q = r.q; %>
+      <tr data-tprm-bank-row="<%= q.id %>">
+        <td class="fx-nowrap"><b><%= q.id %></b></td>
+        <td><%= q.theme %><span class="fx-sub"><%= String(q.question || '').length > 160 ? String(q.question).slice(0, 157) + '...' : q.question %></span></td>
+        <td><%= r.group %><span class="fx-sub"><%= q.set === 'Base' ? 'Base' : q.set === 'Module' ? 'Module' : 'Rulebook' %></span></td>
+        <td><%= q.min_tier %></td>
+        <td><%= q.evidence_mandatory ? 'Required' : (q.evidence ? 'Asked for' : 'None') %></td>
+        <% if (D) { %><td><%= r.added ? 'Added' : r.changed ? 'Changed' : '' %></td><% } %>
+        <td><a href="/tprm/settings/question-bank/questions/<%= encodeURIComponent(q.id) %>"><%= canEdit && D ? 'Edit' : 'View' %></a></td>
+      </tr>
+    <% }) %>
+    <% if (!view.rows.length) { %><tr><td colspan="<%= D ? 7 : 6 %>" class="fx-muted">No question matches.</td></tr><% } %>
+    </tbody>
+  </table>
+</div>
+
+<% if (D && view.retired.length) { %>
+<h2 class="fx-section-h">Retired in this draft <span><%= view.retired.length %></span></h2>
+<div class="fx-table" data-tprm-bank-retired>
+  <table><tbody>
+  <% view.retired.forEach(q => { %>
+    <tr><td><b><%= q.id %></b></td><td><%= q.theme %><span class="fx-sub"><%= q.question %></span></td>
+      <td><% if (canEdit) { %><form method="POST" action="/tprm/settings/question-bank/questions/<%= encodeURIComponent(q.id) %>/restore"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= D.row_version %>"><button class="btn btn-ghost btn-xs" type="submit">Bring back</button></form><% } %></td></tr>
+  <% }) %>
+  </tbody></table>
+</div>
+<% } %>
+
+<h2 class="fx-section-h">Published versions <span><%= history.length %></span></h2>
+<div class="fx-table" data-tprm-bank-history>
+  <table>
+    <thead><tr><th>Version</th><th>Published</th><th>Questions</th><th>In use</th><th>What changed</th></tr></thead>
+    <tbody>
+    <% history.forEach(h => { %>
+      <tr><td><b><%= h.version %></b></td><td><%= ymd(h.published_at) %><span class="fx-sub"><%= h.published_by_name || 'Released with the tool' %></span></td><td><%= h.question_count %></td><td><%= inUse.get(Number(h.version)) || 0 %></td><td class="fx-sm"><%= h.source || '' %></td></tr>
+    <% }) %>
+    </tbody>
+  </table>
+</div>
+<%- include('partials/footer') %>

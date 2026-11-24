@@ -9,7 +9,7 @@ const { TprmError } = require('../lib/tprm/errors');
 const BASE = '/tprm/settings/criticality';
 
 function register(app, deps) {
-  const { db, requireAuth, logAction } = deps;
+  const { db, requireAuth, logAction, xlsxUpload } = deps;
 
   const forbidden = (req, res) => res.status(403).render('error', {
     user: req.user,
@@ -236,6 +236,242 @@ function register(app, deps) {
       }
     } catch (err) { return next(err); }
   });
+
+  const emailTemplates = require('../lib/tprm/email-templates');
+  const EMAIL_BASE = '/tprm/settings/emails';
+  const emailLabels = () => ({ vendor_invitation: 'the questionnaire invitation to the third party', ...require('../lib/tprm/messages').KIND_LABELS });
+  async function firmDisplayName(req) {
+    const lh = await require('../lib/tprm/letterhead').getLetterhead(db, firmId(req)).catch(() => null);
+    return lh ? lh.displayName : '';
+  }
+
+  app.get(EMAIL_BASE, requireAuth, async (req, res, next) => {
+    try {
+      if (!access.isFirmUser(req.user) || !access.firmCan(req.user, 'tp.view') || !req.user.firm_id) {
+        return res.status(403).render('error', { user: req.user, message: 'Emails are for consulting-team accounts.' });
+      }
+      const saved = await emailTemplates.forFirm(db, firmId(req));
+      const labels = emailLabels();
+      const firmName = await firmDisplayName(req);
+      const open = String(req.query.kind || '');
+      const list = [];
+      for (const k of emailTemplates.kinds()) {
+        const std = await emailTemplates.preview(k, null, firmName);
+        list.push({ kind: k, label: labels[k] || k.replace(/_/g, ' '), audience: emailTemplates.audienceOf(k), subject: std.subject, saved: saved.get(k) || null });
+      }
+      return res.render('tprm_email_templates', { user: req.user, active: 'tprm-portfolio', list, open, canEdit: access.firmCan(req.user, emailTemplates.PERMISSION), limits: emailTemplates.LIMITS });
+    } catch (err) { return next(err); }
+  });
+
+  app.get(`${EMAIL_BASE}/:kind/preview`, requireAuth, async (req, res, next) => {
+    try {
+      if (!access.isFirmUser(req.user) || !access.firmCan(req.user, 'tp.view') || !req.user.firm_id) return res.status(403).end();
+      const kind = String(req.params.kind);
+      if (!emailTemplates.kinds().includes(kind)) return res.status(404).end();
+      const m = await emailTemplates.preview(kind, await emailTemplates.overrideFor(db, firmId(req), kind), await firmDisplayName(req));
+      res.set('Content-Security-Policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:");
+      res.set('X-Content-Type-Options', 'nosniff');
+      return res.type('text/html; charset=utf-8').end(Buffer.from(m.html, 'utf8'));
+    } catch (err) { return next(err); }
+  });
+
+  app.post(`${EMAIL_BASE}/:kind`, requireAuth, async (req, res, next) => {
+    try {
+      if (!access.isFirmUser(req.user) || !access.firmCan(req.user, emailTemplates.PERMISSION) || !req.user.firm_id) {
+        return res.status(403).render('error', { user: req.user, message: 'Only a manager can change the emails.' });
+      }
+      const kind = String(req.params.kind);
+      try {
+        const r = await emailTemplates.save(db, req.user, kind, req.body || {});
+        await logAction(req.user.id, null, 'tprm_email_template_saved', 'tp_email_template', null, { kind, reset: !!r.reset }, auditCtx(req));
+        return res.redirect(withToast(`${EMAIL_BASE}?kind=${encodeURIComponent(kind)}#email-${kind}`, r.reset ? 'Back to the standard wording' : 'Email saved'));
+      } catch (err) {
+        if (err instanceof TprmError && [400, 404, 409].includes(err.status)) return res.redirect(withToast(`${EMAIL_BASE}?kind=${encodeURIComponent(kind)}#email-${kind}`, err.message, 'error'));
+        throw err;
+      }
+    } catch (err) { return next(err); }
+  });
+
+  const bankEditor = require('../lib/tprm/bank-editor');
+  const bankSheet = require('../lib/tprm/bank-sheet');
+  const QB = '/tprm/settings/question-bank';
+  const canViewBank = req => access.isFirmUser(req.user) && access.firmCan(req.user, 'tp.view') && !!req.user.firm_id;
+  const canEditBank = req => access.isFirmUser(req.user) && access.firmCan(req.user, bankEditor.PERMISSION) && !!req.user.firm_id;
+  const bankForbidden = (req, res) => res.status(403).render('error', { user: req.user, message: 'Only a manager can change the question bank.' });
+  const bankAudit = (req, action, details = {}) => logAction(req.user.id, null, action, 'tp_question_bank', null, details, auditCtx(req));
+  const bankBack = (req, url, message, kind) => req.res.redirect(withToast(url, message, kind));
+
+  async function bankAction(req, res, next, fn, { back = QB } = {}) {
+    try {
+      if (!canEditBank(req)) return bankForbidden(req, res);
+      try {
+        return await fn();
+      } catch (err) {
+        if (err instanceof TprmError && [400, 404, 409].includes(err.status)) return bankBack(req, typeof back === 'function' ? back() : back, err.message, 'error');
+        if (err instanceof TprmError && err.status === 403) return bankForbidden(req, res);
+        throw err;
+      }
+    } catch (err) { return next(err); }
+  }
+
+  function bankRows(content, base, filter) {
+    const baseById = new Map(((base && base.questions) || []).map(q => [q.id, q]));
+    const changed = new Map();
+    if (base) for (const c of bankEditor.diff(base, content).changed) changed.set(c.id, c.fields);
+    const term = String(filter.q || '').trim().toLowerCase().slice(0, 100);
+    const set = String(filter.set || '');
+    const rows = [];
+    for (const q of content.questions || []) {
+      if (set && q.set !== set) continue;
+      if (term && !`${q.id} ${q.theme || ''} ${q.question || ''} ${q.domain || ''} ${q.pack || ''}`.toLowerCase().includes(term)) continue;
+      rows.push({ q, group: q.set === 'Base' ? q.domain : q.pack, added: !!base && !baseById.has(q.id), changed: changed.get(q.id) || null });
+    }
+    const retired = base ? (base.questions || []).filter(q => !(content.questions || []).some(x => x.id === q.id)) : [];
+    return { rows, retired, term, set };
+  }
+
+  app.get(QB, requireAuth, async (req, res, next) => {
+    try {
+      if (!canViewBank(req)) return res.status(403).render('error', { user: req.user, message: 'The question bank is for consulting-team accounts.' });
+      const st = await bankEditor.state(db);
+      if (!st.latest) return res.status(404).render('error', { user: req.user, message: 'No question bank is published yet.' });
+      const content = st.draft ? st.draft.content : st.latest.content;
+      const view = bankRows(content, st.draft ? st.latest.content : null, req.query || {});
+      return res.render('tprm_question_bank', {
+        user: req.user, active: 'tprm-portfolio', st, view, canEdit: canEditBank(req),
+        history: await bankEditor.history(db), inUse: await bankEditor.inUse(db),
+        protectedIds: bankEditor.protectedIds(content), rulebookSet: bankEditor.RULEBOOK_SET,
+        sets: [...new Set((content.questions || []).map(q => q.set))],
+      });
+    } catch (err) { return next(err); }
+  });
+
+  app.get(`${QB}/export.xlsx`, requireAuth, async (req, res, next) => {
+    try {
+      if (!canViewBank(req)) return res.status(403).end();
+      const st = await bankEditor.state(db);
+      if (!st.latest) return res.status(404).end();
+      const draft = !!st.draft;
+      const buffer = await bankSheet.buildWorkbook(draft ? st.draft.content : st.latest.content,
+        draft ? `Question bank draft, based on version ${st.latest.version}` : `Question bank, ${st.latest.label}`);
+      res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.set('Content-Disposition', `attachment; filename="question-bank-${draft ? 'draft' : `version-${st.latest.version}`}.xlsx"`);
+      res.set('X-Content-Type-Options', 'nosniff');
+      return res.status(200).send(buffer);
+    } catch (err) { return next(err); }
+  });
+
+  app.post(`${QB}/draft`, requireAuth, (req, res, next) => bankAction(req, res, next, async () => {
+    await bankEditor.startDraft(db, req.user);
+    await bankAudit(req, 'tprm_question_bank_draft_started');
+    return bankBack(req, QB, 'Draft started. Nothing changes for anyone until you publish it.');
+  }));
+
+  app.post(`${QB}/draft/discard`, requireAuth, (req, res, next) => bankAction(req, res, next, async () => {
+    const r = await bankEditor.discard(db, req.user);
+    if (r.discarded) await bankAudit(req, 'tprm_question_bank_draft_discarded');
+    return bankBack(req, QB, r.discarded ? 'Draft discarded' : 'There was no draft to discard');
+  }));
+
+  app.post(`${QB}/import`, requireAuth, xlsxUpload.single('sheet'), (req, res, next) => bankAction(req, res, next, async () => {
+    if (!req.file || !/\.xlsx$/i.test(String(req.file.originalname || ''))) return bankBack(req, QB, 'Choose the question bank Excel file (.xlsx) to upload.', 'error');
+    const rows = await bankSheet.parseUpload(req.file.buffer);
+    const r = await bankEditor.importRows(db, req.user, rows);
+    await bankAudit(req, 'tprm_question_bank_imported', { changed: r.changed, retired: r.retired, rows: r.rows });
+    return bankBack(req, `${QB}/publish`, r.changed || r.retired
+      ? `File read: ${r.changed} question${r.changed === 1 ? '' : 's'} changed, ${r.retired} retired, in the draft. Check the changes below.`
+      : 'File read: nothing in it differs from the draft.');
+  }));
+
+  async function renderQuestion(req, res, { id = null, like = null, values = null, errors = [], status = 200 }) {
+    const st = await bankEditor.state(db);
+    if (!st.latest) return res.status(404).render('error', { user: req.user, message: 'No question bank is published yet.' });
+    if (!id && !st.draft) return res.redirect(withToast(QB, 'Start a draft first.', 'error'));
+    const content = st.draft ? st.draft.content : st.latest.content;
+    const q = id ? (content.questions || []).find(x => x.id === id) : null;
+    const likeQ = like ? (content.questions || []).find(x => x.id === like) : null;
+    if ((id && !q) || (!id && !likeQ)) return res.status(404).render('error', { user: req.user, message: 'This question is not in the question bank.' });
+    const baseQ = id && st.draft ? (st.latest.content.questions || []).find(x => x.id === id) || null : null;
+    return res.status(status).render('tprm_question_bank_question', {
+      user: req.user, active: 'tprm-portfolio', st, q, like: likeQ, baseQ, values: values || q || { min_tier: likeQ && likeQ.min_tier, theme: likeQ && likeQ.theme },
+      errors, canEdit: canEditBank(req) && !!st.draft, tiers: bankEditor.TIERS, limits: bankEditor.LIMITS,
+      isProtected: q ? bankEditor.protectedIds(content).has(q.id) || q.set === bankEditor.RULEBOOK_SET : false,
+      nextId: likeQ && st.draft ? bankEditor.nextId(content, likeQ.id.split('-')[0]) : null,
+    });
+  }
+
+  app.get(`${QB}/add`, requireAuth, async (req, res, next) => {
+    try {
+      if (!canEditBank(req)) return bankForbidden(req, res);
+      return await renderQuestion(req, res, { like: String(req.query.like || '') });
+    } catch (err) { return next(err); }
+  });
+
+  app.post(`${QB}/add`, requireAuth, (req, res, next) => bankAction(req, res, next, async () => {
+    try {
+      const r = await bankEditor.addQuestion(db, req.user, req.body || {});
+      await bankAudit(req, 'tprm_question_bank_question_added', { question: r.id, beside: String(req.body.like || '') });
+      return bankBack(req, `${QB}?q=${encodeURIComponent(r.id)}`, `${r.id} added to the draft`);
+    } catch (err) {
+      if (err instanceof TprmError && err.status === 400 && err.errors) return await renderQuestion(req, res, { like: String(req.body.like || ''), values: req.body, errors: err.errors, status: 400 });
+      throw err;
+    }
+  }));
+
+  app.get(`${QB}/questions/:id`, requireAuth, async (req, res, next) => {
+    try {
+      if (!canViewBank(req)) return res.status(403).render('error', { user: req.user, message: 'The question bank is for consulting-team accounts.' });
+      return await renderQuestion(req, res, { id: String(req.params.id) });
+    } catch (err) { return next(err); }
+  });
+
+  app.post(`${QB}/questions/:id`, requireAuth, (req, res, next) => bankAction(req, res, next, async () => {
+    const id = String(req.params.id);
+    try {
+      await bankEditor.updateQuestion(db, req.user, id, req.body || {});
+      await bankAudit(req, 'tprm_question_bank_question_changed', { question: id });
+      return bankBack(req, `${QB}/questions/${encodeURIComponent(id)}`, `${id} saved in the draft`);
+    } catch (err) {
+      if (err instanceof TprmError && err.status === 400 && err.errors) return await renderQuestion(req, res, { id, values: req.body, errors: err.errors, status: 400 });
+      throw err;
+    }
+  }, { back: () => `${QB}/questions/${encodeURIComponent(String(req.params.id))}` }));
+
+  app.post(`${QB}/questions/:id/retire`, requireAuth, (req, res, next) => bankAction(req, res, next, async () => {
+    const id = String(req.params.id);
+    await bankEditor.retireQuestion(db, req.user, id, req.body || {});
+    await bankAudit(req, 'tprm_question_bank_question_retired', { question: id });
+    return bankBack(req, QB, `${id} retired in the draft. Its number will not be used again.`);
+  }, { back: () => `${QB}/questions/${encodeURIComponent(String(req.params.id))}` }));
+
+  app.post(`${QB}/questions/:id/restore`, requireAuth, (req, res, next) => bankAction(req, res, next, async () => {
+    const id = String(req.params.id);
+    await bankEditor.restoreQuestion(db, req.user, id, req.body || {});
+    await bankAudit(req, 'tprm_question_bank_question_restored', { question: id });
+    return bankBack(req, `${QB}?q=${encodeURIComponent(id)}`, `${id} brought back`);
+  }));
+
+  app.get(`${QB}/publish`, requireAuth, async (req, res, next) => {
+    try {
+      if (!canEditBank(req)) return bankForbidden(req, res);
+      const st = await bankEditor.state(db);
+      if (!st.draft) return res.redirect(withToast(QB, 'Start a draft first.', 'error'));
+      const base = st.latest.content;
+      const byId = new Map((base.questions || []).map(q => [q.id, q]));
+      const draftById = new Map((st.draft.content.questions || []).map(q => [q.id, q]));
+      const errors = st.stale ? [] : bankEditor.validate(base, st.draft.content, await bankEditor.everUsedIds(db));
+      return res.render('tprm_question_bank_publish', {
+        user: req.user, active: 'tprm-portfolio', st, d: st.diff, byId, draftById, errors, fields: bankEditor.EDITABLE,
+        nextVersion: Number(st.latest.version) + 1,
+      });
+    } catch (err) { return next(err); }
+  });
+
+  app.post(`${QB}/publish`, requireAuth, (req, res, next) => bankAction(req, res, next, async () => {
+    const r = await bankEditor.publish(db, req.user, req.body || {});
+    await bankAudit(req, 'tprm_question_bank_published', { version: r.version, added: r.diff.added, retired: r.diff.retired, changed: r.diff.changed.map(c => c.id) });
+    return bankBack(req, QB, `Version ${r.version} published. New questionnaires use it from now on; ones already prepared keep their version.`);
+  }, { back: `${QB}/publish` }));
 
   const TP_BASE = '/tprm/settings/two-person';
   const twoPerson = require('../lib/tprm/two-person');

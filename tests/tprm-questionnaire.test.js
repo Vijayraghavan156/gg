@@ -155,7 +155,7 @@ test('base questions are nested by tier for a vendor-hosted service, and AIS-01 
       if (!['AIS-01', 'ASR-01', 'ASR-03'].includes(id)) assert.ok(rank[row.min_tier] <= assembly.TIER_RANK[tier], `${id} (${row.min_tier}) is not above ${tier}`);
     }
   }
-  assert.deepEqual(counts, { low: 24, medium: 54, high: 112, critical: 137 }, 'low gains ASR-03 for the report');
+  assert.deepEqual(counts, { low: 24, medium: 54, high: 113, critical: 137 }, 'low gains ASR-03 for the report');
   for (const [lower, higher] of [['low', 'medium'], ['medium', 'high'], ['high', 'critical']]) {
     for (const id of sets[lower]) assert.ok(sets[higher].has(id), `${id} at ${lower} is also asked at ${higher}`);
   }
@@ -230,7 +230,7 @@ test('the module mapping table adds modules from the answers; disabled modules c
   assert.throws(() => assembly.assemble(BANK, { tier: 'high', deliveryModel: 'vendor_hosted', modules: ['Nope'] }), /not a module/);
   const r = assembly.assemble(BANK, { tier: 'high', deliveryModel: 'vendor_hosted', modules: ['Personal Data & Privacy', 'Hosting Platform & Cloud Provider'] });
   assert.deepEqual(r.counts.modules, { 'Hosting Platform & Cloud Provider': 12, 'Personal Data & Privacy': 9 });
-  assert.equal(r.counts.vendorTotal, 133);
+  assert.equal(r.counts.vendorTotal, 134);
   assert.deepEqual(r.sections.filter(s => s.kind === 'module').map(s => s.title), ['Hosting Platform & Cloud Provider', 'Personal Data & Privacy']);
 });
 
@@ -294,21 +294,21 @@ test('a High vendor-hosted third party with personal data: base by domain, Cloud
   assert.equal(q.delivery_model, 'vendor_hosted');
   assert.equal(q.delivery_model_source, 'assessment_answer');
   assert.equal(q.bank_version, 1);
-  assert.equal(q.vendor_question_count, 133);
+  assert.equal(q.vendor_question_count, 134);
   assert.deepEqual(q.modules.map(m => [m.module, m.source, m.included]),
     [['Personal Data & Privacy', 'auto', true], ['Hosting Platform & Cloud Provider', 'auto', true]]);
   assert.deepEqual(q.dynamic_modules.map(d => d.module), ['AI Services']);
   assert.deepEqual(q.consultant_check_ids, []);
   const ids = q.sections.flatMap(s => s.ids);
-  assert.equal(ids.length, 133);
-  assert.equal(new Set(ids).size, 133, 'no question twice');
+  assert.equal(ids.length, 134);
+  assert.equal(new Set(ids).size, 134, 'no question twice');
   assert.ok(ids.includes('AIS-01'));
   assert.deepEqual(q.sections.filter(s => s.kind === 'module').map(s => [s.title, s.ids.length]), [['Hosting Platform & Cloud Provider', 12], ['Personal Data & Privacy', 9]]);
-  assert.equal(q.sections.filter(s => s.kind === 'base').reduce((n, s) => n + s.ids.length, 0), 112);
+  assert.equal(q.sections.filter(s => s.kind === 'base').reduce((n, s) => n + s.ids.length, 0), 113);
 
   const shown = await allSteps(consultant.session, aBase(ctx.ws, ctx.tp, ctx.a));
-  assert.match(shown.text, /data-tprm-vendor-count>133</);
-  assert.match(shown.text, /data-tprm-base-count>112</);
+  assert.match(shown.text, /data-tprm-vendor-count>134</);
+  assert.match(shown.text, /data-tprm-base-count>113</);
   assert.match(shown.text, /data-tprm-module="Hosting Platform &amp; Cloud Provider" data-tprm-module-included="1"[\s\S]*?data-tprm-module-count>12</);
   assert.match(shown.text, /data-tprm-module="Personal Data &amp; Privacy" data-tprm-module-included="1"[\s\S]*?data-tprm-module-count>9</);
   assert.match(shown.text, /data-tprm-section="Identity &amp; Access Management"[\s\S]*?data-tprm-section-count>8</);
@@ -362,14 +362,14 @@ test('modules are added and removed by hand with a reason, recorded, until the q
   assert.match(toast(await post({ op: 'add', module: 'Personal Data & Privacy', reason: 'x' })), /already in/);
 
   let res = await post({ op: 'remove', module: 'Hosting Platform & Cloud Provider', reason: 'Runs on the client\'s own servers' });
-  assert.match(toast(res), /Hosting Platform & Cloud Provider removed: 121 questions/);
+  assert.match(toast(res), /Hosting Platform & Cloud Provider removed: 122 questions/);
   q = await qRow(ctx.a);
   const cloud = q.modules.find(m => m.module === 'Hosting Platform & Cloud Provider');
   assert.deepEqual([cloud.source, cloud.included, cloud.changed_by, cloud.reason], ['auto', false, consultant.id, 'Runs on the client\'s own servers']);
-  assert.equal(q.vendor_question_count, 121);
+  assert.equal(q.vendor_question_count, 122);
 
   res = await post({ op: 'add', module: 'AI Services', reason: 'The client knows it uses AI' });
-  assert.match(toast(res), /AI Services added: 142 questions/);
+  assert.match(toast(res), /AI Services added: 143 questions/);
   q = await qRow(ctx.a);
   assert.deepEqual(q.modules.find(m => m.module === 'AI Services').source, 'manual');
   assert.deepEqual(q.dynamic_modules, [], 'AI Services is no longer added while answering: it is in already');
@@ -794,7 +794,7 @@ test('every change is an event in the assessment chain, the chain verifies, and 
   ]);
   assert.ok(rows.every(e => Number(e.actor_user_id) === consultant.id));
   assert.equal(rows[0].after_state.bank_version, 1);
-  assert.equal(rows[0].after_state.vendor_question_count, 133);
+  assert.equal(rows[0].after_state.vendor_question_count, 134);
   assert.equal(rows[6].after_state.reason, 'Replaced by a new link');
   assert.equal(rows[8].after_state.reason, 'Contact left');
   for (const e of rows) assert.equal(JSON.stringify(e).includes('token'), false, 'no event carries a token or its hash');

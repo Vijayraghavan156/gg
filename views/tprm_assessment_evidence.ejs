@@ -99,6 +99,19 @@
           <% if (f.evidence.length) { %>Evidence: <% f.evidence.forEach((e, i) => { %><%= i ? ', ' : '' %><a href="<%= evBase %>/evidence/<%= e.id %>/download"><%= e.original_name %></a><% }) %><% } else { %>No evidence linked<% } %>
           · Added by <%= f.created_by_name || 'Unknown user' %> · <%= evWhen(f.created_at) %><% if (f.source === 'ai_accepted') { %> · <span data-tprm-finding-source="ai_accepted">accepted from an AI suggestion</span><% } %>
         </div>
+        <% const notes = ep.clientNotes ? (ep.clientNotes.get(Number(f.id)) || []) : []; %>
+        <% if (notes.length) { %>
+          <div class="fx-guide tpu-mt-6" id="finding-<%= f.id %>" data-tprm-finding-notes="<%= f.id %>">
+            <p class="fx-guide-h">Conversation with the client <span>the third party does not see it</span></p>
+            <ol class="tprm-issue-thread"><% notes.forEach(n => { %><li data-tprm-finding-note="<%= n.author_kind %>"><span class="meta text-xs"><%= n.author_kind === 'client' ? 'Client' + (n.author_name ? ', ' + n.author_name : '') : (n.author_name || 'Your team') %> · <%= evWhen(n.created_at) %></span><div class="tpu-pre"><%= n.body %></div></li><% }) %></ol>
+            <% if (ip.canManage) { %><form method="POST" action="<%= evBase %>/findings/<%= f.id %>/client-reply" class="tprm-issue-reply" data-tprm-finding-reply>
+              <input type="hidden" name="_csrf" value="<%= evCsrf %>">
+              <label class="sr-only" for="fnote-<%= f.id %>">Reply to the client on <%= f.title %></label>
+              <textarea class="input" id="fnote-<%= f.id %>" name="body" rows="2" maxlength="4000" placeholder="Reply to the client"></textarea>
+              <button class="btn btn-secondary btn-xs" type="submit">Reply</button>
+            </form><% } %>
+          </div>
+        <% } %>
         <% const shared = issueOf(f.id); %>
         <div class="text-xs tpu-mt-6" data-tprm-finding-share="<%= shared ? shared.status : 'none' %>">
           <% if (shared) { %>Shared with the third party: <a href="#issue-<%= shared.id %>"><%= ip.labels[shared.status] %></a>

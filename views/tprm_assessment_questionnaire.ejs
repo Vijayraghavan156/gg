@@ -148,6 +148,13 @@
   <% if (!qp.links.length) { %>
     <div class="panel-pad meta" data-tprm-links-empty>No link has been created yet.</div>
   <% } else { %>
+    <% if (qp.canRevoke && qp.links.some(l => l.effective_status === 'active') && ['sent', 'in_progress'].includes(qp.questionnaire && qp.questionnaire.status)) { %>
+    <form method="POST" action="<%= qBase %>/remind" class="panel-pad tprm-divide-b fx-bulk" data-tprm-remind-form>
+      <input type="hidden" name="_csrf" value="<%= qCsrf %>">
+      <span class="meta">Reminders also go automatically 7 days and 1 day before the link stops working.</span>
+      <button class="btn btn-secondary btn-xs" type="submit" data-tprm-remind>Send a reminder now</button>
+    </form>
+    <% } %>
     <div class="table-scroll"><table class="t" data-tprm-link-list>
       <thead><tr><th>Recipient</th><th>Created</th><th>Valid until</th><th>Status</th><th class="tprm-right">Actions</th></tr></thead>
       <tbody>

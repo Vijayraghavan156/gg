@@ -108,9 +108,12 @@
     <% if (bulk) { %>
     <form method="POST" action="/tprm/clients/<%= tpClient.id %>/third-parties/bulk-start" id="tp-bulk" class="panel-pad tprm-divide-b fx-bulk" data-tprm-bulk>
       <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
-      <span class="meta">Tick third parties with no open review, then</span>
-      <%- include('partials/tprm_confirm_fields', { title: 'Start an assessment for each ticked third party?', body: 'An onboarding assessment starts for each proposed third party and a reassessment for each one in use. You are the lead on each.', action: 'Start assessments' }) %>
+      <span class="meta">For each ticked third party:</span>
+      <%- include('partials/tprm_confirm_fields', { title: 'Apply this to each ticked third party?', body: 'Starting assessments makes you the lead on each new one. Reminders go only where a questionnaire link is open, once a day at most. A new lead applies to each open review.', action: 'Go ahead' }) %>
       <button class="btn btn-secondary btn-xs" type="submit" data-tprm-bulk-start>Start assessments</button>
+      <button class="btn btn-secondary btn-xs" type="submit" formaction="/tprm/clients/<%= tpClient.id %>/third-parties/bulk-remind" data-tprm-bulk-remind>Send a reminder</button>
+      <% if (typeof leads !== 'undefined' && leads.length) { %><label class="sr-only" for="bulk-lead">New lead</label><select class="select fx-select-s" id="bulk-lead" name="lead"><option value="">Choose a lead</option><% leads.forEach(l => { %><option value="<%= l.id %>"><%= l.name %></option><% }) %></select>
+      <button class="btn btn-secondary btn-xs" type="submit" formaction="/tprm/clients/<%= tpClient.id %>/third-parties/bulk-lead" data-tprm-bulk-lead>Change lead</button><% } %>
     </form>
     <% } %>
     <div class="table-scroll">
@@ -127,7 +130,7 @@
         <tr data-tprm-row="<%= r.id %>" data-tp-row data-tp-text="<%= [r.name, r.legal_name, r.category, r.client_label].filter(Boolean).join(' ').toLowerCase() %>"
           data-tp-sort-name="<%= String(r.name || '').toLowerCase() %>" data-tp-sort-status="<%= statusRank[r.status] || 9 %>" data-tp-sort-tier="<%= tierRank[r.current_tier] || 5 %>"
           data-tp-sort-last_assessed="<%= tpf.ymd(r.last_assessment_date) %>" data-tp-sort-next_due="<%= tpf.ymd(r.next_due_date) %>" data-tp-sort-services="<%= r.service_count %>">
-          <% if (bulk) { %><td class="tprm-cb-col"><label class="sr-only" for="bulk-<%= r.id %>">Tick <%= r.name %></label><input type="checkbox" id="bulk-<%= r.id %>" name="ids" value="<%= r.id %>" form="tp-bulk"<%= r.status === 'exited' || (stages && stages.get(Number(r.id))) ? ' disabled' : '' %> data-tprm-bulk-tick></td><% } %>
+          <% if (bulk) { %><td class="tprm-cb-col"><label class="sr-only" for="bulk-<%= r.id %>">Tick <%= r.name %></label><input type="checkbox" id="bulk-<%= r.id %>" name="ids" value="<%= r.id %>" form="tp-bulk"<%= r.status === 'exited' ? ' disabled' : '' %> data-tprm-bulk-tick></td><% } %>
           <td><a href="/tprm/clients/<%= tpClient.id %>/third-parties/<%= r.id %>"><%= r.name %></a>
             <% if (r.category || r.client_label) { %><div class="meta text-xs"><%= [r.category, r.client_label ? 'Client label: ' + r.client_label : null].filter(Boolean).join(' · ') %></div><% } %></td>
           <td><%= tp.STATUS_LABELS[r.status] %></td>

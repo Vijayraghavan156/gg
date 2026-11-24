@@ -190,6 +190,24 @@
         <% } else { %><p class="cv-muted cv-small" data-tprm-cv-thread-closed>This review is closed, so comments can no longer be added.</p><% } %>
       </div>
     <% } %>
+    <% if (!th) { %>
+      <div class="cv-thread" data-tprm-cv-finding-thread="<%= i.id %>">
+        <h4 class="cv-h4">Conversation with <%= p.firmName %> <span>not shared with <%= t.name %></span></h4>
+        <% if (!i.notes.length) { %><p class="cv-muted cv-small">Ask your consultants about this finding.</p><% } %>
+        <% i.notes.forEach(m => { const who = m.author_name || (m.author_kind === 'client' ? 'You' : p.firmName); %>
+          <div class="cv-cmt" data-tprm-cv-finding-note="<%= m.author_kind %>"><span class="cv-av"><%= initials(who) %></span><div><b><%= who %></b> <span class="cv-muted cv-small"><%= m.author_kind === 'client' ? 'Your organisation' : p.firmName %> · <%= tpf.day(new Date(m.created_at).toISOString().slice(0, 10)) %></span><p class="cv-pre"><%= m.body %></p></div></div>
+        <% }) %>
+        <% if (i.notesOpen) { %>
+          <form method="POST" action="<%= base %>/findings/<%= i.id %>/comments" class="cv-compose" data-tprm-cv-finding-form>
+            <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+            <input type="hidden" name="third_party_id" value="<%= t.id %>">
+            <label class="cv-sr" for="cv-fn-<%= i.id %>">Comment on <%= i.title %></label>
+            <textarea class="cv-in" id="cv-fn-<%= i.id %>" name="body" rows="2" maxlength="4000" required placeholder="Write to <%= p.firmName %>. <%= t.name %> does not see this."></textarea>
+            <button class="cv-btn cv-btn-p" type="submit">Post comment</button>
+          </form>
+        <% } else { %><p class="cv-muted cv-small">This review is closed, so comments can no longer be added.</p><% } %>
+      </div>
+    <% } %>
     <% if (i.recommendation_id) { %><p class="cv-small cv-mt"><a class="cv-link" href="<%= base %>/recommendations/<%= i.recommendation_id %>">Open the recommendation</a></p><% } %>
   </section>
 <% }) %>

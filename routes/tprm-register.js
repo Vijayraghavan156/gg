@@ -145,6 +145,53 @@ function registerRoutes(app, deps) {
     return res.redirect(withToast(base(actor), msg, started ? undefined : 'error'));
   }, { permission: 'tp.manage' }));
 
+  const bulkIds = req => [...new Set((Array.isArray(req.body.ids) ? req.body.ids : req.body.ids ? [req.body.ids] : []).map(Number).filter(n => Number.isSafeInteger(n) && n > 0))].slice(0, 50);
+  const openAssessmentOf = async (actor, tpId) => assessments.openAssessment(db, actor.ws.id, tpId);
+
+  app.post('/tprm/clients/:wsId/third-parties/bulk-remind', requireAuth, handler(async (req, res, actor) => {
+    const ids = bulkIds(req);
+    if (!ids.length) return res.redirect(withToast(base(actor), 'Tick at least one third party first.', 'error'));
+    let sent = 0;
+    const why = [];
+    for (const id of ids) {
+      try {
+        const tp = await register.getThirdParty(db, actor, id);
+        const open = await openAssessmentOf(actor, tp.id);
+        if (!open) { why.push(`${tp.name}: no review open`); continue; }
+        const r = await require('../lib/tprm/messages').manualReminder(db, { workspaceId: actor.ws.id, assessmentId: Number(open.id) });
+        if (r.sent) sent += 1; else why.push(`${tp.name}: ${r.reason}`);
+      } catch (err) {
+        if (!(err instanceof TprmError)) throw err;
+        why.push('one that was not found');
+      }
+    }
+    if (sent) await logAction(req.user.id, actor.ws.id, 'tprm_bulk_reminders_sent', 'workspace', actor.ws.id, { sent, asked: ids.length }, auditCtx(req));
+    return res.redirect(withToast(base(actor), `${sent} reminder${sent === 1 ? '' : 's'} sent` + (why.length ? `. Not sent: ${why.join('; ')}` : ''), sent ? undefined : 'error'));
+  }, { permission: 'tp.manage' }));
+
+  app.post('/tprm/clients/:wsId/third-parties/bulk-lead', requireAuth, handler(async (req, res, actor) => {
+    const ids = bulkIds(req);
+    if (!ids.length) return res.redirect(withToast(base(actor), 'Tick at least one third party first.', 'error'));
+    if (!req.body.lead) return res.redirect(withToast(base(actor), 'Choose the new lead first.', 'error'));
+    let changed = 0;
+    const why = [];
+    for (const id of ids) {
+      try {
+        const tp = await register.getThirdParty(db, actor, id);
+        const open = await openAssessmentOf(actor, tp.id);
+        if (!open) { why.push(`${tp.name}: no review open`); continue; }
+        const r = await assessments.setLead(db, actor, Number(open.id), req.body.lead);
+        if (r.changed) changed += 1;
+      } catch (err) {
+        if (!(err instanceof TprmError)) throw err;
+        if (err.status === 400) return res.redirect(withToast(base(actor), err.message, 'error'));
+        why.push(err.status === 404 ? 'one that was not found' : err.message.replace(/\.$/, ''));
+      }
+    }
+    if (changed) await logAction(req.user.id, actor.ws.id, 'tprm_bulk_lead_changed', 'workspace', actor.ws.id, { changed, lead: Number(req.body.lead) }, auditCtx(req));
+    return res.redirect(withToast(base(actor), `Lead changed on ${changed} review${changed === 1 ? '' : 's'}` + (why.length ? `. Not changed: ${why.join('; ')}` : '')));
+  }, { permission: 'tp.manage' }));
+
   const clientRequests = require('../lib/tprm/client-requests');
   async function renderRequest(req, res, actor, extra = {}, status = 200) {
     const request = await clientRequests.withAnswerLabels(db, actor.ws, await clientRequests.get(db, actor.ws.id, req.params.rid));

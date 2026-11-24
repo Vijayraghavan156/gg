@@ -58,6 +58,7 @@ function registerRoutes(app, deps) {
       await assessments.assessmentEvents(db, actor, assessment, 5000),
       await assessments.decisionOwnerCandidates(db, actor.ws.id),
     ];
+    const leads = await assessments.leadCandidates(db, actor.ws);
     const activeModel = await criticality.getActiveModel(db, Number(actor.ws.firm_id));
     const values = form || {
       services: (assessment.services_in_scope || []).map(s => String(s.id)),
@@ -101,7 +102,7 @@ function registerRoutes(app, deps) {
       isManager: access.isManager(req.user),
       isProposer,
       selfApproveTiers,
-      thirdParty, assessment, model, services, history, owners, values, errors, preview,
+      thirdParty, assessment, model, services, history, owners, leads, values, errors, preview,
       modelIsActive: !!activeModel && Number(activeModel.id) === Number(model.id),
       clientSaysCritical: assessments.clientSaysCritical(thirdParty, settings),
       questionnairePanel,
