@@ -53,7 +53,7 @@ resource "aws_db_parameter_group" "this" {
 resource "aws_cloudwatch_log_group" "rds" {
   for_each = toset(["postgresql", "upgrade"])
 
-  name              = "/aws/rds/instance/${local.name}/${each.key}"
+  name              = "/aws/rds/instance/${coalesce(var.db_identifier, local.name)}/${each.key}"
   retention_in_days = var.log_retention_days
   kms_key_id        = aws_kms_key.app.arn
 }
@@ -84,7 +84,7 @@ resource "aws_iam_role_policy_attachment" "rds_monitoring" {
 }
 
 resource "aws_db_instance" "this" {
-  identifier     = local.name
+  identifier     = coalesce(var.db_identifier, local.name)
   engine         = "postgres"
   engine_version = var.db_engine_version
   instance_class = var.db_instance_class

@@ -147,7 +147,7 @@ data "aws_iam_policy_document" "github_deploy" {
     ]
     resources = [
       aws_db_instance.this.arn,
-      "arn:${local.partition}:rds:${local.region}:${local.account_id}:snapshot:${local.name}-predeploy-*",
+      "arn:${local.partition}:rds:${local.region}:${local.account_id}:snapshot:${aws_db_instance.this.identifier}-predeploy-*",
     ]
   }
 }

@@ -357,6 +357,12 @@ variable "db_instance_class" {
   default     = "db.t4g.small"
 }
 
+variable "db_identifier" {
+  description = "RDS instance identifier. Null (default) uses the resource name prefix. Set it when the instance had to be restored under a different name, for example into another availability zone."
+  type        = string
+  default     = null
+}
+
 variable "db_engine_version" {
   description = "PostgreSQL engine version. A major version (\"16\") lets RDS pick and auto-upgrade the minor version."
   type        = string
@@ -382,13 +388,13 @@ variable "db_multi_az" {
 }
 
 variable "db_backup_retention_days" {
-  description = "Automated backup (point-in-time recovery) retention in days."
+  description = "Automated backup (point-in-time recovery) retention in days. 0 turns RDS automated backups off, which deletes existing automated backups and disables point-in-time restore; only manual snapshots (such as the pre-deploy ones) and AWS Backup remain."
   type        = number
   default     = 14
 
   validation {
-    condition     = var.db_backup_retention_days >= 1 && var.db_backup_retention_days <= 35
-    error_message = "db_backup_retention_days must be between 1 and 35."
+    condition     = var.db_backup_retention_days >= 0 && var.db_backup_retention_days <= 35
+    error_message = "db_backup_retention_days must be between 0 and 35."
   }
 }
 
