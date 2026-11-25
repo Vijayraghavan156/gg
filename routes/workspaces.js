@@ -488,8 +488,7 @@ function register(app, deps) {
 
     for (const storedPath of storedPaths) {
       try {
-        const abs = resolveUploadPath(storedPath, ws.firm_id);
-        if (abs && fs.existsSync(abs)) fs.unlinkSync(abs);
+        await require('../lib/file-store').removeStored(storedPath, ws.firm_id);
       } catch (_) {}
     }
 

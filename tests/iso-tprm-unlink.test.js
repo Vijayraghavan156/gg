@@ -153,6 +153,7 @@ test('the ISO workspace routes use TPRM code only to switch the service on for a
 test('only the TPRM area and the client service switch reach TPRM code or tables', () => {
   const allowedTableReaders = new Set([path.join('routes', 'third-party-risk.js'), path.join('lib', 'restore-check.js')]);
   allowedTableReaders.add(path.join('lib', 'workspace-deletion.js'));
+  allowedTableReaders.add(path.join('lib', 'file-store-audit.js'));
   const allowedTprmImports = new Set([path.join('routes', 'third-party-risk.js'), path.join('routes', 'tprm-settings.js'),
     path.join('routes', 'workspaces.js'), 'server.js']);
   allowedTprmImports.add(path.join('routes', 'tprm-register.js'));

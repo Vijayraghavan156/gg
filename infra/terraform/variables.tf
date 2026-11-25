@@ -243,9 +243,9 @@ variable "app_environment" {
     condition = length(setintersection(keys(var.app_environment), [
       "NODE_ENV", "PORT", "APP_VERSION", "APP_BASE_URL", "DATABASE_URL",
       "ISMS_UPLOADS_DIR", "ISMS_BACKUP_DIR", "ISMS_KEY_FILE", "ISMS_RESTORE_DRILL_DISABLED", "SESSION_SECRET", "ISMS_MASTER_KEY",
-      "UPLOAD_AV_MODE", "ISMS_PREFLIGHT", "ALLOW_INSECURE_DEFAULTS", "DISABLE_CSRF",
+      "UPLOAD_AV_MODE", "ISMS_PREFLIGHT", "ALLOW_INSECURE_DEFAULTS", "DISABLE_CSRF", "ISMS_S3_BUCKET", "ISMS_S3_REGION",
     ])) == 0
-    error_message = "app_environment cannot set a variable this stack manages or an unsafe test switch (NODE_ENV, PORT, APP_VERSION, APP_BASE_URL, DATABASE_URL, ISMS_UPLOADS_DIR, ISMS_BACKUP_DIR, ISMS_KEY_FILE, ISMS_RESTORE_DRILL_DISABLED, SESSION_SECRET, ISMS_MASTER_KEY, UPLOAD_AV_MODE, ISMS_PREFLIGHT, ALLOW_INSECURE_DEFAULTS, DISABLE_CSRF). Put secret values in app_secret_names; use restore_drill_enabled for the restore drill."
+    error_message = "app_environment cannot set a variable this stack manages or an unsafe test switch (NODE_ENV, PORT, APP_VERSION, APP_BASE_URL, DATABASE_URL, ISMS_UPLOADS_DIR, ISMS_BACKUP_DIR, ISMS_KEY_FILE, ISMS_RESTORE_DRILL_DISABLED, SESSION_SECRET, ISMS_MASTER_KEY, UPLOAD_AV_MODE, ISMS_PREFLIGHT, ALLOW_INSECURE_DEFAULTS, DISABLE_CSRF, ISMS_S3_BUCKET, ISMS_S3_REGION). Put secret values in app_secret_names; use restore_drill_enabled for the restore drill."
   }
 }
 
@@ -548,4 +548,21 @@ variable "kms_deletion_window_days" {
   description = "Waiting period before the stack's KMS key is deleted after a destroy."
   type        = number
   default     = 30
+}
+
+variable "uploads_bucket_enabled" {
+  description = "Keep uploaded files in a private, versioned, KMS-encrypted S3 bucket. The app still writes each file to /app/uploads first and keeps it there as a cache, so the EFS mount stays. Off: files live on EFS only."
+  type        = bool
+  default     = true
+}
+
+variable "uploads_noncurrent_version_days" {
+  description = "Days S3 keeps a replaced or deleted uploaded file before removing it for good."
+  type        = number
+  default     = 90
+
+  validation {
+    condition     = var.uploads_noncurrent_version_days >= 7
+    error_message = "uploads_noncurrent_version_days must be at least 7."
+  }
 }

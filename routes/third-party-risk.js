@@ -419,7 +419,7 @@ function register(app, deps) {
     if (!portalReady(req, res)) return notFound(req, res);
     const file = await decisions.portalEvidenceFile(db, req.workspace, req.params.rid, req.params.eid);
     if (!file) return portalNotFound(req, res);
-    const target = resolveUploadPath(file.stored_path, req.workspace.firm_id);
+    const target = await resolveUploadPath(file.stored_path, req.workspace.firm_id);
     if (!target || !fs.existsSync(target)) return portalNotFound(req, res);
     await logAction(req.user.id, req.workspace.id, 'tprm_client_download_released_evidence', 'tp_evidence', Number(file.id),
       { recommendation_id: Number(req.params.rid) }, auditCtx(req));

@@ -221,6 +221,16 @@ run "default_stack_rolls_deploys_against_rds" {
   }
 
   assert {
+    condition     = length([for e in jsondecode(aws_ecs_task_definition.app.container_definitions)[0].environment : e if e.name == "ISMS_S3_BUCKET" && e.value == aws_s3_bucket.uploads[0].id]) == 1
+    error_message = "Uploaded files must go to the stack's own S3 bucket."
+  }
+
+  assert {
+    condition     = aws_s3_bucket_versioning.uploads[0].versioning_configuration[0].status == "Enabled" && aws_s3_bucket_public_access_block.uploads[0].restrict_public_buckets
+    error_message = "The uploads bucket must keep old versions and never be public."
+  }
+
+  assert {
     condition     = toset([for s in jsondecode(aws_ecs_task_definition.app.container_definitions)[0].secrets : s.name]) == toset(["SESSION_SECRET", "ISMS_MASTER_KEY", "DATABASE_URL", "RESEND_API_KEY"])
     error_message = "Default secrets must be SESSION_SECRET, ISMS_MASTER_KEY, DATABASE_URL and RESEND_API_KEY."
   }
@@ -294,6 +304,19 @@ run "restore_drill_can_be_turned_on" {
   assert {
     condition     = length([for e in jsondecode(aws_ecs_task_definition.app.container_definitions)[0].environment : e if e.name == "ISMS_RESTORE_DRILL_DISABLED"]) == 0
     error_message = "restore_drill_enabled must leave the drill on."
+  }
+}
+
+run "uploads_bucket_can_be_turned_off" {
+  command = apply
+
+  variables {
+    uploads_bucket_enabled = false
+  }
+
+  assert {
+    condition     = length(aws_s3_bucket.uploads) == 0 && length([for e in jsondecode(aws_ecs_task_definition.app.container_definitions)[0].environment : e if e.name == "ISMS_S3_BUCKET"]) == 0
+    error_message = "uploads_bucket_enabled = false must leave files on EFS only."
   }
 }
 

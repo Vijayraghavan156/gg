@@ -39,10 +39,41 @@ uploads through EFS ([Running more than one task](#running-more-than-one-task)).
 
 | Path | Backed by | Why |
 |---|---|---|
-| `/app/uploads` | EFS access point `uploads` (UID/GID 1000, 0700) | Hard-coded in `server.js` and `routes/` (`uploads/firm_{id}/`), so multer's disk storage needs no change. `ISMS_UPLOADS_DIR` is set to the same path for the backup tooling. Every task must see the same files. |
+| `/app/uploads` | EFS access point `uploads` (UID/GID 1000, 0700) | Hard-coded in `server.js` and `routes/` (`uploads/firm_{id}/`), so multer's disk storage needs no change. `ISMS_UPLOADS_DIR` is set to the same path for the backup tooling. With the uploads bucket on, the bucket holds every file and this folder is a cache (see below). |
 | `/app/var` | EFS access point `state` (UID/GID 1000, 0700) | `ISMS_BACKUP_DIR=/app/var/backups` for app recovery generations, and the SQLite file staged during a cutover (`/app/var/iso27001.db`). |
 | `/app/data` | Ephemeral volume, filled from the image | **Not** on EFS. The image keeps code there (`data/*.js` catalogs that `db.js` loads), so mounting EFS over it would hide them and stop the app from booting. |
 | `/tmp` | Container file system | Upload scanning, restore checks and Chromium write here. |
+
+### Uploaded files in S3
+
+With `uploads_bucket_enabled = true` (the default) the stack creates a private,
+versioned, KMS-encrypted bucket and passes its name to the app as
+`ISMS_S3_BUCKET`. Every upload is virus-scanned, then written to the bucket
+before its record is saved; if the bucket cannot take it, the upload is refused
+and nothing is recorded. `/app/uploads` stays mounted and acts as a cache: a
+task that does not have a file fetches it from the bucket. Deleting a file in
+the app deletes it from the bucket, and S3 keeps the old version for
+`uploads_noncurrent_version_days` (90 by default) so it can be restored.
+Without `ISMS_S3_BUCKET` the app keeps files on `/app/uploads` only, as before.
+
+Switching it on for an existing install:
+
+1. Make sure the files in `/app/uploads` survive the next deploy: check that
+   the running task definition mounts the `uploads` EFS access point there, or
+   copy the folder off the running task first. A deploy replaces the task, and
+   anything not on EFS is lost with it.
+2. Apply the stack, then deploy a release that includes the bucket support.
+3. From a running task (ECS Exec), copy the files in `/app/uploads` to the
+   bucket. Files already there are left alone, so it can be run again:
+   `node scripts/file-store.js copy`
+4. List any stored file the database refers to that is in neither place, so it
+   can be requested again: `node scripts/file-store.js check`
+
+A stack built some other way needs the same three things: the bucket
+(private, versioned, KMS-encrypted, TLS only), task-role permission for
+`s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` on its objects and
+`s3:ListBucket` on the bucket, plus `kms:Decrypt` and `kms:GenerateDataKey`
+on its key, and the settings `ISMS_S3_BUCKET` and `ISMS_S3_REGION` on the task.
 
 The encryption key comes from the `ISMS_MASTER_KEY` secret, not a key file.
 The RDS certificate bundle is part of the image, at

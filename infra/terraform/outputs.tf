@@ -156,3 +156,8 @@ output "sqlite_copy_task_overrides" {
     containerOverrides = [{ name = local.container_name, command = ["sh", "-c", local.sqlite_copy_script] }]
   })
 }
+
+output "uploads_bucket" {
+  description = "S3 bucket that holds uploaded files, or null when uploads_bucket_enabled is false."
+  value       = var.uploads_bucket_enabled ? aws_s3_bucket.uploads[0].id : null
+}

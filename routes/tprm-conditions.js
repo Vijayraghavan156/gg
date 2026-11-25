@@ -167,7 +167,7 @@ function registerRoutes(app, deps) {
 
   app.get(`${BASE}/files/:fid/download`, requireAuth, handler(async (req, res, actor) => {
     const file = await conditions.firmProofFile(db, actor, req.params.tpId, req.params.aid, req.params.cid, req.params.fid);
-    const stored = resolveUploadPath(file.stored_path, actor.ws.firm_id);
+    const stored = await resolveUploadPath(file.stored_path, actor.ws.firm_id);
     if (!stored || !fs.existsSync(stored)) {
       if (req.query.inline === '1') {
         res.set('X-Content-Type-Options', 'nosniff');
@@ -250,7 +250,7 @@ function registerRoutes(app, deps) {
     if (!portalReady(req, res)) return portalNotFound(req, res);
     const file = await conditions.portalProofFile(db, req.workspace, req.params.fid);
     if (!file) return portalNotFound(req, res);
-    const stored = resolveUploadPath(file.stored_path, req.workspace.firm_id);
+    const stored = await resolveUploadPath(file.stored_path, req.workspace.firm_id);
     if (!stored || !fs.existsSync(stored)) return portalNotFound(req, res);
     res.set('X-Content-Type-Options', 'nosniff');
     return res.download(stored, file.original_name);

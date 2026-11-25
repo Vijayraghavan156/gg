@@ -157,6 +157,11 @@ function register(app, deps) {
       const tenantDir = path.join(projectRoot, 'uploads', `firm_${fid}`); // nosemgrep: javascript.express.security.audit.express-path-join-resolve-traversal.express-path-join-resolve-traversal
       if (fs.existsSync(tenantDir)) fs.rmSync(tenantDir, { recursive: true, force: true });
     } catch (_) {}
+    try {
+      await require('../lib/file-store').removeFirm(fid);
+    } catch (err) {
+      console.error('[file_store] could not delete the firm\'s stored files:', err && err.name ? err.name : 'error');
+    }
 
     if (req.session.active_firm_id === fid) {
       const fallback = await db.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get();

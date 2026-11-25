@@ -80,7 +80,7 @@ resource "aws_iam_role_policy" "execution" {
 
 resource "aws_iam_role" "task" {
   name               = "${local.name}-ecs-task"
-  description        = "Runtime identity of ${local.name} tasks: EFS mount, ECS Exec and, when configured, sending email through SES"
+  description        = "Runtime identity of ${local.name} tasks: EFS mount, uploaded files in S3, ECS Exec and, when configured, sending email through SES"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
 }
 
@@ -97,6 +97,39 @@ data "aws_iam_policy_document" "task" {
       test     = "StringEquals"
       variable = "elasticfilesystem:AccessPointArn"
       values   = [aws_efs_access_point.state.arn, aws_efs_access_point.uploads.arn]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = var.uploads_bucket_enabled ? [1] : []
+    content {
+      sid       = "UploadedFilesObjects"
+      actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+      resources = ["${aws_s3_bucket.uploads[0].arn}/*"]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = var.uploads_bucket_enabled ? [1] : []
+    content {
+      sid       = "UploadedFilesList"
+      actions   = ["s3:ListBucket"]
+      resources = [aws_s3_bucket.uploads[0].arn]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = var.uploads_bucket_enabled ? [1] : []
+    content {
+      sid       = "UploadedFilesEncryption"
+      actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
+      resources = [aws_kms_key.app.arn]
+
+      condition {
+        test     = "StringEquals"
+        variable = "kms:ViaService"
+        values   = ["s3.${local.region}.amazonaws.com"]
+      }
     }
   }
 

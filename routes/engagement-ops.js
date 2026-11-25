@@ -716,7 +716,7 @@ function register(app, deps) {
     }
     archive.append(evCsv.join('\n'), { name: '07_evidence_manifest.csv' });
     for (const e of evidence) {
-      const found = resolveUploadPath(e.stored_path, ws.firm_id);
+      const found = await resolveUploadPath(e.stored_path, ws.firm_id);
       if (found && fs.existsSync(found) && fs.statSync(found).isFile()) {
         archive.file(found, { name: `evidence/${e.id}-${e.filename}` });
       }
@@ -1353,7 +1353,7 @@ function register(app, deps) {
 
     const evidence = await db.prepare(`SELECT * FROM evidence WHERE workspace_id=?`).all(ws.id);
     for (const e of evidence) {
-      const fp = resolveUploadPath(e.stored_path, ws.firm_id);
+      const fp = await resolveUploadPath(e.stored_path, ws.firm_id);
       if (fp && fs.existsSync(fp)) zip.file(fp, { name: `evidence/${e.id}_${e.filename}` });
     }
 
@@ -1608,7 +1608,7 @@ function register(app, deps) {
     requirePermission('evidence.download'), async (req, res) => {
     const ev = await db.prepare(`SELECT * FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
     if (!ev) return res.status(404).send('Not found');
-    const fp = resolveUploadPath(ev.stored_path, req.workspace.firm_id);
+    const fp = await resolveUploadPath(ev.stored_path, req.workspace.firm_id);
     if (!fp || !fs.existsSync(fp)) return res.status(404).send('File missing');
     const ext = path.extname(ev.filename).toLowerCase();
     const inlineTypes = { '.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.pdf':'application/pdf','.txt':'text/plain' };

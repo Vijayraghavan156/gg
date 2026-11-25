@@ -57,7 +57,10 @@ locals {
     UPLOAD_AV_MODE   = "required"
     }, var.restore_drill_enabled ? {} : {
     ISMS_RESTORE_DRILL_DISABLED = "1"
-  })
+    }, var.uploads_bucket_enabled ? {
+    ISMS_S3_BUCKET = aws_s3_bucket.uploads[0].id
+    ISMS_S3_REGION = local.region
+  } : {})
 
   default_capabilities = [
     "AUDIT_WRITE", "CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID", "KILL", "MKNOD",

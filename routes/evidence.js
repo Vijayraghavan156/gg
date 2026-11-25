@@ -449,7 +449,7 @@ function register(app, deps) {
     );
 
     for (const e of items) {
-      const found = resolveUploadPath(e.stored_path, req.workspace.firm_id);
+      const found = await resolveUploadPath(e.stored_path, req.workspace.firm_id);
       if (found && fs.existsSync(found) && fs.statSync(found).isFile()) {
         archive.file(found, { name: `files/${e.id}-${e.filename}` });
       }
@@ -503,7 +503,7 @@ function register(app, deps) {
     const ev = await db.prepare('SELECT * FROM evidence WHERE id = ? AND workspace_id = ?')
       .get(req.params.id, req.workspace.id);
     if (!ev) return res.status(404).send('Not found');
-    const fp = resolveUploadPath(ev.stored_path, req.workspace.firm_id);
+    const fp = await resolveUploadPath(ev.stored_path, req.workspace.firm_id);
     if (!fp || !fs.existsSync(fp)) return res.status(404).send('File missing');
     res.download(fp, ev.filename);
   });
@@ -519,8 +519,7 @@ function register(app, deps) {
         return redirectBack(req, res,
           'This file is retained as CAPA evidence and cannot be hard-deleted. Supersede it with a new evidence version instead.', 'error');
       }
-      const fp = resolveUploadPath(ev.stored_path, req.workspace.firm_id);
-      if (fp && fs.existsSync(fp)) fs.unlinkSync(fp);
+      await require('../lib/file-store').removeStored(ev.stored_path, req.workspace.firm_id);
       await db.prepare('DELETE FROM evidence WHERE id = ?').run(ev.id);
       await logAction(req.user.id, req.workspace.id, 'delete_evidence', 'evidence', ev.id, null);
     }

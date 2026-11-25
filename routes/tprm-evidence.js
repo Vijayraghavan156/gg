@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const fileStore = require('../lib/file-store');
 const { withToast } = require('../lib/http-helpers');
 const access = require('../lib/tprm/access');
 const register = require('../lib/tprm/register');
@@ -24,11 +25,11 @@ function clientView(ws) {
   return { id: ws.id, name: ws.brand_display_name || ws.client_name, sector: ws.sector || null };
 }
 
-function removeFiles(files, resolve) {
+async function removeFiles(files, resolve) {
   for (const file of files || []) {
     try {
-      const target = file && file.path ? file.path : resolve(file);
-      if (target && fs.existsSync(target)) fs.unlinkSync(target);
+      const target = file && file.path ? file.path : await resolve(file);
+      if (target) await fileStore.remove(target);
     } catch (_) {}
   }
 }
@@ -117,7 +118,7 @@ function registerRoutes(app, deps) {
 
   app.get(`${BASE}/evidence/:eid/download`, requireAuth, handler(async (req, res, actor) => {
     const file = await evidence.evidenceFile(db, actor, req.params.tpId, req.params.aid, req.params.eid);
-    const target = resolveUploadPath(file.stored_path, actor.ws.firm_id);
+    const target = await resolveUploadPath(file.stored_path, actor.ws.firm_id);
     if (!target || !fs.existsSync(target)) {
       if (req.query.inline === '1') {
         res.set('X-Content-Type-Options', 'nosniff');
@@ -161,7 +162,7 @@ function registerRoutes(app, deps) {
 
   app.post(`${BASE}/evidence/:eid/delete`, requireAuth, handler(async (req, res, actor) => {
     const result = await evidence.deleteEvidence(db, actor, req.params.tpId, req.params.aid, req.params.eid, req.body);
-    removeFiles([result.storedPath], storedPath => resolveUploadPath(storedPath, actor.ws.firm_id));
+    await removeFiles([result.storedPath], storedPath => resolveUploadPath(storedPath, actor.ws.firm_id));
     return res.redirect(withToast(`${aUrl(actor, req.params.tpId, req.params.aid)}?step=evidence#evidence`, `"${result.evidence.original_name}" deleted`));
   }, { permission: 'tp.manage' }));
 

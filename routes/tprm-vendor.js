@@ -5,6 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const multer = require('multer');
+const fileStore = require('../lib/file-store');
 const questionnaires = require('../lib/tprm/questionnaires');
 const vendorAnswers = require('../lib/tprm/vendor-answers');
 const conditionLinks = require('../lib/tprm/condition-links');
@@ -107,6 +108,7 @@ function uploadedFile(firmId, stored) {
 function removeFiles(files) {
   for (const file of files || []) {
     try { if (file && file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path); } catch (_) {}
+    if (file && file.path) fileStore.removeLater(file.path);
   }
 }
 
@@ -381,6 +383,7 @@ function registerRoutes(app, { db }) {
     req.tprmVendor = ctx;
     const read = await readMultipart(req);
     staged.push(...read.files);
+    fileStore.keepStaged(req, res, read.files);
     if (read.error) {
       if (ctx.mode === 'answering') {
         const section = view === 'section' ? sectionParam(req.body && req.body.section) : null;
@@ -397,13 +400,19 @@ function registerRoutes(app, { db }) {
     return { ctx, files: read.files };
   }
 
-  function checkFiles(files) {
+  async function checkFiles(files) {
     if (files.length > vendorAnswers.LIMITS.filesPerRequest) {
       return `Attach at most ${vendorAnswers.LIMITS.filesPerRequest} files each time you save. Nothing was saved: choose fewer files and save again.`;
     }
     for (const file of files) {
       const result = uploadSecurity.validateUpload(file, uploadSecurity.GENERAL_UPLOAD_EXTENSIONS);
       if (!result.ok) return `${String(file.originalname || 'A file').slice(0, 120)}: ${result.message || 'the file did not pass the upload checks.'} Nothing was saved.`;
+    }
+    try {
+      await fileStore.putMany(files.filter(f => f && f.path).map(f => f.path));
+    } catch (err) {
+      console.error('[file_store] could not store an upload:', err && err.name ? err.name : 'error');
+      return 'Your files could not be saved right now. Nothing was saved: try again in a minute.';
     }
     return null;
   }
@@ -428,7 +437,7 @@ function registerRoutes(app, { db }) {
     if (!pre) return undefined;
     const { ctx, files } = pre;
     const posted = sectionParam(req.body.section);
-    const fileProblem = checkFiles(files);
+    const fileProblem = await checkFiles(files);
     if (fileProblem) {
       removeFiles(staged);
       return renderQuestionnaire(req, res, ctx, { status: 400, errors: [fileProblem], values: safeValues(req.body), view: 'section', section: posted });
@@ -491,7 +500,7 @@ function registerRoutes(app, { db }) {
     const pre = await postPreamble(req, res, staged);
     if (!pre) return undefined;
     const { ctx, files } = pre;
-    const fileProblem = files.length > 3 ? 'Attach at most three files to a report.' : checkFiles(files);
+    const fileProblem = files.length > 3 ? 'Attach at most three files to a report.' : await checkFiles(files);
     if (fileProblem) {
       removeFiles(staged);
       return renderQuestionnaire(req, res, ctx, { status: 400, errors: [fileProblem], view: 'start' });
@@ -521,7 +530,7 @@ function registerRoutes(app, { db }) {
     const pre = await postPreamble(req, res, staged);
     if (!pre) return undefined;
     const { ctx, files } = pre;
-    const fileProblem = checkFiles(files);
+    const fileProblem = await checkFiles(files);
     if (fileProblem) {
       removeFiles(staged);
       return renderQuestionnaire(req, res, ctx, { status: 400, errors: [fileProblem], view: 'documents' });
@@ -589,7 +598,7 @@ function registerRoutes(app, { db }) {
       removeFiles(staged);
       return renderQuestionnaire(req, res, ctx, { status: 400, errors: ['Attach at most one file to a response.'], view: 'clarify' });
     }
-    const fileProblem = checkFiles(files);
+    const fileProblem = await checkFiles(files);
     if (fileProblem) {
       removeFiles(staged);
       return renderQuestionnaire(req, res, ctx, { status: 400, errors: [fileProblem], view: 'clarify' });
@@ -770,7 +779,7 @@ function registerRoutes(app, { db }) {
       return renderState(res, 403, 'forbidden');
     }
     const files = read.files;
-    const fileProblem = files.some(f => f.fieldname !== 'files') ? 'The form could not be read. Nothing was saved: reload the page and try again.' : checkFiles(files);
+    const fileProblem = files.some(f => f.fieldname !== 'files') ? 'The form could not be read. Nothing was saved: reload the page and try again.' : await checkFiles(files);
     if (fileProblem) {
       removeFiles(staged);
       return renderConditions(req, res, ctx, { status: 400, errors: [fileProblem] });

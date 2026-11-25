@@ -539,7 +539,7 @@ function register(app, deps) {
     const row = await db.prepare(`SELECT e.* FROM engagement_delivery_evidence de JOIN evidence e ON e.id=de.evidence_id
       WHERE de.deliverable_id=? AND de.evidence_id=? AND de.workspace_id=? AND e.workspace_id=?`).get(req.params.deliverableId, req.params.evidenceId, req.workspace.id, req.workspace.id);
     if (!row) return res.status(404).send('Evidence not found');
-    const filePath = resolveUploadPath(row.stored_path, req.workspace.firm_id);
+    const filePath = await resolveUploadPath(row.stored_path, req.workspace.firm_id);
     if (!filePath || !fs.existsSync(filePath)) return res.status(404).send('Evidence file missing');
     await logAction(req.user.id, req.workspace.id, 'download_delivery_evidence', 'evidence', row.id, { deliverable_id: req.params.deliverableId }, auditCtx(req));
     res.download(filePath, row.filename);

@@ -24,6 +24,7 @@ function looksLikeMarkdown(s) {
 
 const { workspaceTimeZone } = require('./lib/dates');
 const uploadSecurity = require('./lib/upload-security');
+const fileStore = require('./lib/file-store');
 const { db, init, logAction, verifyAuditChain, defaultMethodology, ensureWorkspaceMethodology, getActiveMethodology, methodologyBand } = require('./db');
 const enc = require('./lib/encryption');
 const rbac = require('./lib/rbac');
@@ -346,6 +347,23 @@ const rawUpload = multer({
 function removeStagedFiles(files) {
   (files || []).forEach(file => {
     try { if (file && file.path) fs.unlinkSync(file.path); } catch (_) {}
+    if (file && file.path) fileStore.removeLater(file.path);
+  });
+}
+
+function storeStaged(req, res, files, next) {
+  const onDisk = files.filter(f => f && f.path);
+  if (!fileStore.enabled() || !onDisk.length) return next();
+  fileStore.putMany(onDisk.map(f => f.path)).then(() => {
+    fileStore.keepStaged(req, res, onDisk);
+    next();
+  }, err => {
+    console.error('[file_store] could not store an upload:', err && err.name ? err.name : 'error');
+    removeStagedFiles(onDisk);
+    res.status(503).render('error', {
+      user: req.user || null, ws: req.workspace || null,
+      message: 'The file could not be saved right now. Nothing was uploaded: try again in a minute.'
+    });
   });
 }
 
@@ -374,8 +392,9 @@ function inspectedUpload(middleware, allowedExtensions = GENERAL_UPLOAD_EXTENSIO
           });
         }
       }
-      if (process.env.DISABLE_CSRF === '1') return next();
-      csrfAfterMultipart(req, res, next, () => removeStagedFiles(files));
+      const stored = () => storeStaged(req, res, files, next);
+      if (process.env.DISABLE_CSRF === '1') return stored();
+      csrfAfterMultipart(req, res, stored, () => removeStagedFiles(files));
     });
   };
 }
@@ -399,14 +418,21 @@ const xlsxUpload = {
   single: field => inspectedUpload(rawCsvUpload.single(field), new Set(['xlsx']))
 };
 
-function resolveUploadPath(storedPath, firmId) {
+async function resolveUploadPath(storedPath, firmId) {
   if (!storedPath) return null;
-  if (firmId) {
-    const partitioned = path.join(__dirname, 'uploads', `firm_${firmId}`, storedPath);
-    if (fs.existsSync(partitioned)) return partitioned;
-  }
+  const partitioned = firmId ? path.join(__dirname, 'uploads', `firm_${firmId}`, storedPath) : null;
   const legacy = path.join(__dirname, 'uploads', storedPath);
-  return fs.existsSync(legacy) ? legacy : (firmId ? path.join(__dirname, 'uploads', `firm_${firmId}`, storedPath) : legacy);
+  const candidates = [partitioned, legacy].filter(Boolean);
+  for (const candidate of candidates) if (fs.existsSync(candidate)) return candidate;
+  const name = String(storedPath);
+  if (fileStore.enabled() && path.basename(name) === name) {
+    try {
+      for (const candidate of candidates) if (await fileStore.ensureLocal(candidate)) return candidate;
+    } catch (err) {
+      console.error('[file_store] could not fetch a stored file:', err && err.name ? err.name : 'error');
+    }
+  }
+  return partitioned || legacy;
 }
 
 async function getActiveFirmId(req) {

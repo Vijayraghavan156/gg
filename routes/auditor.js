@@ -160,7 +160,7 @@ function register(app, deps) {
   app.get('/auditor/:token/evidence/:id(\\d+)/download', requireAuditorToken, requireAuditorService, async (req, res) => {
     const ev = await db.prepare(`SELECT * FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
     if (!ev) return res.status(404).render('error', { user: null, message: 'Evidence file not found.' });
-    const filepath = resolveUploadPath(ev.stored_path, req.workspace.firm_id);
+    const filepath = await resolveUploadPath(ev.stored_path, req.workspace.firm_id);
     if (!filepath || !fs.existsSync(filepath)) return res.status(404).render('error', { user: null, message: 'Evidence file is no longer on disk. The consultant has been notified.' });
     await logAction(0, req.workspace.id, 'auditor_download_evidence', 'evidence', ev.id,
       { share_id: req.share.id, filename: ev.filename },
