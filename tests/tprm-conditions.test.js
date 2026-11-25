@@ -137,7 +137,9 @@ function multipart(token, files, fields = {}) {
 
 function stagedFor(name) {
   const dir = path.join(ROOT, 'uploads', `firm_${firmId}`);
-  return fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.endsWith(name.replace(/[^\w.-]/g, '_'))) : [];
+  if (!fs.existsSync(dir)) return [];
+  const dirs = [dir, ...fs.readdirSync(dir).filter(d => /^client_\d+$/.test(d)).map(d => path.join(dir, d))];
+  return dirs.flatMap(d => fs.readdirSync(d)).filter(f => f.endsWith(name.replace(/[^\w.-]/g, '_')));
 }
 
 async function track(cid) {
@@ -306,7 +308,7 @@ test('the client submits proof in the portal for a client-owned condition; a con
     ['client', main.owner.id, 'Signed by our CFO.', 'pending']);
   const [file] = await filesOf(ctx.clientId);
   assert.equal(file.original_name, 'signed-dpa.pdf');
-  assert.equal(file.sha256, crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, 'uploads', `firm_${firmId}`, file.stored_path))).digest('hex'));
+  assert.equal(file.sha256, crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, 'uploads', `firm_${firmId}`, `client_${ctx.ws}`, file.stored_path))).digest('hex'));
 
   page = await owner.get(recPage(ctx.ws, ctx.rid));
   assert.match(page.text, /signed-dpa\.pdf/);
@@ -695,13 +697,13 @@ test('deleting a workspace removes its proofs, their files and the stored files'
   assert.equal((await portalProof(await sessionFor(c.owner), ctx, ctx.clientId, [{ filename: 'gone-client.txt', content: `gc ${unique('g')}` }])).status, 302);
   const stored = (await db.prepare('SELECT stored_path FROM tp_condition_proof_files WHERE workspace_id=?').all(ctx.ws)).map(r => r.stored_path);
   assert.equal(stored.length, 2);
-  for (const s of stored) assert.ok(fs.existsSync(path.join(ROOT, 'uploads', `firm_${firmId}`, s)));
+  for (const s of stored) assert.ok(fs.existsSync(path.join(ROOT, 'uploads', `firm_${firmId}`, `client_${ctx.ws}`, s)));
   const deleted = await client.post(`/workspaces/${ctx.ws}/delete`, { confirm_name: 'Cond Deleted Client' });
   assert.equal(deleted.status, 302);
   for (const table of ['tp_condition_proofs', 'tp_condition_proof_files', 'tp_conditions', 'tp_events']) {
     assert.equal((await db.prepare(`SELECT COUNT(*)::int c FROM ${table} WHERE workspace_id=?`).get(ctx.ws)).c, 0, table);
   }
-  for (const s of stored) assert.equal(fs.existsSync(path.join(ROOT, 'uploads', `firm_${firmId}`, s)), false, 'stored file removed');
+  for (const s of stored) assert.equal(fs.existsSync(path.join(ROOT, 'uploads', `firm_${firmId}`, `client_${ctx.ws}`, s)), false, 'stored file removed');
 
   const c2 = await tprmClient('Cond Cascade Client');
   const ctx2 = await withConditions(c2, 'Cascade Co');

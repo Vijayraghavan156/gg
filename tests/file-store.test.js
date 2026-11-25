@@ -147,19 +147,40 @@ async function uploadEvidence(ctx, filename, content) {
   return request('POST', `${aBase(ctx)}/evidence`, { body, headers: { 'content-type': `multipart/form-data; boundary=${boundary}`, cookie: consultant.session.getCookies() } });
 }
 
-const local = row => path.join(store.ROOT, `firm_${firmId}`, row.stored_path);
-const keyOf = row => `firm_${firmId}/${row.stored_path}`;
+const local = row => path.join(store.ROOT, `firm_${firmId}`, `client_${row.workspace_id}`, row.stored_path);
+const keyOf = row => `firm_${firmId}/client_${row.workspace_id}/${row.stored_path}`;
+const firmLocal = row => path.join(store.ROOT, `firm_${firmId}`, row.stored_path);
+const firmKey = row => `firm_${firmId}/${row.stored_path}`;
 
-test('keys come only from files inside the uploads folder, one level of firm folder at most', () => {
+async function uploadGrcEvidence(ws, filename, content) {
+  await consultant.session.get(`/workspaces/${ws}/evidence`);
+  const boundary = '----fsg' + crypto.randomBytes(8).toString('hex');
+  const body = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="_csrf"\r\n\r\n${consultant.session.getCsrfToken()}\r\n`),
+    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: text/plain\r\n\r\n`),
+    Buffer.from(content), Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  return request('POST', `/workspaces/${ws}/evidence`, { body, headers: { 'content-type': `multipart/form-data; boundary=${boundary}`, cookie: consultant.session.getCookies() } });
+}
+
+test('keys come only from files inside the uploads folder: a firm folder, then a client folder inside it', () => {
   assert.equal(store.keyFor(path.join(store.ROOT, 'firm_3', 'a.pdf')), 'firm_3/a.pdf');
+  assert.equal(store.keyFor(path.join(store.ROOT, 'firm_3', 'client_7', 'a.pdf')), 'firm_3/client_7/a.pdf');
   assert.equal(store.keyFor(path.join(store.ROOT, 'legacy.pdf')), 'legacy.pdf');
   assert.equal(store.keyFor(path.join(store.ROOT, '..', 'server.js')), null);
   assert.equal(store.keyFor(path.join(store.ROOT, 'firm_3', 'x', 'a.pdf')), null);
+  assert.equal(store.keyFor(path.join(store.ROOT, 'firm_3', 'client_7', 'x', 'a.pdf')), null);
+  assert.equal(store.keyFor(path.join(store.ROOT, 'client_7', 'a.pdf')), null);
   assert.equal(store.keyFor(path.join(store.ROOT, 'other', 'a.pdf')), null);
   assert.equal(store.pathForKey('firm_3/a.pdf'), path.join(store.ROOT, 'firm_3', 'a.pdf'));
+  assert.equal(store.pathForKey('firm_3/client_7/a.pdf'), path.join(store.ROOT, 'firm_3', 'client_7', 'a.pdf'));
   assert.equal(store.pathForKey('firm_3/../../x'), null);
-  assert.deepEqual(store.candidates('../x', 3), []);
+  assert.deepEqual(store.candidates('../x', 3, 7), []);
   assert.deepEqual(store.candidates('a.pdf', 3), [path.join(store.ROOT, 'firm_3', 'a.pdf'), path.join(store.ROOT, 'a.pdf')]);
+  assert.deepEqual(store.candidates('a.pdf', 3, 7), [
+    path.join(store.ROOT, 'firm_3', 'client_7', 'a.pdf'), path.join(store.ROOT, 'firm_3', 'a.pdf'), path.join(store.ROOT, 'a.pdf')]);
+  assert.equal(store.dirFor(3, 7), path.join(store.ROOT, 'firm_3', 'client_7'));
+  assert.equal(store.dirFor(3), path.join(store.ROOT, 'firm_3'));
 });
 
 test('an upload is in the bucket before it is recorded; after the server loses its copy the download still works; deleting removes it', async () => {
@@ -196,7 +217,8 @@ test('if the bucket cannot take the file, nothing is recorded and nothing is lef
   }
   assert.equal(await db.prepare('SELECT count(*) AS n FROM tp_evidence WHERE assessment_id=?').get(ctx.a).then(r => Number(r.n)), 0);
   assert.equal(s3.objects.size, before);
-  const left = fs.readdirSync(path.join(store.ROOT, `firm_${firmId}`)).filter(n => n.endsWith('-down.txt'));
+  const dir = store.dirFor(firmId, ctx.ws);
+  const left = fs.existsSync(dir) ? fs.readdirSync(dir).filter(n => n.endsWith('-down.txt')) : [];
   assert.deepEqual(left, []);
 });
 
@@ -301,9 +323,108 @@ test('if the bucket cannot be reached the file shows as missing, not as an error
 test('deleting a firm deletes its files from the bucket and leaves other firms alone', async () => {
   s3.objects.set('firm_9901/a.txt', Buffer.from('a'));
   s3.objects.set('firm_9901/b.txt', Buffer.from('b'));
+  s3.objects.set('firm_9901/client_4/d.txt', Buffer.from('d'));
   s3.objects.set('firm_9902/c.txt', Buffer.from('c'));
-  assert.equal(await store.removeFirm(9901), 2);
-  assert.ok(!s3.objects.has('firm_9901/a.txt') && !s3.objects.has('firm_9901/b.txt'));
+  assert.equal(await store.removeFirm(9901), 3);
+  assert.ok(!s3.objects.has('firm_9901/a.txt') && !s3.objects.has('firm_9901/b.txt') && !s3.objects.has('firm_9901/client_4/d.txt'));
   assert.ok(s3.objects.has('firm_9902/c.txt'));
   s3.objects.delete('firm_9902/c.txt');
+});
+
+test('each client has its own folder: files from different clients of the same firm never share one', async () => {
+  const one = await confirmedAssessment('Folder Client One');
+  const two = await confirmedAssessment('Folder Client Two');
+  assert.equal((await uploadEvidence(one, 'one.txt', 'client one file')).status, 302);
+  assert.equal((await uploadEvidence(two, 'two.txt', 'client two file')).status, 302);
+  const a = await db.prepare('SELECT * FROM tp_evidence WHERE assessment_id=? AND original_name=?').get(one.a, 'one.txt');
+  const b = await db.prepare('SELECT * FROM tp_evidence WHERE assessment_id=? AND original_name=?').get(two.a, 'two.txt');
+  assert.ok(s3.objects.has(`firm_${firmId}/client_${one.ws}/${a.stored_path}`));
+  assert.ok(s3.objects.has(`firm_${firmId}/client_${two.ws}/${b.stored_path}`));
+  assert.ok(fs.existsSync(path.join(store.dirFor(firmId, one.ws), a.stored_path)));
+  assert.ok(!fs.existsSync(firmLocal(a)), 'nothing is written to the shared firm folder');
+  fs.rmSync(local(a), { force: true });
+  fs.rmSync(local(b), { force: true });
+});
+
+test('a compliance evidence upload goes to its client folder, opens after the server loses its copy, and deleting removes it', async () => {
+  const ctx = await confirmedAssessment('Folder Compliance');
+  const res = await uploadGrcEvidence(ctx.ws, 'grc-policy.txt', 'Access control policy');
+  assert.equal(res.status, 302);
+  const row = await db.prepare('SELECT * FROM evidence WHERE workspace_id=? AND filename=?').get(ctx.ws, 'grc-policy.txt');
+  assert.ok(row, 'the evidence was recorded');
+  assert.equal(s3.objects.get(keyOf(row)).toString(), 'Access control policy');
+  fs.unlinkSync(local(row));
+  const download = await request('GET', `/workspaces/${ctx.ws}/evidence/${row.id}/download`, { headers: { cookie: consultant.session.getCookies() } });
+  assert.equal(download.status, 200);
+  assert.equal(download.buffer.toString(), 'Access control policy');
+  await store.removeStored(row.stored_path, firmId, ctx.ws);
+  assert.ok(!s3.objects.has(keyOf(row)));
+  assert.ok(!fs.existsSync(local(row)));
+});
+
+test('a file stored before client folders still opens from the firm folder and is deleted from there', async () => {
+  const ctx = await confirmedAssessment('Folder Older File');
+  assert.equal((await uploadEvidence(ctx, 'older.txt', 'stored the old way')).status, 302);
+  const row = await db.prepare('SELECT * FROM tp_evidence WHERE assessment_id=? AND original_name=?').get(ctx.a, 'older.txt');
+  fs.renameSync(local(row), firmLocal(row));
+  s3.objects.set(firmKey(row), s3.objects.get(keyOf(row)));
+  s3.objects.delete(keyOf(row));
+
+  const fromDisk = await request('GET', `${aBase(ctx)}/evidence/${row.id}/download`, { headers: { cookie: consultant.session.getCookies() } });
+  assert.equal(fromDisk.status, 200);
+  assert.equal(fromDisk.buffer.toString(), 'stored the old way');
+  fs.unlinkSync(firmLocal(row));
+  const fromBucket = await request('GET', `${aBase(ctx)}/evidence/${row.id}/download`, { headers: { cookie: consultant.session.getCookies() } });
+  assert.equal(fromBucket.status, 200);
+  assert.equal(fromBucket.buffer.toString(), 'stored the old way');
+
+  await consultant.session.get(`${aBase(ctx)}?step=evidence`);
+  const del = await consultant.session.post(`${aBase(ctx)}/evidence/${row.id}/delete`, { row_version: String(row.row_version) });
+  assert.equal(del.status, 302);
+  assert.ok(!s3.objects.has(firmKey(row)), 'the old firm-folder copy is deleted from the bucket');
+  assert.ok(!fs.existsSync(firmLocal(row)));
+});
+
+test('copy files older uploads under their client in the bucket, and they still open from there', async () => {
+  const ctx = await confirmedAssessment('Folder Copy');
+  assert.equal((await uploadEvidence(ctx, 'to-sort.txt', 'sorted into a client folder')).status, 302);
+  const row = await db.prepare('SELECT * FROM tp_evidence WHERE assessment_id=? AND original_name=?').get(ctx.a, 'to-sort.txt');
+  fs.renameSync(local(row), firmLocal(row));
+  s3.objects.delete(keyOf(row));
+  const unclaimed = path.join(store.ROOT, `firm_${firmId}`, `${Date.now()}-unclaimed.txt`);
+  fs.writeFileSync(unclaimed, 'no record');
+
+  const r = await audit.copyLocal(db);
+  assert.ok(r.underClient >= 1);
+  assert.equal(s3.objects.get(keyOf(row)).toString(), 'sorted into a client folder');
+  assert.ok(!s3.objects.has(firmKey(row)), 'a file whose client is known is not also copied to the firm folder');
+  assert.equal(s3.objects.get(store.keyFor(unclaimed)).toString(), 'no record', 'a file no record names stays in the firm folder');
+  assert.equal((await audit.copyLocal(db)).copied, 0, 'running copy again copies nothing');
+
+  fs.unlinkSync(firmLocal(row));
+  const download = await request('GET', `${aBase(ctx)}/evidence/${row.id}/download`, { headers: { cookie: consultant.session.getCookies() } });
+  assert.equal(download.status, 200);
+  assert.equal(download.buffer.toString(), 'sorted into a client folder');
+  assert.ok(fs.existsSync(local(row)), 'it is cached in the client folder on this server');
+  const check = await audit.check(db);
+  assert.ok(!check.missing.some(m => m.table === 'tp_evidence' && m.id === Number(row.id)));
+  fs.unlinkSync(unclaimed);
+  s3.objects.delete(store.keyFor(unclaimed));
+});
+
+test('after copy, deleting an older file removes it from the firm folder on this server and the client folder in the bucket', async () => {
+  const ctx = await confirmedAssessment('Folder Copy Delete');
+  assert.equal((await uploadEvidence(ctx, 'copied-then-deleted.txt', 'delete me everywhere')).status, 302);
+  const row = await db.prepare('SELECT * FROM tp_evidence WHERE assessment_id=? AND original_name=?').get(ctx.a, 'copied-then-deleted.txt');
+  fs.renameSync(local(row), firmLocal(row));
+  s3.objects.delete(keyOf(row));
+  await audit.copyLocal(db);
+  assert.ok(s3.objects.has(keyOf(row)));
+  assert.ok(fs.existsSync(firmLocal(row)));
+
+  await consultant.session.get(`${aBase(ctx)}?step=evidence`);
+  const del = await consultant.session.post(`${aBase(ctx)}/evidence/${row.id}/delete`, { row_version: String(row.row_version) });
+  assert.equal(del.status, 302);
+  assert.ok(!s3.objects.has(keyOf(row)), 'the client-folder copy in the bucket is gone');
+  assert.ok(!fs.existsSync(firmLocal(row)), 'the firm-folder copy on this server is gone');
 });

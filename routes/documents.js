@@ -374,7 +374,7 @@ function register(app, deps) {
     const doc = await db.prepare('SELECT * FROM generated_docs WHERE id = ? AND workspace_id = ?')
       .get(req.params.id, req.workspace.id);
     if (!doc || !doc.source_stored_path) return res.status(404).send('No source file attached');
-    const fp = await resolveUploadPath(doc.source_stored_path, req.workspace.firm_id);
+    const fp = await resolveUploadPath(doc.source_stored_path, req.workspace.firm_id, req.workspace.id);
     if (!fp || !fs.existsSync(fp)) return res.status(404).send('Source file missing');
     res.download(fp, doc.source_filename || 'source');
   });

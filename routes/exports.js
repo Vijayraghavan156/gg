@@ -260,7 +260,7 @@ function register(app, deps) {
     const evidence = await db.prepare(`SELECT * FROM evidence WHERE workspace_id=?`).all(ws.id);
     let evIdx = 'EVIDENCE INDEX\n' + '='.repeat(40) + '\n\n';
     for (const e of evidence) {
-      const fp = await resolveUploadPath(e.stored_path, ws.firm_id);
+      const fp = await resolveUploadPath(e.stored_path, ws.firm_id, ws.id);
       if (fp && fs.existsSync(fp)) {
         zip.file(fp, { name: `08_Evidence/${e.id}_${e.filename}` });
         evIdx += `${e.id}_${e.filename}\n  Linked to: ${e.iso_item_id || '(general)'}\n  Uploaded: ${e.uploaded_at}\n  SHA-256: ${e.sha256}\n  Size: ${e.size_bytes} bytes\n  Description: ${e.description || '(none)'}\n\n`;

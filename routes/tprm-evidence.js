@@ -118,7 +118,7 @@ function registerRoutes(app, deps) {
 
   app.get(`${BASE}/evidence/:eid/download`, requireAuth, handler(async (req, res, actor) => {
     const file = await evidence.evidenceFile(db, actor, req.params.tpId, req.params.aid, req.params.eid);
-    const target = await resolveUploadPath(file.stored_path, actor.ws.firm_id);
+    const target = await resolveUploadPath(file.stored_path, actor.ws.firm_id, actor.ws.id);
     if (!target || !fs.existsSync(target)) {
       if (req.query.inline === '1') {
         res.set('X-Content-Type-Options', 'nosniff');
@@ -145,7 +145,7 @@ function registerRoutes(app, deps) {
     if (!TEXT_TYPES.includes(path.extname(String(file.original_name || '')).toLowerCase())) {
       return res.status(415).send('This file is not shown as text here. Download it to read it.');
     }
-    const read = await require('../lib/tprm/ai-review').extractFileText({ ...file, firm_id: actor.ws.firm_id });
+    const read = await require('../lib/tprm/ai-review').extractFileText({ ...file, firm_id: actor.ws.firm_id, workspace_id: actor.ws.id });
     if (!read.text) {
       return res.status(read.listed === 'missing' ? 404 : 422).send(read.listed === 'missing'
         ? 'This file is missing from storage. Contact your administrator.'
@@ -162,7 +162,7 @@ function registerRoutes(app, deps) {
 
   app.post(`${BASE}/evidence/:eid/delete`, requireAuth, handler(async (req, res, actor) => {
     const result = await evidence.deleteEvidence(db, actor, req.params.tpId, req.params.aid, req.params.eid, req.body);
-    await removeFiles([result.storedPath], storedPath => resolveUploadPath(storedPath, actor.ws.firm_id));
+    try { await fileStore.removeStored(result.storedPath, actor.ws.firm_id, actor.ws.id); } catch (_) {}
     return res.redirect(withToast(`${aUrl(actor, req.params.tpId, req.params.aid)}?step=evidence#evidence`, `"${result.evidence.original_name}" deleted`));
   }, { permission: 'tp.manage' }));
 

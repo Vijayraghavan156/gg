@@ -488,7 +488,7 @@ function register(app, deps) {
 
     for (const storedPath of storedPaths) {
       try {
-        await require('../lib/file-store').removeStored(storedPath, ws.firm_id);
+        await require('../lib/file-store').removeStored(storedPath, ws.firm_id, ws.id);
       } catch (_) {}
     }
 

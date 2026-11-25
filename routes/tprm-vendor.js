@@ -38,7 +38,6 @@ const conditionsLimiter = createFixedWindowLimiter(RATE_LIMIT);
 const conditionsPostLimiter = createFixedWindowLimiter(POST_RATE_LIMIT);
 const CONDITIONS_PREFIX = conditionLinks.LINK_PATH;
 const INVALID_STATUS = 404;
-const UPLOADS_ROOT = path.join(__dirname, '..', 'uploads');
 const PREFIX = questionnaires.LINK_PATH;
 const PORTAL = vendorSession.PORTAL_PATH;
 const BODY_LIMITS = Object.freeze({
@@ -98,11 +97,8 @@ function logError(req, err) {
   console.error('[request_error]', { method: req.method, path: `${prefix}[token]`, error: err && err.stack ? err.stack : String(err) });
 }
 
-function uploadedFile(firmId, stored) {
-  const dir = path.resolve(UPLOADS_ROOT, `firm_${Number(firmId)}`);
-  const name = path.basename(String(stored || ''));
-  const full = path.resolve(dir, name);
-  return name && path.dirname(full) === dir ? full : null;
+function uploadedFiles(ctx, stored) {
+  return fileStore.candidates(path.basename(String(stored || '')), ctx.firmId, ctx.workspaceId).map(p => ({ path: p }));
 }
 
 function removeFiles(files) {
@@ -147,7 +143,7 @@ function sameOrigin(req) {
 
 const storage = multer.diskStorage({
   destination(req, _file, cb) {
-    const dir = path.join(UPLOADS_ROOT, `firm_${Number(req.tprmVendor.firmId) || 0}`);
+    const dir = fileStore.dirFor(req.tprmVendor.firmId, req.tprmVendor.workspaceId);
     try {
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       fs.chmodSync(dir, 0o700);
@@ -456,7 +452,7 @@ function registerRoutes(app, { db }) {
     if (!result) { removeFiles(staged); return invalidPage(res); }
     removeFiles(result.staged);
     for (const stored of result.removedPaths) {
-      removeFiles([{ path: uploadedFile(ctx.firmId, stored) }]);
+      removeFiles(uploadedFiles(ctx, stored));
     }
     if (req.body.intent === 'review') {
       const fresh = await vendorAnswers.linkContext(db, req.vkey);
@@ -520,7 +516,7 @@ function registerRoutes(app, { db }) {
     if (!result) { removeFiles(staged); return invalidPage(res); }
     removeFiles(result.staged);
     for (const stored of result.removedPaths) {
-      removeFiles([{ path: uploadedFile(ctx.firmId, stored) }]);
+      removeFiles(uploadedFiles(ctx, stored));
     }
     const notice = result.outcome === 'added' ? 'report_added' : result.outcome === 'removed' ? 'report_removed' : 'report_updated';
     return res.redirect(303, `${req.vbase}?notice=${notice}#reports`);
@@ -566,7 +562,7 @@ function registerRoutes(app, { db }) {
       throw err;
     }
     if (!result) return invalidPage(res);
-    if (result.path) removeFiles([{ path: uploadedFile(pre.ctx.firmId, result.path) }]);
+    if (result.path) removeFiles(uploadedFiles(pre.ctx, result.path));
     const docNotice = result.deleted ? 'document_deleted' : 'document_saved';
     if (req.vsession && req.body.back === 'files') return res.redirect(303, `${PORTAL}files?notice=${docNotice}#review-${pre.ctx.assessmentId}`);
     return res.redirect(303, `${req.vbase}?view=documents&notice=${docNotice}`);

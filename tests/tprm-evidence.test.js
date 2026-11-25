@@ -81,7 +81,7 @@ const sha = text => crypto.createHash('sha256').update(Buffer.from(text, 'utf8')
 const unique = prefix => `${prefix}-${crypto.randomBytes(4).toString('hex')}`;
 const evidenceRow = async id => db.prepare('SELECT * FROM tp_evidence WHERE id=?').get(id);
 const findingRow = async id => db.prepare('SELECT * FROM tp_findings WHERE id=?').get(id);
-const storedFile = (stored, firm = firmId) => path.join(ROOT, 'uploads', `firm_${firm}`, stored);
+const storedFile = row => path.join(ROOT, 'uploads', `firm_${firmId}`, `client_${row.workspace_id}`, row.stored_path);
 const actions = async a => (await db.prepare(`SELECT action FROM tp_events WHERE chain_type='assessment' AND chain_id=? ORDER BY chain_seq`).all(a)).map(r => r.action);
 
 async function assessmentFor(ws, name = 'Acme', session = client) {
@@ -125,7 +125,9 @@ async function uploadOne(session, target, filename, content) {
 
 function stagedFor(name) {
   const dir = path.join(ROOT, 'uploads', `firm_${firmId}`);
-  return fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.endsWith(name.replace(/[^\w.-]/g, '_'))) : [];
+  if (!fs.existsSync(dir)) return [];
+  const dirs = [dir, ...fs.readdirSync(dir).filter(d => /^client_\d+$/.test(d)).map(d => path.join(dir, d))];
+  return dirs.flatMap(d => fs.readdirSync(d)).filter(f => f.endsWith(name.replace(/[^\w.-]/g, '_')));
 }
 
 async function wsRow(id) {
@@ -157,7 +159,7 @@ test('uploading several files stores each once with the sha256 of its bytes, and
     assert.equal(r.released_to_client, false);
     assert.equal(r.description, 'Sent by the third party');
     assert.equal(Number(r.uploaded_by), managerId);
-    const onDisk = fs.readFileSync(storedFile(r.stored_path));
+    const onDisk = fs.readFileSync(storedFile(r));
     assert.equal(crypto.createHash('sha256').update(onDisk).digest('hex'), r.sha256, 'the stored bytes match the recorded sha256');
   }
   assert.deepEqual(await actions(target.a), ['assessment.started', 'evidence.uploaded', 'evidence.uploaded']);
@@ -299,7 +301,7 @@ test('release is file by file and one-way; a released file cannot be deleted (ro
   assert.equal(refused.status, 409);
   assert.match(refused.text, /released to the client, so it cannot be deleted/);
   assert.ok(await evidenceRow(keep.id), 'the row stays');
-  assert.ok(fs.existsSync(storedFile(row.stored_path)), 'and so does the file');
+  assert.ok(fs.existsSync(storedFile(row)), 'and so does the file');
   await assert.rejects(ev.deleteEvidence(db, await managerActor(ws), target.tp, target.a, keep.id, { row_version: String(row.row_version) }),
     err => err.status === 409);
   await assert.rejects(db.prepare('DELETE FROM tp_evidence WHERE id=?').run(keep.id), /released to the client cannot be deleted/);
@@ -320,12 +322,12 @@ test('deleting an unreleased file removes the row and the stored file and record
   const target = await assessmentFor(ws, 'Delete Co');
   const row = await uploadOne(consultant.session, target, 'draft-questionnaire.txt', `Draft ${unique('d')}`);
   const base = aBase(ws, target.tp, target.a);
-  assert.ok(fs.existsSync(storedFile(row.stored_path)));
+  assert.ok(fs.existsSync(storedFile(row)));
   assert.equal((await consultant.session.post(`${base}/evidence/${row.id}/delete`, { row_version: '99' })).status, 409, 'stale row_version');
   const res = await consultant.session.post(`${base}/evidence/${row.id}/delete`, { row_version: String(row.row_version) });
   assert.equal(res.status, 302);
   assert.equal(await evidenceRow(row.id), undefined);
-  assert.equal(fs.existsSync(storedFile(row.stored_path)), false, 'the stored file is removed');
+  assert.equal(fs.existsSync(storedFile(row)), false, 'the stored file is removed');
   const event = await db.prepare(`SELECT actor_user_id, before_state FROM tp_events WHERE chain_id=? AND action='evidence.deleted'`).get(target.a);
   assert.equal(Number(event.actor_user_id), consultant.id);
   assert.equal(event.before_state.name, 'draft-questionnaire.txt');
@@ -492,7 +494,7 @@ test('deleting a workspace removes its evidence (released too), findings, links 
   for (const table of ['tp_evidence', 'tp_findings', 'tp_finding_evidence', 'tp_events', 'tp_assessments']) {
     assert.equal((await db.prepare(`SELECT COUNT(*)::int c FROM ${table} WHERE workspace_id=?`).get(ws)).c, 0, `${table} emptied`);
   }
-  for (const r of [released, internal]) assert.equal(fs.existsSync(storedFile(r.stored_path)), false, `${r.original_name} removed from storage`);
+  for (const r of [released, internal]) assert.equal(fs.existsSync(storedFile(r)), false, `${r.original_name} removed from storage`);
   const { immutableMutationTriggers } = require('../lib/workspace-deletion');
   assert.ok((await immutableMutationTriggers(db)).some(t => t.name === 'tp_evidence_guard'), 'the guard is back on after the purge');
 

@@ -56,16 +56,23 @@ the app deletes it from the bucket, and S3 keeps the old version for
 `uploads_noncurrent_version_days` (90 by default) so it can be restored.
 Without `ISMS_S3_BUCKET` the app keeps files on `/app/uploads` only, as before.
 
+Files are kept in a folder per firm and, inside it, a folder per client:
+`firm_<firm id>/client_<client id>/<file>`. Files that belong to the firm
+rather than to one client, such as the report letterhead logo, sit in
+`firm_<firm id>/`. The same layout is used in `/app/uploads`. Who can open a
+file is decided by the app from its record, not by the folder; only the task
+role can reach the bucket.
+
 Switching it on for an existing install:
 
-1. Make sure the files in `/app/uploads` survive the next deploy: check that
-   the running task definition mounts the `uploads` EFS access point there, or
-   copy the folder off the running task first. A deploy replaces the task, and
-   anything not on EFS is lost with it.
+1. Check that the running task mounts the `uploads` EFS access point at
+   `/app/uploads` (a stack built from this Terraform does). The copy in step 3
+   reads the existing files from there.
 2. Apply the stack, then deploy a release that includes the bucket support.
 3. From a running task (ECS Exec), copy the files in `/app/uploads` to the
-   bucket. Files already there are left alone, so it can be run again:
-   `node scripts/file-store.js copy`
+   bucket. Each file the database links to a client goes into that client's
+   folder; the rest stay in the firm folder. Files already there are left
+   alone, so it can be run again: `node scripts/file-store.js copy`
 4. List any stored file the database refers to that is in neither place, so it
    can be requested again: `node scripts/file-store.js check`
 

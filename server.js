@@ -328,8 +328,9 @@ const GENERAL_UPLOAD_EXTENSIONS = uploadSecurity.GENERAL_UPLOAD_EXTENSIONS;
 const rawUpload = multer({
   storage: multer.diskStorage({
     destination: function (req, _file, cb) {
-      const firmId = (req.workspace && req.workspace.firm_id) || (req.user && req.user.firm_id) || 0;
-      const dir = path.join(__dirname, 'uploads', `firm_${firmId}`);
+      const ws = req.workspace || (req.tprmActor && req.tprmActor.ws) || null;
+      const firmId = (ws && ws.firm_id) || (req.user && req.user.firm_id) || 0;
+      const dir = fileStore.dirFor(firmId, ws && Number(ws.firm_id) === Number(firmId) ? ws.id : 0);
       try {
         fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
         fs.chmodSync(dir, 0o700);
@@ -418,21 +419,22 @@ const xlsxUpload = {
   single: field => inspectedUpload(rawCsvUpload.single(field), new Set(['xlsx']))
 };
 
-async function resolveUploadPath(storedPath, firmId) {
+async function resolveUploadPath(storedPath, firmId, workspaceId) {
   if (!storedPath) return null;
-  const partitioned = firmId ? path.join(__dirname, 'uploads', `firm_${firmId}`, storedPath) : null;
-  const legacy = path.join(__dirname, 'uploads', storedPath);
-  const candidates = [partitioned, legacy].filter(Boolean);
-  for (const candidate of candidates) if (fs.existsSync(candidate)) return candidate;
   const name = String(storedPath);
-  if (fileStore.enabled() && path.basename(name) === name) {
+  const flat = path.basename(name) === name;
+  const candidates = flat
+    ? fileStore.candidates(name, firmId, workspaceId)
+    : [firmId ? path.join(__dirname, 'uploads', `firm_${firmId}`, name) : null, path.join(__dirname, 'uploads', name)].filter(Boolean);
+  for (const candidate of candidates) if (fs.existsSync(candidate)) return candidate;
+  if (fileStore.enabled() && flat) {
     try {
       for (const candidate of candidates) if (await fileStore.ensureLocal(candidate)) return candidate;
     } catch (err) {
       console.error('[file_store] could not fetch a stored file:', err && err.name ? err.name : 'error');
     }
   }
-  return partitioned || legacy;
+  return candidates[0];
 }
 
 async function getActiveFirmId(req) {

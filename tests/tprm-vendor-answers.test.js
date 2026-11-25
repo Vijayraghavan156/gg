@@ -436,7 +436,7 @@ test('files: attached to the question, checked like firm uploads, names only, ne
     assert.equal(r.source, 'vendor');
     assert.equal(r.uploaded_by, null);
     assert.ok(r.vendor_request_id);
-    assert.ok(fs.existsSync(path.join(ROOT, 'uploads', `firm_${firmId}`, r.stored_path)));
+    assert.ok(fs.existsSync(path.join(ROOT, 'uploads', `firm_${firmId}`, `client_${ctx.ws}`, r.stored_path)));
   }
   const links = await db.prepare(`SELECT a.question_id, l.evidence_id FROM tp_answer_evidence l JOIN tp_answers a ON a.id = l.answer_id
     WHERE l.assessment_id=? ORDER BY a.question_id`).all(ctx.a);
@@ -448,7 +448,7 @@ test('files: attached to the question, checked like firm uploads, names only, ne
   await save(ctx.token, { 'IAM-01': { r: 'yes' } }, { files: [{ field: 'file__IAM-01', filename: 'copy.pdf', content: pdf, type: 'application/pdf' }] });
   assert.equal((await db.prepare('SELECT COUNT(*)::int c FROM tp_evidence WHERE assessment_id=?').get(ctx.a)).c, 2);
   const count = async () => (await db.prepare('SELECT COUNT(*)::int c FROM tp_evidence WHERE assessment_id=?').get(ctx.a)).c;
-  const dir = path.join(ROOT, 'uploads', `firm_${firmId}`);
+  const dir = path.join(ROOT, 'uploads', `firm_${firmId}`, `client_${ctx.ws}`);
   const filesBefore = new Set(fs.readdirSync(dir));
   const mark = `refused-${process.pid}-${Date.now()}`;
   const exe = await save(ctx.token, { 'ORG-02': { r: 'yes' } }, { files: [{ field: 'file__ORG-02', filename: 'tool.exe', content: `MZ ${mark}` }] });
@@ -1253,7 +1253,7 @@ test('every change is an event in the assessment chain, the chain verifies, and 
   for (const table of ['tp_answers', 'tp_answer_evidence', 'tp_clarifications', 'tp_evidence', 'tp_questionnaires', 'tp_vendor_requests', 'tp_events']) {
     assert.equal((await db.prepare(`SELECT COUNT(*)::int c FROM ${table} WHERE workspace_id=?`).get(ctx.ws)).c, 0, table);
   }
-  for (const s of stored) assert.ok(!fs.existsSync(path.join(ROOT, 'uploads', `firm_${firmId}`, s)), 'stored file removed');
+  for (const s of stored) assert.ok(!fs.existsSync(path.join(ROOT, 'uploads', `firm_${firmId}`, `client_${ctx.ws}`, s)), 'stored file removed');
 });
 
 test('Your documents: upload once with a description, choose on several questions; never a firm file; take off, then delete', async () => {

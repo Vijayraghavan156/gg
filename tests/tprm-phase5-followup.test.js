@@ -241,7 +241,9 @@ async function vendorProof(token, cid, { note = 'Proof attached.', files = [], a
 
 function stagedFor(name) {
   const dir = path.join(ROOT, 'uploads', `firm_${firmId}`);
-  return fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.endsWith(name.replace(/[^\w.-]/g, '_'))) : [];
+  if (!fs.existsSync(dir)) return [];
+  const dirs = [dir, ...fs.readdirSync(dir).filter(d => /^client_\d+$/.test(d)).map(d => path.join(dir, d))];
+  return dirs.flatMap(d => fs.readdirSync(d)).filter(f => f.endsWith(name.replace(/[^\w.-]/g, '_')));
 }
 
 test('1. overdue conditions never suspend approval: flagged on the register, the third-party page, the portal and the report', async () => {
@@ -607,7 +609,7 @@ test('9. rate limits on the conditions link, and deleting a client removes its l
     if (viaRoute) {
       const res = await client.post(`/workspaces/${ctx.ws}/delete`, { confirm_name: name });
       assert.equal(res.status, 302);
-      for (const s of stored) assert.equal(fs.existsSync(path.join(ROOT, 'uploads', `firm_${firmId}`, s)), false, 'stored file removed');
+      for (const s of stored) assert.equal(fs.existsSync(path.join(ROOT, 'uploads', `firm_${firmId}`, `client_${ctx.ws}`, s)), false, 'stored file removed');
     } else {
       await db.prepare('DELETE FROM workspaces WHERE id=?').run(ctx.ws);
       for (const s of stored) createdPaths.add(s);

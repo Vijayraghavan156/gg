@@ -95,11 +95,11 @@ function register(app, deps) {
     return assignedToClient;
   }
 
-  async function clientDownloadSourceAvailable(storedPath, firmId) {
+  async function clientDownloadSourceAvailable(storedPath, firmId, workspaceId) {
     const token = String(storedPath || '');
     if (!token || path.basename(token) !== token) return false;
     try {
-      const filePath = await resolveUploadPath(token, firmId);
+      const filePath = await resolveUploadPath(token, firmId, workspaceId);
       if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return false;
       const uploadsRoot = fs.realpathSync(path.join(__dirname, '..', 'uploads'));
       const realFile = fs.realpathSync(filePath);
@@ -656,7 +656,7 @@ function register(app, deps) {
       const row = await db.prepare(`SELECT e.* FROM engagement_delivery_evidence de JOIN evidence e ON e.id=de.evidence_id
         WHERE de.deliverable_id=? AND de.evidence_id=? AND de.workspace_id=? AND e.workspace_id=?`).get(deliverable.id, req.params.evidenceId, req.workspace.id, req.workspace.id);
       if (!row) return res.status(404).send('Not found');
-      const filePath = await resolveUploadPath(row.stored_path, req.workspace.firm_id);
+      const filePath = await resolveUploadPath(row.stored_path, req.workspace.firm_id, req.workspace.id);
       if (!filePath || !fs.existsSync(filePath)) return res.status(404).send('File missing');
       await logAction(req.user.id, req.workspace.id, 'client_download_delivery_evidence', 'evidence', row.id, { deliverable_id: deliverable.id }, auditCtx(req));
       res.download(filePath, row.filename);
@@ -897,7 +897,7 @@ function register(app, deps) {
         INNER JOIN evidence e ON e.id=cre.evidence_id
         WHERE cre.request_id=? AND cre.evidence_id=? AND e.workspace_id=?`).get(request.id, req.params.evidenceId, req.workspace.id);
       if (!evidence) return res.status(404).send('Not found');
-      const fp = await resolveUploadPath(evidence.stored_path, req.workspace.firm_id);
+      const fp = await resolveUploadPath(evidence.stored_path, req.workspace.firm_id, req.workspace.id);
       if (!fp || !fs.existsSync(fp)) return res.status(404).send('File missing');
       await logAction(req.user.id, req.workspace.id, 'download_client_request_evidence', 'evidence', evidence.id,
         { request_id: request.id }, auditCtx(req));
