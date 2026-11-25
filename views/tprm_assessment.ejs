@@ -1,4 +1,4 @@
-<%- include('partials/header', { title: at.TYPE_LABELS[assessment.type] + ' · ' + thirdParty.name + ' · ' + tpClient.name, user, active }) %>
+<%- include('partials/header', { title: typeLabel + ' · ' + thirdParty.name + ' · ' + tpClient.name, user, active }) %>
 <%
   const a = assessment;
   const t = thirdParty;
@@ -149,14 +149,14 @@
   <a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span>
   <a href="/tprm/clients/<%= tpClient.id %>"><%= tpClient.name %></a><span class="tprm-crumb-sep" aria-hidden="true">/</span>
   <a href="<%= tpHref %>"><%= t.name %></a><span class="tprm-crumb-sep" aria-hidden="true">/</span>
-  <span aria-current="page"><%= at.TYPE_LABELS[a.type] %></span>
+  <span aria-current="page"><%= typeLabel %></span>
 </nav>
 
 <% const sl = typeof statusLine !== 'undefined' && statusLine ? statusLine : { key: st, text: statusText, tone: statusTone, action: null }; %>
 <div class="tprm-head tprm-head--line" data-tprm-assessment="<%= a.id %>" data-tprm-assessment-status="<%= a.status %>">
   <div class="tprm-head-main">
     <h1 class="page-title"><%= t.name %></h1>
-    <p class="tprm-asmt-facts"><%= [at.TYPE_LABELS[a.type], a.final_tier && tierConfirmed ? 'Tier ' + tierLabel(a.final_tier) : null, a.due_date ? 'Due ' + day(a.due_date) : null].filter(Boolean).join(' · ') %></p>
+    <p class="tprm-asmt-facts"><%= [typeLabel, a.final_tier && tierConfirmed ? 'Tier ' + tierLabel(a.final_tier) : null, a.due_date ? 'Due ' + day(a.due_date) : null].filter(Boolean).join(' · ') %></p>
     <p class="tprm-status-line" data-tprm-status-line="<%= sl.key %>" data-tprm-stage><%- include('partials/tprm_status', { text: sl.text, tone: sl.tone }) %></p>
   </div>
   <div class="tprm-head-actions">
@@ -486,7 +486,7 @@
 <div class="tprm-stack">
 <div class="panel" data-tprm-assessment-facts>
   <dl class="tprm-dl">
-    <div><dt>Assessment</dt><dd><%= at.TYPE_LABELS[a.type] %></dd></div>
+    <div><dt>Assessment</dt><dd><%= typeLabel %></dd></div>
     <div><dt>Status</dt><dd><%= statusText %></dd></div>
     <div><dt>Third party</dt><dd><%= tp.STATUS_LABELS[t.status] %><% if (t.current_tier) { %> · <%= tp.TIER_LABELS[t.current_tier] %> <span class="meta text-xs"><%= tp.TIER_SOURCE_LABELS[t.tier_source] %></span><% } %></dd></div>
     <div><dt>Criticality model</dt><dd data-tprm-model-version>Version <%= a.criticality_model_version %><% if (!modelIsActive) { %> <span class="meta text-xs">(the firm has activated a newer version; this assessment keeps the version it started under)</span><% } %></dd></div>

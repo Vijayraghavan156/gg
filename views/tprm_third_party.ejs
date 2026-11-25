@@ -83,7 +83,7 @@
     <% } else if (canManage && startType) { %>
       <form method="POST" action="<%= tpHref %>/assessments" data-tprm-start-assessment>
         <input type="hidden" name="_csrf" value="<%= csrf %>">
-        <button class="btn btn-primary" type="submit"><%= startType === 'onboarding' ? 'Start onboarding assessment' : 'Start reassessment' %></button>
+        <button class="btn btn-primary" type="submit"><%= startType === 'onboarding' ? 'Start onboarding assessment' : (t.last_assessment_date ? 'Start reassessment' : 'Start assessment') %></button>
       </form>
     <% } %>
   </div>
@@ -302,7 +302,7 @@
   <div class="panel-head"><h2>Assessments</h2><span class="meta"><%= assessmentList.length %></span></div>
   <% if (!assessmentList.length) { %>
     <div class="panel-pad meta" data-tprm-assessments-empty>
-      <% if (!startType) { %>Exited third parties are not assessed.<% } else { %>No assessment yet.<% if (canManage) { %> <%= startType === 'onboarding' ? 'A proposed third party gets an onboarding assessment.' : 'A third party in use gets a reassessment.' %> Start it with the button at the top of the page.<% } %><% } %>
+      <% if (!startType) { %>Exited third parties are not assessed.<% } else { %>No assessment yet.<% if (canManage) { %> <%= startType === 'onboarding' ? 'A proposed third party gets an onboarding assessment.' : (t.last_assessment_date ? 'A third party in use gets a reassessment.' : 'A third party in use gets an assessment.') %> Start it with the button at the top of the page.<% } %><% } %>
     </div>
   <% } else { %>
     <div class="table-scroll"><table class="t">

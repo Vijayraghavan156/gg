@@ -293,6 +293,13 @@ test('a file the third party attaches to an answer goes to the bucket too', asyn
   for (const [k, v] of [['_aft', aft], [`r[${qid}]`, 'yes'], [`v[${qid}]`, version], ['intent', 'save']]) parts.push(`--${boundary}`, `Content-Disposition: form-data; name="${k}"`, '', String(v));
   parts.push(`--${boundary}`, `Content-Disposition: form-data; name="file__${qid}"; filename="supplier-policy.txt"`, 'Content-Type: text/plain', '', 'Supplier security policy');
   parts.push(`--${boundary}--`, '');
+  const refusedParts = [];
+  for (const [k, v] of [['_aft', aft], [`r[${qid}]`, 'no'], [`v[${qid}]`, version], ['intent', 'save']]) refusedParts.push(`--${boundary}`, `Content-Disposition: form-data; name="${k}"`, '', String(v));
+  refusedParts.push(`--${boundary}`, `Content-Disposition: form-data; name="file__${qid}"; filename="supplier-policy.txt"`, 'Content-Type: text/plain', '', 'Supplier security policy');
+  refusedParts.push(`--${boundary}--`, '');
+  const refused = await request('POST', `/vendor/q/${token}/save`, { body: refusedParts.join('\r\n'), headers: { 'content-type': `multipart/form-data; boundary=${boundary}` } });
+  assert.equal(refused.status, 400);
+  assert.match(refused.text, /Attach supplier-policy\.txt again: nothing was saved, so the file was not kept\./, 'the supplier is told the file must be attached again');
   const saved = await request('POST', `/vendor/q/${token}/save`, { body: parts.join('\r\n'), headers: { 'content-type': `multipart/form-data; boundary=${boundary}` } });
   assert.equal(saved.status, 303);
   const row = await db.prepare(`SELECT * FROM tp_evidence WHERE assessment_id=? AND original_name='supplier-policy.txt'`).get(ctx.a);

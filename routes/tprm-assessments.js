@@ -62,7 +62,8 @@ function registerRoutes(app, deps) {
     const leads = await assessments.leadCandidates(db, actor.ws);
     const activeModel = await criticality.getActiveModel(db, Number(actor.ws.firm_id));
     const values = form || {
-      services: (assessment.services_in_scope || []).map(s => String(s.id)),
+      services: (assessment.services_in_scope || []).length ? assessment.services_in_scope.map(s => String(s.id))
+        : (assessment.status === 'scoping' && services.length === 1 ? [String(services[0].id)] : []),
       answers: assessment.answers || {},
       designation_choice: assessment.client_designation_choice || '',
       override_direction: assessment.client_designation_choice === 'keep_client_designation' ? 'none' : assessment.override_direction,
@@ -88,7 +89,9 @@ function registerRoutes(app, deps) {
       tierLabel: k => placement.TIER_LABELS[k] || k, conclusionLabels: require('../lib/tprm/questionnaire-review').CONCLUSION_LABELS,
       q: req.query && typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '',
     });
+    const typeLabel = await assessments.typeLabelFor(db, actor.ws.id, thirdParty, assessment);
     return res.status(status).render('tprm_assessment', {
+      typeLabel,
       statusLine,
       historyView,
       historyQuery: req.query && typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '',

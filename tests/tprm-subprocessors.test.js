@@ -238,3 +238,18 @@ test('isolation: another client\'s or firm\'s subprocessor is not found', async 
   await assert.rejects(db.prepare(`INSERT INTO tp_subprocessors (workspace_id, third_party_id, name, source) VALUES (?, ?, 'X', 'manual')`).run(b.id, ta), /foreign key/);
   assert.equal((await spRows(ta)).length, 1);
 });
+
+test('the client sees "After the first assessment" for a third party never assessed, and the real date once one was', async () => {
+  const c = await tprmClient('Next Review Client');
+  const fresh = await addThirdParty(c.id, 'Never Assessed Co');
+  const page = await c.owner.session.get(`/workspaces/${c.id}/client-portal/third-party-risk/third-parties/${fresh}`);
+  assert.equal(page.status, 200);
+  assert.match(page.text, /<dt>Next review<\/dt><dd>After the first assessment<\/dd>/);
+
+  const res = await client.post(`/tprm/clients/${c.id}/third-parties`, { name: 'Assessed Before Co', status: 'in_use', last_assessment_date: '2025-06-01' });
+  const before = idIn(res.location, /third-parties\/(\d+)/);
+  const due = (await db.prepare('SELECT next_due_date::text AS d FROM tp_third_parties WHERE id=?').get(before)).d;
+  assert.ok(due, 'a past assessment sets the next due date');
+  const later = await c.owner.session.get(`/workspaces/${c.id}/client-portal/third-party-risk/third-parties/${before}`);
+  assert.doesNotMatch(later.text, /After the first assessment/);
+});

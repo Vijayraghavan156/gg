@@ -101,6 +101,13 @@ function uploadedFiles(ctx, stored) {
   return fileStore.candidates(path.basename(String(stored || '')), ctx.firmId, ctx.workspaceId).map(p => ({ path: p }));
 }
 
+function attachAgain(files) {
+  return (files || []).filter(f => f && /^file__[A-Z0-9-]+$/.test(String(f.fieldname || ''))).map(f => ({
+    id: String(f.fieldname).slice(6),
+    message: `Attach ${String(f.originalname || 'your file').slice(0, 120)} again: nothing was saved, so the file was not kept.`,
+  }));
+}
+
 function removeFiles(files) {
   for (const file of files || []) {
     try { if (file && file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path); } catch (_) {}
@@ -444,7 +451,7 @@ function registerRoutes(app, { db }) {
     } catch (err) {
       removeFiles(staged);
       if (err instanceof TprmError && (err.status === 400 || err.status === 409)) {
-        const errors = err.errors || [err.message];
+        const errors = [...(err.errors || [err.message]), ...attachAgain(files)];
         return renderQuestionnaire(req, res, ctx, { status: err.status, errors, values: err.values || null, view: 'section', section: posted, postedVersions: req.body.v, postedComments: req.body.c });
       }
       throw err;
@@ -507,7 +514,7 @@ function registerRoutes(app, { db }) {
     } catch (err) {
       removeFiles(staged);
       if (err instanceof TprmError && (err.status === 400 || err.status === 409)) {
-        const errors = err.errors || [err.message];
+        const errors = [...(err.errors || [err.message]), ...(files.length ? ['Attach the report files again: nothing was saved, so they were not kept.'] : [])];
         return renderQuestionnaire(req, res, ctx, { status: err.status, errors, view: 'start',
           reportValues: err.reportKind ? { kind: err.reportKind, ...err.reportValues } : null });
       }

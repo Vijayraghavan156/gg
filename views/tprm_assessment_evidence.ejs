@@ -15,8 +15,8 @@
     <span class="meta" data-tprm-evidence-count><%= ep.evidence.length %> file<%= ep.evidence.length === 1 ? '' : 's' %> · <%= released %> released to the client · <%= ep.findings.length %> finding<%= ep.findings.length === 1 ? '' : 's' %></span>
   </div>
   <div class="panel-pad meta tprm-divide-b">
-    Release files to the client one by one; the rest stay internal.
-    <details class="tprm-how"><summary>How this works</summary>The recommendation report names every file on this assessment, but the client can open only the files you release, one by one. A file's description is never shown to the client. A released file cannot be deleted.</details>
+    Release files to the client one by one; the client sees them once the recommendation is issued. The rest stay internal.
+    <details class="tprm-how"><summary>How this works</summary>The recommendation report names every file on this assessment, but the client can open only the files you release, one by one, and only after the recommendation is issued. A file's description is never shown to the client. A released file cannot be deleted.</details>
   </div>
   <% if (ep.frozenMessage && ep.canRelease && !['completed', 'cancelled'].includes(assessment.status)) { %>
     <div class="callout tprm-inset" role="status" data-tprm-evidence-frozen>
@@ -52,7 +52,7 @@
         <td class="tprm-right tprm-nowrap">
           <% if (ep.canRelease && !e.released_to_client) { %>
             <form method="POST" action="<%= evBase %>/evidence/<%= e.id %>/release" class="tpu-inline-form" data-tprm-release-form>
-              <input type="hidden" name="_csrf" value="<%= evCsrf %>"><%- include('partials/tprm_confirm_fields', { title: 'Release this file to the client?', body: 'The client will see it in the portal, and a released file can no longer be deleted.', action: 'Release to client' }) %>
+              <input type="hidden" name="_csrf" value="<%= evCsrf %>"><%- include('partials/tprm_confirm_fields', { title: 'Release this file to the client?', body: 'The client can open it in the portal once the recommendation is issued. A released file can no longer be deleted.', action: 'Release to client' }) %>
               <input type="hidden" name="row_version" value="<%= e.row_version %>">
               <button class="btn btn-secondary btn-xs" type="submit" data-tprm-release>Release to client</button>
             </form>

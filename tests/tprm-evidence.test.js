@@ -236,6 +236,8 @@ test('download: firm users with access only; another client, firm or a client us
   const page = await client.get(aBase(ws, target.tp, target.a) + '?step=evidence');
   assert.match(page.text, new RegExp(`data-tp-preview="[^"]*/evidence/${pdfRow.id}/download\\?inline=1"`));
   assert.doesNotMatch(page.text, new RegExp(`data-tp-preview="[^"]*/evidence/${row.id}/download`), 'no preview link for a text file');
+  assert.match(page.text, /The client can open it in the portal once the recommendation is issued\. A released file can no longer be deleted\./, 'the release question says when the client sees the file');
+  assert.doesNotMatch(page.text, /will see it in the portal/);
 
   for (const wrong of [
     `${aBase(otherWs, target.tp, target.a)}/evidence/${row.id}/download`,

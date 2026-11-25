@@ -138,7 +138,9 @@ test('a proposed third party gets an onboarding assessment, one in use a reasses
 
   const page = await client.get(`/tprm/clients/${ws}/third-parties/${proposed}`);
   assert.match(page.text, /Start onboarding assessment/);
-  assert.match((await client.get(`/tprm/clients/${ws}/third-parties/${inUse}`)).text, /Start reassessment/);
+  assert.match((await client.get(`/tprm/clients/${ws}/third-parties/${inUse}`)).text, /Start assessment</, 'never assessed: its first assessment is not called a reassessment');
+  const assessedBefore = await addThirdParty(ws, { name: 'Assessed Before Co', status: 'in_use', last_assessment_date: '2025-06-01' });
+  assert.match((await client.get(`/tprm/clients/${ws}/third-parties/${assessedBefore}`)).text, /Start reassessment/);
   const exitedPage = await client.get(`/tprm/clients/${ws}/third-parties/${exited}`);
   assert.doesNotMatch(exitedPage.text, /data-tprm-start-assessment/);
   assert.match(exitedPage.text, /Exited third parties are not assessed/);
@@ -147,6 +149,12 @@ test('a proposed third party gets an onboarding assessment, one in use a reasses
   const reassessment = await start(ws, inUse);
   assert.equal((await assessmentRow(onboarding)).type, 'onboarding');
   assert.equal((await assessmentRow(reassessment)).type, 'reassessment');
+  const firstPage = await client.get(aBase(ws, inUse, reassessment));
+  assert.match(firstPage.text, /<title>Assessment · In Use Co/);
+  assert.doesNotMatch(firstPage.text, /<title>Reassessment/);
+  assert.match(firstPage.text, /<input type="checkbox" name="services" value="\d+" checked>/, 'the only service starts ticked');
+  const again = await start(ws, assessedBefore);
+  assert.match((await client.get(aBase(ws, assessedBefore, again))).text, /<title>Reassessment · Assessed Before Co/);
   assert.equal((await assessmentRow(onboarding)).status, 'scoping');
   assert.equal(Number((await assessmentRow(onboarding)).lead_consultant_id), consultant.id, 'the starter leads it');
 
