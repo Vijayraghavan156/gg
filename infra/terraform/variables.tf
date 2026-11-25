@@ -556,6 +556,12 @@ variable "uploads_bucket_enabled" {
   default     = true
 }
 
+variable "uploads_bucket_name" {
+  description = "Name of the uploads bucket. S3 names are global, so pick one that is unlikely to be taken. Null: <app>-<environment>-uploads-<account id>. Changing it after first apply creates a new, empty bucket."
+  type        = string
+  default     = null
+}
+
 variable "uploads_noncurrent_version_days" {
   description = "Days S3 keeps a replaced or deleted uploaded file before removing it for good."
   type        = number

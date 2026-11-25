@@ -4,7 +4,7 @@ resource "aws_s3_bucket" "uploads" {
   # checkov:skip=CKV2_AWS_62:No consumer for event notifications; the app reads and writes the files itself.
   count = var.uploads_bucket_enabled ? 1 : 0
 
-  bucket        = "${local.name}-uploads-${local.account_id}"
+  bucket        = coalesce(var.uploads_bucket_name, "${local.name}-uploads-${local.account_id}")
   force_destroy = false
 }
 
