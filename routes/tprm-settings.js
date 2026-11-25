@@ -315,11 +315,8 @@ function register(app, deps) {
     res.set('Content-Security-Policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:");
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('Cache-Control', 'no-store');
-    const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const html = asText
-      ? `<!doctype html><meta charset="utf-8"><pre style="margin:0;padding:16px;font:13px/1.55 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;color:#1b1f24;">Subject: ${esc(m.subject)}\n\n${esc(m.text || require('../lib/email').htmlToText(m.html))}</pre>`
-      : m.html;
-    return res.type('text/html; charset=utf-8').end(Buffer.from(html, 'utf8'));
+    if (asText) return res.type('text/html; charset=utf-8').render('tprm_email_preview_frame', { subject: m.subject, text: m.text || require('../lib/email').htmlToText(m.html) });
+    return res.type('text/html; charset=utf-8').end(Buffer.from(m.html, 'utf8'));
   }
 
   const editUrl = kind => `${EMAIL_BASE}/${encodeURIComponent(kind)}/edit`;
@@ -375,10 +372,9 @@ function register(app, deps) {
       const body = req.body || {};
       const { override, errors } = await emailTemplates.draftOverride(kind, { ...draftOf(body), format: 'rich' });
       if (errors.length) {
-        const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         res.set('Content-Security-Policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'");
         res.set('X-Content-Type-Options', 'nosniff');
-        return res.status(200).type('text/html; charset=utf-8').end(`<!doctype html><meta charset="utf-8"><div style="padding:16px;font:14px/1.55 -apple-system,'Segoe UI',Arial,sans-serif;color:#8a1f11;"><p style="margin:0 0 8px;font-weight:600;">Fix these before the preview can show:</p><ul style="margin:0;padding-left:20px;">${errors.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`);
+        return res.status(200).type('text/html; charset=utf-8').render('tprm_email_preview_frame', { errors });
       }
       return sendPreview(res, await emailTemplates.preview(kind, override, await firmDisplayName(req)), body.as === 'text');
     } catch (err) { return next(err); }
