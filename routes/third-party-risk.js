@@ -59,6 +59,25 @@ function register(app, deps) {
     next();
   });
 
+  const scope = require('../lib/tprm/scope');
+  const hidden = res => res.status(404).render('error', { user: res.req.user, message: 'This third party does not exist, or it is not available to your account.' });
+  app.use('/tprm/clients/:wsId/third-parties/:tpId', requireAuth, async (req, res, next) => {
+    try {
+      if (!req.user || !/^\d{1,12}$/.test(String(req.params.tpId)) || !/^\d{1,12}$/.test(String(req.params.wsId))) return next();
+      if (await scope.canSee(db, req.user, req.params.wsId, req.params.tpId)) return next();
+      return hidden(res);
+    } catch (err) { return next(err); }
+  });
+  app.use('/tprm/clients/:wsId/questionnaires-out/:aid', requireAuth, async (req, res, next) => {
+    try {
+      if (!req.user || !(await scope.restricted(db, req.user))) return next();
+      const a = /^\d{1,12}$/.test(String(req.params.aid)) && /^\d{1,12}$/.test(String(req.params.wsId))
+        ? await db.prepare('SELECT third_party_id FROM tp_assessments WHERE workspace_id = ? AND id = ?').get(Number(req.params.wsId), Number(req.params.aid)) : null;
+      if (a && await scope.canSee(db, req.user, req.params.wsId, a.third_party_id)) return next();
+      return hidden(res);
+    } catch (err) { return next(err); }
+  });
+
   app.use(['/tprm/review', '/tprm/due', '/tprm/conditions', '/tprm/settings/rulebooks'], (req, res, next) => {
     if (req.method === 'GET') res.locals.lq = require('../lib/tprm/list-query').from(req.query, req.baseUrl + req.path.replace(/\/$/, ''));
     next();
@@ -157,8 +176,9 @@ function register(app, deps) {
     const actor = { user: req.user, perms: loaded.perms, ws: loaded.ws };
     const regApprovals = await require('../lib/tprm/decisions').approvals(db, loaded.ws);
     const regStages = await require('../lib/tprm/pipeline').stagesForClient(db, loaded.ws.id);
+    const regVisible = await scope.visibleIds(db, req.user, [loaded.ws.id]);
     res.render('tprm_client_home', {
-      regTiles: await require('../lib/tprm/register-hub').tiles(db, loaded.ws, { approvals: regApprovals, stages: regStages }),
+      regTiles: await require('../lib/tprm/register-hub').tiles(db, loaded.ws, { approvals: regApprovals, stages: regStages, visible: regVisible }),
       user: req.user,
       active: 'tprm-portfolio',
       tpClient: {

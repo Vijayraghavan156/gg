@@ -18,6 +18,7 @@
       <details class="tprm-how"><summary>How this works</summary>Proposed tiers and recommendations waiting for a second person, and questionnaires the third party has submitted, across the clients you can reach. Your own tiers and recommendations are listed only where your firm lets managers confirm or issue their own, with a reason; otherwise someone else confirms or issues them.</details></div>
     <% } %>
   </div>
+  <a class="btn btn-secondary" href="/tprm/settings" data-tprm-settings-button>Settings</a>
 </div>
 <%- include('partials/tprm_home_tabs', { current: 'review' }) %>
 <% if (allRows) { %><%- L.form({ placeholder: 'Search a third party, client or person', shown: shownRows, total: allRows }) %><% } %>

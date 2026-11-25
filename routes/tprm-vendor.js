@@ -183,6 +183,45 @@ function limitError(err) {
   return 'The form could not be read. Nothing was saved: reload the page and try again.';
 }
 
+const firmRoutes = [];
+const FIRM_PATH = '/tprm/clients/:wsId/third-parties/:tpId/assessments/:aid/answer-for-supplier';
+
+function registerFirmRoutes(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces }) {
+  const access = require('../lib/tprm/access');
+  const lookup = { db, getWorkspace, permissionsFor, listWorkspaces };
+  const notFound = res => res.status(404).render('error', { user: res.req.user, message: 'This questionnaire does not exist, or it is not available to your account.' });
+  const fromFirm = async (req, res, next) => {
+    try {
+      const loaded = await access.loadFirmWorkspace(lookup, req.user, req.params.wsId);
+      if (!loaded || !access.can(req.user, loaded.perms, 'tp.manage')) return notFound(res);
+      const t = await questionnaires.firmEntryTarget(db, loaded.ws.id, req.params.tpId, req.params.aid);
+      if (!t) return notFound(res);
+      const back = `/tprm/clients/${loaded.ws.id}/third-parties/${Number(req.params.tpId)}/assessments/${t.assessmentId}`;
+      if (['submitted', 'under_review', 'closed'].includes(t.questionnaireStatus)) {
+        const message = 'The questionnaire is submitted: its answers are on the review step.';
+        if (req.method === 'GET') return res.redirect(303, `${back}?step=review&toast=${encodeURIComponent(message)}#questionnaire-answers`);
+        return res.status(409).render('error', { user: req.user, message });
+      }
+      if (!t.key) {
+        const message = 'The third party has no working link, so answers cannot be entered for them. Make a link first: it need not be emailed.';
+        if (req.method === 'GET') return res.redirect(303, `${back}?step=questionnaire&toast=${encodeURIComponent(message)}&toastKind=error#questionnaire`);
+        return res.status(409).render('error', { user: req.user, message });
+      }
+      req.vkey = t.key;
+      req.vtoken = null;
+      req.vbase = `${back}/answer-for-supplier`;
+      req.vsession = null;
+      req.vsessionLoaded = true;
+      req.vperson = null;
+      req.vfirm = req.user;
+      req.vfirmBack = back;
+      return next();
+    } catch (err) { return next(err); }
+  };
+  const firmAllowed = new Set(['get:', 'post:/save', 'post:/submit', 'get:/spreadsheet']);
+  for (const r of firmRoutes) if (firmAllowed.has(`${r.method}:${r.suffix}`)) app[r.method](`${FIRM_PATH}${r.suffix}`, requireAuth, fromFirm, r.handler);
+}
+
 function registerRoutes(app, { db }) {
   const page = (res, status, data) => renderView(res, status, 'tprm_vendor_questionnaire', data);
 
@@ -222,7 +261,7 @@ function registerRoutes(app, { db }) {
     const frame = await vendorPortal.frameFor(db, { firm: data.firm, session: req.vsession, person: req.vperson, workspaceId: ctx.workspaceId,
       thirdPartyId: ctx.thirdPartyId, reviewer: ctx.issuer, active: ctx.mode === 'answering' ? null : 'review',
       review: ctx.mode === 'answering' ? null : { base: req.vbase, issues: issueCount.total > 0, issuesWaiting: issueCount.waiting, group: `Questionnaire for ${ctx.clientName}` },
-      linkHome: req.vsession ? null : { action: `${req.vbase}/home`, aft } });
+      linkHome: req.vsession || req.vfirm ? null : { action: `${req.vbase}/home`, aft } });
     return page(res, status, {
       frame,
       contractInfo: contractInfo && contractInfo.total ? contractInfo : null,
@@ -244,6 +283,7 @@ function registerRoutes(app, { db }) {
       colleagues: req.vperson ? await vendorPeople.list(db, ctx.workspaceId, ctx.thirdPartyId) : null,
       mainContact: req.vperson && req.vperson.role !== 'main' ? (await vendorPeople.list(db, ctx.workspaceId, ctx.thirdPartyId)).find(x => x.role === 'main') || null : null,
       tpf: await datesFor(ctx.workspaceId),
+      firmEntry: req.vfirm ? { name: req.vfirm.name || req.vfirm.email, back: req.vfirmBack } : null,
     });
   }
 
@@ -252,7 +292,7 @@ function registerRoutes(app, { db }) {
     return Number.isSafeInteger(n) && n >= 1 && n <= 500 ? n : null;
   };
 
-  const aftKey = (req, hash) => (req.vsession ? `${hash}:${req.vsession.tokenHash}` : hash);
+  const aftKey = (req, hash) => (req.vfirm ? `${hash}:firm:${req.vfirm.id}` : req.vsession ? `${hash}:${req.vsession.tokenHash}` : hash);
   const aftFor = (req, hash) => vendorAnswers.formToken(aftKey(req, hash));
   const aftOk = (req, hash) => vendorAnswers.verifyFormToken(aftKey(req, hash), req.body && req.body._aft);
 
@@ -305,6 +345,7 @@ function registerRoutes(app, { db }) {
   };
 
   function vroute(method, family, suffix, handler) {
+    if (family === 'q') firmRoutes.push({ method, suffix, handler });
     app[method](`${family === 'c' ? CONDITIONS_PREFIX : PREFIX}:token${suffix}`, fromToken(family === 'c' ? 'c' : 'q'), handler);
     app[method](`${PORTAL}a/:aid${family === 'c' ? '/c' : ''}${suffix}`, fromSession(family), handler);
   }
@@ -394,7 +435,7 @@ function registerRoutes(app, { db }) {
     }
     let result;
     try {
-      result = await vendorAnswers.saveAnswers(db, req.vkey, req.body, files, { person: req.vperson });
+      result = await vendorAnswers.saveAnswers(db, req.vkey, req.body, files, { person: req.vperson, firmUser: req.vfirm || null });
     } catch (err) {
       removeFiles(staged);
       if (err instanceof TprmError && (err.status === 400 || err.status === 409)) {
@@ -528,13 +569,14 @@ function registerRoutes(app, { db }) {
     removeFiles(staged);
     let result;
     try {
-      result = await vendorAnswers.submit(db, req.vkey, { person: req.vperson });
+      result = await vendorAnswers.submit(db, req.vkey, { person: req.vperson, firmUser: req.vfirm || null });
     } catch (err) {
       if (err instanceof TprmError && err.status === 403) return renderQuestionnaire(req, res, pre.ctx, { status: 403, errors: [err.message], view: 'confirm' });
       throw err;
     }
     if (!result) return invalidPage(res);
     if (result.problems) return renderQuestionnaire(req, res, pre.ctx, { status: 409, view: 'confirm' });
+    if (req.vfirm) return res.redirect(303, `${req.vfirmBack}?step=review&toast=${encodeURIComponent('Submitted for the third party. The answers are ready to review')}`);
     await messages.vendorSubmitted(db, result);
     return renderState(res, 200, 'submitted', { clientName: result.clientName, submittedAt: result.submittedAt, issuesHref: await issuesHrefFor(req), tpf: await datesFor(pre.ctx.workspaceId) });
   }));
@@ -618,7 +660,7 @@ function registerRoutes(app, { db }) {
     const frame = await vendorPortal.frameFor(db, { firm: p.firm, session: req.vsession, person: req.vperson, workspaceId: vctx.workspaceId,
       thirdPartyId: vctx.thirdPartyId, active: req.vsession ? 'issues' : 'rissues',
       review: { base: req.vbase, issues: true, issuesWaiting: count.waiting, group: p.clientName ? `Questionnaire for ${p.clientName}` : null },
-      linkHome: req.vsession ? null : { action: `${req.vbase}/home`, aft } });
+      linkHome: req.vsession || req.vfirm ? null : { action: `${req.vbase}/home`, aft } });
     return renderView(res, status, 'tprm_vendor_issues', {
       p, frame,
       token: req.vtoken,
@@ -639,7 +681,7 @@ function registerRoutes(app, { db }) {
     const aft = aftFor(req, vctx.tokenHash);
     const frame = await vendorPortal.frameFor(db, { firm: p.firm, session: req.vsession, person: req.vperson, workspaceId: vctx.workspaceId,
       thirdPartyId: vctx.thirdPartyId, active: null, review: { base: req.vbase, label: 'Contract clauses' },
-      linkHome: req.vsession ? null : { action: `${req.vbase}/home`, aft } });
+      linkHome: req.vsession || req.vfirm ? null : { action: `${req.vbase}/home`, aft } });
     return renderView(res, status, 'tprm_vendor_contract', {
       p, c, frame, labels: contractChecklist.VENDOR_STATUS_LABELS, statuses: contractChecklist.VENDOR_STATUSES,
       token: req.vtoken, base: req.vbase, signedIn: req.vperson || null, aft, errors, notice, values,
@@ -964,4 +1006,4 @@ function safeValues(body) {
   return out;
 }
 
-module.exports = { register: registerRoutes, goTarget, bodyGuard, limiter, postLimiter, signInLimiter, conditionsLimiter, conditionsPostLimiter, RATE_LIMIT, POST_RATE_LIMIT, INVALID_STATUS, BODY_LIMITS, NOTICES };
+module.exports = { register: registerRoutes, registerFirm: registerFirmRoutes, FIRM_PATH, goTarget, bodyGuard, limiter, postLimiter, signInLimiter, conditionsLimiter, conditionsPostLimiter, RATE_LIMIT, POST_RATE_LIMIT, INVALID_STATUS, BODY_LIMITS, NOTICES };

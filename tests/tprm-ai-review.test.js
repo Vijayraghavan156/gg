@@ -332,8 +332,8 @@ test('submitting the questionnaire queues the automatic review; the job runs it 
 
   const page = await firmPage(ctx);
   assert.match(page.text, /data-tprm-ai-review/);
-  assert.match(page.text, /data-tprm-ai-provider-note>Anthropic · claude-opus-5-5/);
-  assert.match(page.text, /data-tprm-ai-group="GOV-01"[\s\S]*?data-tprm-ai-label>AI suggestion - not reviewed<[\s\S]*?No information security policy/);
+  assert.match(page.text, /data-tprm-ai-provider-note>Anthropic, claude-opus-5-5\./);
+  assert.match(page.text, /data-tprm-answer-row="GOV-01"[\s\S]*?data-tprm-ai-suggestion-status="pending"[\s\S]*?No information security policy/);
   assert.match(page.text, /data-tprm-ai-run-row="\d+" data-tprm-ai-run-status="succeeded"[\s\S]*?Automatic, on submission/);
   assert.match(page.text, /data-tprm-ai-accept-form/);
   assert.equal(await run(), 0, 'nothing left in the queue');
@@ -402,13 +402,13 @@ test('the request: vendor text only inside the data blocks, the injection rule, 
 test('a consultant runs the review by hand (tp.manage); one run at a time; "Run again" afterwards', async () => {
   const ctx = await confirmed('Manual Review Co');
   let page = await firmPage(ctx);
-  assert.match(page.text, /data-tprm-ai-run>Run AI review</);
-  assert.match(page.text, /data-tprm-ai-suggestions-empty>No AI review has finished/);
+  assert.match(page.text, /data-tprm-ai-run>Run Brevis</);
+  assert.match(page.text, /data-tprm-ai-suggestions-empty>Brevis has not finished a review/);
   const res = await consultant.session.post(`${base(ctx)}/ai-review`, {});
   assert.equal(res.status, 302);
-  assert.match(toast(res), /AI review requested/);
+  assert.match(toast(res), /Brevis is reviewing/);
   const again = await consultant.session.post(`${base(ctx)}/ai-review`, {});
-  assert.match(toast(again), /already waiting or running/);
+  assert.match(toast(again), /already reviewing this assessment/);
   let reviews = await reviewsOf(ctx.a);
   assert.equal(reviews.length, 1);
   assert.equal(reviews[0].run_trigger, 'manual');
@@ -423,10 +423,10 @@ test('a consultant runs the review by hand (tp.manage); one run at a time; "Run 
   const sent = userText(JSON.parse(calls[0].body));
   assert.match(sent, /kind=questionnaire_answers>>>\n\[\]/, 'no answers before the questionnaire is submitted');
   page = await firmPage(ctx);
-  assert.match(page.text, /data-tprm-ai-run>Run again</);
+  assert.match(page.text, /data-tprm-ai-run>Run Brevis again</);
   assert.match(page.text, /data-tprm-ai-suggestions-empty>The latest run made no suggestions/);
   assert.match(page.text, new RegExp(`data-tprm-ai-run-row="${reviews[0].id}"[\\s\\S]*?ai-consultant@test.local`));
-  assert.match(toast(await senior.session.post(`${base(ctx)}/ai-review`, {})), /AI review requested/);
+  assert.match(toast(await senior.session.post(`${base(ctx)}/ai-review`, {})), /Brevis is reviewing/);
   const owner = await makeUser('ai-manual-owner@test.local', { type: 'client', workspaceId: ctx.ws, memberRole: 'client_owner' });
   const ownerSession = await signIn(owner.email, owner.password);
   try {
@@ -450,11 +450,10 @@ test('no AI provider: the run is recorded as not set up, the page says so, nothi
   assert.equal(reviews[0].input_sha256, null);
   let page = await firmPage(ctx);
   assert.equal(page.status, 200);
-  assert.match(page.text, /data-tprm-ai-not-configured>[\s\S]*?AI review is not set up for this firm\./);
-  assert.match(page.text, /data-tprm-ai-provider-note>Not set up/);
+  assert.match(page.text, /data-tprm-ai-not-configured>[\s\S]*?Brevis is not set up for this firm\./);
   const res = await consultant.session.post(`${base(ctx)}/ai-review`, {});
   assert.equal(res.status, 302);
-  assert.match(toast(res), /AI review is not set up for this firm/);
+  assert.match(toast(res), /Brevis is not set up for this firm/);
   reviews = await reviewsOf(ctx.a);
   assert.deepEqual(reviews.map(r => r.status), ['not_configured', 'not_configured']);
   assert.equal(await run(), 0);
@@ -464,7 +463,7 @@ test('no AI provider: the run is recorded as not set up, the page says so, nothi
   page = await client.get('/tprm/settings/ai-review');
   assert.match(page.text, /data-tprm-ai-not-configured/);
   providerOn();
-  assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /requested/);
+  assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /Brevis is reviewing/);
   providerOff();
   await run();
   reviews = await reviewsOf(ctx.a);
@@ -726,7 +725,7 @@ test('the model\'s output is validated: malformed items and unknown ids are drop
   assert.throws(() => aiReview.validateSuggestions({ nothing: true }, { questionIds: new Map(), evidenceIds: new Set() }));
 
   reply = () => ({ json: { model: 'claude-opus-5-5', content: [{ type: 'text', text: 'Sure! Here you go.' }] } });
-  assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /requested/);
+  assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /Brevis is reviewing/);
   await run();
   let reviews = await reviewsOf(ctx.a);
   assert.equal(reviews[1].status, 'failed');
@@ -739,8 +738,8 @@ test('the model\'s output is validated: malformed items and unknown ids are drop
   assert.match(reviews[2].error, /HTTP 500/);
   assert.doesNotMatch(JSON.stringify(reviews), /SECRET-PROVIDER-TEXT/);
   const page = await firmPage(ctx);
-  assert.match(page.text, /data-tprm-ai-run-error>The AI provider returned an error \(HTTP 500\)/);
-  assert.match(page.text, /4 not decided/, 'a failed run keeps the latest finished run\'s suggestions');
+  assert.match(page.text, /data-tprm-ai-run-error>Brevis&#39;s AI provider returned an error \(HTTP 500\)/);
+  assert.match(page.text, /data-tprm-ai-to-decide="[1-9]\d*"/, 'a failed run keeps the latest finished run\'s suggestions');
 });
 
 test('accept, edit then accept, reject: findings with source ai_accepted, one decision each, every decision an event', async () => {
@@ -755,7 +754,7 @@ test('accept, edit then accept, reject: findings with source ai_accepted, one de
 
   let res = await consultant.session.post(`${base(ctx)}/ai-suggestions/${one.id}/accept`, {});
   assert.equal(res.status, 302);
-  assert.match(toast(res), /Finding added from the AI suggestion: Accept me/);
+  assert.match(toast(res), /Finding added from Brevis's suggestion: Accept me/);
   let f = await findingsOf(ctx.a);
   assert.equal(f.length, 1);
   assert.equal(f[0].source, 'ai_accepted');
@@ -774,7 +773,7 @@ test('accept, edit then accept, reject: findings with source ai_accepted, one de
   let form = await consultant.session.get(`${base(ctx)}/findings/new?suggestion=${two.id}`);
   assert.equal(form.status, 200);
   assert.match(form.text, new RegExp(`data-tprm-finding-from-suggestion="${two.id}"`));
-  assert.match(form.text, /AI suggestion - not reviewed/);
+  assert.match(form.text, /Brevis suggestion - not reviewed/);
   assert.match(form.text, /name="title" value="Edit me"/);
   assert.match(form.text, new RegExp(`action="${base(ctx)}/ai-suggestions/${two.id}/accept-edited"`));
   res = await consultant.session.post(`${base(ctx)}/ai-suggestions/${two.id}/accept-edited`, { control_ref: 'A.5.2', severity: 'medium', title: '' });
@@ -796,7 +795,7 @@ test('accept, edit then accept, reject: findings with source ai_accepted, one de
   assert.equal(Number(s2.finding_id), Number(f[1].id));
 
   res = await consultant.session.post(`${base(ctx)}/ai-suggestions/${three.id}/reject`, { reason: 'Covered elsewhere' });
-  assert.match(toast(res), /AI suggestion rejected/);
+  assert.match(toast(res), /Brevis suggestion rejected/);
   const s3 = (await suggestionsOf(ctx.a))[2];
   assert.equal(s3.status, 'rejected');
   assert.equal(s3.reject_reason, 'Covered elsewhere');
@@ -812,9 +811,9 @@ test('accept, edit then accept, reject: findings with source ai_accepted, one de
 
   const page = await firmPage(ctx);
   assert.match(page.text, /data-tprm-finding-source="ai_accepted"/);
-  assert.match(page.text, new RegExp(`data-tprm-ai-suggestion="${one.id}" data-tprm-ai-suggestion-status="accepted"[\\s\\S]*?data-tprm-ai-decided>Accepted<`));
-  assert.doesNotMatch(page.text.slice(page.text.indexOf('data-tprm-ai-suggestions'), page.text.indexOf('data-tprm-ai-runs')), /data-tprm-ai-label/,
-    'no suggestion is left labelled not reviewed');
+  assert.match(page.text, new RegExp(`data-tprm-ai-suggestion="${one.id}" data-tprm-ai-suggestion-status="accepted"[\\s\\S]*?data-tprm-ai-decided>Accepted by`));
+  assert.doesNotMatch(page.text, /data-tprm-ai-suggestion-status="pending"/, 'no suggestion is left undecided');
+  assert.doesNotMatch(page.text, /About the assessment as a whole/, 'suggestions not tied to an answer are not listed on the review step');
 
   const finding = (await findingsOf(ctx.a))[0];
   assert.equal((await consultant.session.post(`${base(ctx)}/findings/${finding.id}/remove`, { row_version: String(finding.row_version) })).status, 302);
@@ -835,7 +834,7 @@ test('decisions apply to the latest run only; a rerun replaces suggestions not d
   await consultant.session.post(`${base(ctx)}/ai-review`, {});
   await run();
   const res = await consultant.session.post(`${base(ctx)}/ai-suggestions/${old.id}/accept`, {});
-  assert.match(toast(res), /A later AI review replaced this suggestion/);
+  assert.match(toast(res), /A later Brevis review replaced this suggestion/);
   assert.equal((await findingsOf(ctx.a)).length, 0);
   const page = await firmPage(ctx);
   assert.match(page.text, /Second run/);
@@ -933,7 +932,7 @@ test('refusal and the output limit: stop_reason is read first; the run fails wit
   const failed = (await chain(ctx.ws, ctx.a)).find(e => e.action === 'ai_review.failed');
   assert.equal(failed.after_state.refusal_category, 'cyber');
   let page = await firmPage(ctx);
-  assert.match(page.text, /data-tprm-ai-run-error>The AI provider declined to review this assessment[^<]*\(category: cyber\)/);
+  assert.match(page.text, /data-tprm-ai-run-error>Brevis declined to review this assessment[^<]*\(category: cyber\)/);
 
   calls.length = 0;
   reply = () => ({ json: { model: 'claude-opus-5-5', stop_reason: 'refusal', stop_details: { category: 'Free text <b>' }, content: [] } });
@@ -980,12 +979,12 @@ test('the model that served is recorded: a refusal fallback shows on the run', a
 test('rerun limit: 3 runs per assessment in 24 hours; a manager runs past it with a reason, recorded on the run and the event', async () => {
   const ctx = await confirmed('Limit Co');
   for (let i = 0; i < 3; i += 1) {
-    assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /AI review requested/);
+    assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /Brevis is reviewing/);
     await run();
   }
   assert.equal(await aiReview.recentRuns(db, ctx.ws, ctx.a), 3);
   let page = await firmPage(ctx);
-  assert.match(page.text, /data-tprm-ai-limit>This assessment has had 3 AI reviews in the last 24 hours/);
+  assert.match(page.text, /data-tprm-ai-limit>This assessment has had 3 Brevis reviews in the last 24 hours/);
   assert.match(page.text, /data-tprm-ai-recent> Runs in the last 24 hours: 3 of 3/);
   assert.doesNotMatch(page.text, /data-tprm-ai-run>/, 'no run button for a consultant at the limit');
   assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, { override_reason: 'Please' })), /A manager can run it again with a reason/);
@@ -1027,7 +1026,7 @@ test('rerun limit: 3 runs per assessment in 24 hours; a manager runs past it wit
   for (let i = 0; i < 4; i += 1) assert.match(toast(await consultant.session.post(`${base(off)}/ai-review`, {})), /not set up/);
   providerOn();
   assert.equal(await aiReview.recentRuns(db, off.ws, off.a), 0);
-  assert.match(toast(await consultant.session.post(`${base(off)}/ai-review`, {})), /AI review requested/);
+  assert.match(toast(await consultant.session.post(`${base(off)}/ai-review`, {})), /Brevis is reviewing/);
   await run();
 });
 
@@ -1035,7 +1034,7 @@ test('rerun limit: automatic runs count, and at the limit the automatic run is s
   const ctx = await submitted('Auto Limit Co', {
     beforeSubmit: async c => {
       for (let i = 0; i < 3; i += 1) {
-        assert.match(toast(await consultant.session.post(`${base(c)}/ai-review`, {})), /AI review requested/);
+        assert.match(toast(await consultant.session.post(`${base(c)}/ai-review`, {})), /Brevis is reviewing/);
         await run();
       }
     },
@@ -1051,7 +1050,7 @@ test('rerun limit: automatic runs count, and at the limit the automatic run is s
   const other = await submitted('Auto Counts Co');
   await run();
   for (let i = 0; i < 2; i += 1) {
-    assert.match(toast(await consultant.session.post(`${base(other)}/ai-review`, {})), /AI review requested/);
+    assert.match(toast(await consultant.session.post(`${base(other)}/ai-review`, {})), /Brevis is reviewing/);
     await run();
   }
   assert.match(toast(await consultant.session.post(`${base(other)}/ai-review`, {})), /A manager can run it again with a reason/);
@@ -1084,7 +1083,7 @@ test('suggested conclusions: one per answer, validated; Accept sets the answer\'
   assert.equal(done.after_state.conclusions, 2);
 
   let page = await firmPage(ctx);
-  assert.match(page.text, new RegExp(`data-tprm-ai-suggestion="${gov.id}"[\\s\\S]*?data-tprm-ai-label>AI suggestion - not reviewed<[\\s\\S]*?data-tprm-ai-conclusion="unsatisfactory">Suggested conclusion: Unsatisfactory<[\\s\\S]*?Why: GOV-01 answered No[\\s\\S]*?data-tprm-ai-accept>Accept conclusion<`));
+  assert.match(page.text, new RegExp(`data-tprm-ai-suggestion="${gov.id}"[\\s\\S]*?data-tprm-ai-suggestion-status="pending"[\\s\\S]*?data-tprm-ai-conclusion="unsatisfactory">Brevis suggests: Unsatisfactory<[\\s\\S]*?GOV-01 answered No[\\s\\S]*?data-tprm-ai-accept>Accept<`));
   assert.doesNotMatch(page.text, new RegExp(`findings/new\\?suggestion=${gov.id}"`), 'no "Edit, then accept" for a conclusion');
   assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-suggestions/${gov.id}/accept-edited`, { title: 'x', severity: 'low' })), /suggested conclusion: accept it or reject it/);
   assert.equal((await consultant.session.get(`${base(ctx)}/findings/new?suggestion=${gov.id}`)).status, 409);
@@ -1092,7 +1091,7 @@ test('suggested conclusions: one per answer, validated; Accept sets the answer\'
   const before = await answerOf(ctx.a, 'GOV-01');
   let res = await consultant.session.post(`${base(ctx)}/ai-suggestions/${gov.id}/accept`, {});
   assert.equal(res.status, 302);
-  assert.match(toast(res), /Reviewer conclusion set from the AI suggestion: Unsatisfactory/);
+  assert.match(toast(res), /Reviewer conclusion set from Brevis's suggestion: Unsatisfactory/);
   const after = await answerOf(ctx.a, 'GOV-01');
   assert.equal(after.review_conclusion, 'unsatisfactory');
   assert.equal(Number(after.reviewed_by), consultant.id);
@@ -1105,7 +1104,7 @@ test('suggested conclusions: one per answer, validated; Accept sets the answer\'
   assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-suggestions/${gov.id}/accept`, {})), /already been decided/);
 
   res = await consultant.session.post(`${base(ctx)}/ai-suggestions/${ais.id}/reject`, { reason: 'Need to see the AI policy' });
-  assert.match(toast(res), /AI suggestion rejected/);
+  assert.match(toast(res), /Brevis suggestion rejected/);
   assert.equal((await answerOf(ctx.a, 'AIS-01')).review_conclusion, 'not_reviewed');
   s = (await suggestionsOf(ctx.a))[1];
   assert.equal(s.status, 'rejected');
@@ -1141,7 +1140,7 @@ test('the review workbench: a suggested Partially satisfactory puts a plain answ
   ] });
   await run();
   const page = await consultant.session.get(`${base(ctx)}?step=review`);
-  assert.match(page.text, /data-tprm-answer-row="CLM-01"[\s\S]*?data-tprm-answer-reasons>Needs judgement: AI review suggests partially satisfactory\.[\s\S]*?data-tprm-answer-ai="\d+"[\s\S]*?does not name the backup owner/);
+  assert.match(page.text, /data-tprm-answer-row="CLM-01"[\s\S]*?data-tprm-answer-reasons>Needs judgement: Brevis suggests partially satisfactory\.[\s\S]*?data-tprm-answer-ai="\d+"[\s\S]*?does not name the backup owner/);
   assert.doesNotMatch(page.text, /data-tprm-answer-item="PRV-01"/, 'a suggested Satisfactory leaves a plain answer plain');
   const ids = (page.text.match(/data-tprm-accept-plain-form="all"[\s\S]*?name="ids" value="([\d,]+)"/) || [])[1];
   const prv = await answerOf(ctx.a, 'PRV-01');
@@ -1175,7 +1174,7 @@ test('accepting a suggested conclusion needs the answers\' review to be open (re
   assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-suggestions/${gov.id}/accept`, {})), /review of the answers is closed/);
   assert.equal((await answerOf(ctx.a, 'GOV-01')).review_conclusion, 'satisfactory', 'unchanged');
   assert.equal((await suggestionsOf(ctx.a))[0].status, 'pending');
-  assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-suggestions/${ais.id}/reject`, {})), /AI suggestion rejected/);
+  assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-suggestions/${ais.id}/reject`, {})), /Brevis suggestion rejected/);
 });
 
 test('freeze: no run and no decision once the recommendation is submitted; a run queued before then fails without sending; the portal never shows AI output', async () => {
@@ -1201,7 +1200,7 @@ test('freeze: no run and no decision once the recommendation is submitted; a run
   const [acc, pend] = await suggestionsOf(ctx.a);
   assert.equal((await consultant.session.post(`${base(ctx)}/ai-suggestions/${acc.id}/accept`, {})).status, 302);
 
-  assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /requested/);
+  assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /Brevis is reviewing/);
   await consultant.session.post(`${base(ctx)}/details`, { client_decision_owner_id: String(owner.id), due_date: '', row_version: String((await assessmentRow(ctx.a)).row_version) });
   const rec = await consultant.session.post(`${base(ctx)}/recommendations`, { row_version: String((await assessmentRow(ctx.a)).row_version) });
   assert.equal(rec.status, 302, toast(rec));
@@ -1240,7 +1239,7 @@ test('freeze: no run and no decision once the recommendation is submitted; a run
     assert.equal(recPage.status, 200);
     assert.match(recPage.text, /PORTAL-ACCEPTED-TITLE/, 'an accepted finding reaches the client as a finding');
     for (const text of [list.text, recPage.text]) {
-      assert.doesNotMatch(text, /PORTAL-PENDING-TITLE|AI-ONLY-DESCRIPTION|AI-ONLY-RATIONALE|AI suggestion|ai_accepted|AI first-pass|data-tprm-ai/);
+      assert.doesNotMatch(text, /PORTAL-PENDING-TITLE|AI-ONLY-DESCRIPTION|AI-ONLY-RATIONALE|AI suggestion|Brevis|ai_accepted|AI first-pass|data-tprm-ai/);
     }
     assert.equal((await allSteps(ownerSession, base(ctx))).status, 404, 'the firm page is not for client users');
   } finally {
@@ -1304,14 +1303,14 @@ test('the firm\'s switch: managers turn the automatic review off and on; off, a 
   assert.equal(page.status, 200);
   assert.match(page.text, /data-tprm-ai-auto-state>On</, 'on by default');
   assert.match(page.text, /data-tprm-ai-provider-name>Provider: <strong>Anthropic<\/strong>, model <strong>claude-opus-5-5<\/strong>/);
-  assert.match((await client.get('/tprm')).text, /data-tprm-ai-settings-link/);
+  assert.match((await client.get('/tprm/settings')).text, /data-tprm-ai-settings-link/);
   assert.equal((await consultant.session.get('/tprm/settings/ai-review')).status, 403);
   assert.equal((await consultant.session.post('/tprm/settings/ai-review', { row_version: '0' })).status, 403);
   assert.equal((await senior.session.get('/tprm/settings/ai-review')).status, 403);
-  assert.doesNotMatch((await consultant.session.get('/tprm')).text, /data-tprm-ai-settings-link/);
+  assert.doesNotMatch((await consultant.session.get('/tprm/settings')).text, /data-tprm-ai-settings-link/);
   const rv = (page.text.match(/name="row_version" value="(\d+)"/) || [])[1];
   let res = await client.post('/tprm/settings/ai-review', { row_version: rv });
-  assert.match(toast(res), /switched off/);
+  assert.match(toast(res), /no longer run automatically/);
   assert.equal((await db.prepare('SELECT ai_review_auto FROM tp_firm_settings WHERE firm_id=?').get(firmId)).ai_review_auto, false);
   assert.match(toast(await client.post('/tprm/settings/ai-review', { row_version: rv })), /changed this setting/, 'a stale form is refused');
   try {
@@ -1321,13 +1320,13 @@ test('the firm\'s switch: managers turn the automatic review off and on; off, a 
     assert.equal(calls.length, 0);
     const firm = await firmPage(ctx);
     assert.match(firm.text, /The firm has switched the automatic review off: run it by hand/);
-    assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /requested/);
+    assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /Brevis is reviewing/);
     await run();
     assert.equal((await reviewsOf(ctx.a))[0].status, 'succeeded');
   } finally {
     page = await client.get('/tprm/settings/ai-review');
     res = await client.post('/tprm/settings/ai-review', { auto_review: '1', row_version: (page.text.match(/name="row_version" value="(\d+)"/) || [])[1] });
-    assert.match(toast(res), /switched on/);
+    assert.match(toast(res), /Brevis will run automatically/);
   }
 });
 
@@ -1336,12 +1335,12 @@ test('a run left "running" (the server stopped) is failed by the next pass, so t
   await consultant.session.post(`${base(ctx)}/ai-review`, {});
   const [r] = await reviewsOf(ctx.a);
   await db.prepare(`UPDATE tp_ai_reviews SET status='running', started_at=now() - interval '1 hour', provider='anthropic', model='m' WHERE id=?`).run(r.id);
-  assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /already waiting or running/);
+  assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /already reviewing this assessment/);
   await run();
   const rows = await reviewsOf(ctx.a);
   assert.equal(rows[0].status, 'failed');
   assert.equal(rows[0].error, aiReview.ERRORS.stale);
-  assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /requested/);
+  assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /Brevis is reviewing/);
   await run();
   assert.equal((await reviewsOf(ctx.a))[1].status, 'succeeded');
   await assert.rejects(db.prepare(`UPDATE tp_ai_reviews SET status='queued' WHERE id=?`).run(r.id), /finished review cannot change/);
@@ -1359,7 +1358,7 @@ test('the event chain verifies, and deleting the client removes its AI reviews, 
     assert.ok(actions.includes(want), want);
   }
   const done = (await chain(ctx.ws, ctx.a)).find(e => e.action === 'ai_review.succeeded');
-  assert.deepEqual(Object.keys(done.after_state).sort(), ['by', 'conclusions', 'dropped', 'input_sha256', 'review_id', 'served_model', 'status', 'suggestions']);
+  assert.deepEqual(Object.keys(done.after_state).sort(), ['by', 'conclusions', 'documents', 'dropped', 'input_sha256', 'review_id', 'served_model', 'status', 'suggestions']);
   assert.deepEqual(await events.verifyChains(db, ctx.ws), []);
   const name = (await db.prepare('SELECT client_name FROM workspaces WHERE id=?').get(ctx.ws)).client_name;
   assert.equal((await client.post(`/workspaces/${ctx.ws}/delete`, { confirm_name: name })).status, 302);
@@ -1437,7 +1436,7 @@ test('streaming: an error event, a stream cut short and an idle stream fail the 
   await run();
   let review = (await reviewsOf(ctx.a)).at(-1);
   assert.equal(review.status, 'failed');
-  assert.equal(review.error, 'The AI provider returned an error (HTTP 529). Run the review again later.');
+  assert.equal(review.error, "Brevis's AI provider returned an error (HTTP 529). Run it again later.");
 
   reply = () => ({ events: [...startOnly, { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }] });
   await consultant.session.post(`${base(ctx)}/ai-review`, {});
@@ -1449,7 +1448,7 @@ test('streaming: an error event, a stream cut short and an idle stream fail the 
   try {
     reply = () => ({ events: startOnly, hang: true });
     const started = Date.now();
-    assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /requested/);
+    assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /Brevis is reviewing/);
     await run();
     review = (await reviewsOf(ctx.a)).at(-1);
     assert.equal(review.status, 'failed');
@@ -1580,11 +1579,102 @@ test('recommendation report: "not returned" without the firm\'s reason, and no A
   const closed = await consultant.session.post(`${qBase(ctx)}/not-returned`, { reason: 'SECRET-NOT-RETURNED-REASON their CISO left', row_version: String(q.row_version) });
   assert.equal(closed.status, 302, toast(closed));
   reply = aiReply;
-  assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /requested/);
+  assert.match(toast(await consultant.session.post(`${base(ctx)}/ai-review`, {})), /Brevis is reviewing/);
   await run();
   assert.equal((await reviewsOf(ctx.a))[0].status, 'succeeded');
   const html = await reportHtml(ctx, await issueRecommendation(ctx));
   assert.match(html, /Report Not Returned Co did not return it\./);
   assert.doesNotMatch(html, /data-report-results/, 'not returned: no results by area');
   for (const m of [...AI_MARKERS, 'SECRET-NOT-RETURNED-REASON']) assert.equal(html.includes(m), false, `${m} is not in the report`);
+});
+
+test('marking each answer and reading each document: the firm\'s marking guide is sent; answer checks and readings are kept and shown to the firm', async () => {
+  await db.prepare(`INSERT INTO tp_marking_guides (firm_id, question_id, valid_answer, satisfactory, partly, red_flags) VALUES (?, 'GOV-01', 'VALID-MARKER-7310 names the approver.', ?, 'Policy exists but is old.', 'No owner named.')
+    ON CONFLICT (firm_id, question_id) DO UPDATE SET satisfactory = EXCLUDED.satisfactory, valid_answer = EXCLUDED.valid_answer`).run(firmId, 'GUIDE-MARKER-5521 an approved policy reviewed yearly.');
+  const ctx = await submitted('Marking Co');
+  const reading = over => ({ evidence_id: ctx.fileId, document_kind: 'Information security policy', matches_request: 'no', title: 'Security Policy',
+    version_history: false, approval_date: '2024-01-15', contents_list: false, note: '', ...over });
+  reply = () => toolReply([], { documents: [reading({}), reading({ evidence_id: 99999999 }), reading({ title: 'A second reading of the same file' }), 'not an object'] }, { conclusions: [
+    { question_id: 'GOV-01', conclusion: 'partially_satisfactory', answer_check: 'partly_answers', rationale: 'It names a policy but no owner.' },
+    { question_id: 'AIS-01', conclusion: 'satisfactory', answer_check: 'something else', rationale: 'No AI is used.' },
+  ] });
+  calls.length = 0;
+  await run();
+  const sent = JSON.parse(calls.at(-1).body);
+  assert.match(userText(sent), /firm_marking_guide[\s\S]*?GUIDE-MARKER-5521/);
+  assert.match(userText(sent), /firm_marking_guide[\s\S]*?"valid_answer":\s*"VALID-MARKER-7310 names the approver\."/);
+  assert.match(sent.system, /valid_answer: what counts as a usable answer at all/);
+  assert.doesNotMatch(userText(sent), /checking_instructions/);
+  assert.match(sent.system, /firm_marking_guide/);
+  assert.match(sent.system, /for every answer in the questionnaire_answers block/);
+  assert.match(sent.system, /say which part of the firm_marking_guide[\s\S]*?what is missing or contradicts the guide[\s\S]*?Name the file you relied on/);
+  assert.match(sent.system, /Never write only that the answer is adequate/);
+  const tool = sent.tools[0].input_schema;
+  assert.deepEqual(tool.required, ['suggestions', 'conclusions', 'documents']);
+  assert.ok(tool.properties.conclusions.items.required.includes('answer_check'));
+
+  const [review] = await reviewsOf(ctx.a);
+  assert.equal(review.status, 'succeeded');
+  assert.deepEqual(review.documents.map(d => [d.evidence_id, d.title, d.approval_date, d.matches_request, d.partly_read]),
+    [[ctx.fileId, 'Security Policy', '2024-01-15', 'no', false]]);
+  assert.deepEqual(review.conclusions.map(c => [c.question_id, c.answer_check]), [['GOV-01', 'partly_answers'], ['AIS-01', null]]);
+
+  let page = await firmPage(ctx);
+  assert.match(page.text, /data-tprm-ai-marks>Brevis review of [^,]+, 2 of \d+ answers marked: 0 answer the question · 1 partly · 0 do not/);
+  assert.match(page.text, new RegExp(`data-tprm-file-checks="${ctx.fileId}"[\\s\\S]*?data-tprm-file-check="ai_read">Brevis read it: Information security policy, titled &#34;Security Policy&#34;, approved 15 Jan 2024`));
+  assert.match(page.text, /data-tprm-file-check="ai_kind"/);
+  assert.match(page.text, /data-tprm-file-check="ai_approval_old">Last approved more than 12 months ago \(15 Jan 2024\)/);
+  assert.match(page.text, /data-tprm-item-ai-pending="1">Brevis to decide: Partially satisfactory/);
+
+  const gov = (await suggestionsOf(ctx.a)).find(s => s.question_id === 'GOV-01');
+  assert.equal((await consultant.session.post(`${base(ctx)}/ai-suggestions/${gov.id}/accept`, {})).status, 302);
+  page = await firmPage(ctx);
+  assert.match(page.text, /data-tprm-answer-ai-mark="partially_satisfactory">Brevis marked it partially satisfactory · partly answers it\. It names a policy but no owner\./,
+    'the AI\'s mark stays visible after its suggestion is decided');
+
+  const v = aiReview.validateDocuments([{ evidence_id: 5, approval_date: '2024-02-30', matches_request: 'maybe', title: 7 }, { evidence_id: 6 }], { readIds: new Set([5]), truncatedIds: new Set([5]) });
+  assert.deepEqual([v.documents.length, v.dropped], [1, 1]);
+  assert.deepEqual([v.documents[0].approval_date, v.documents[0].matches_request, v.documents[0].title, v.documents[0].partly_read], [null, 'unclear', null, true]);
+  const checks = require('../lib/tprm/document-checks').fromAiReading({ ...v.documents[0], document_kind: 'Policy' }, '2026-11-24');
+  assert.deepEqual(checks.map(c => c.key), ['ai_read', 'ai_no_approval', 'ai_no_versions']);
+  assert.match(checks[1].text, /in the part Brevis read/);
+  const plain = kind => require('../lib/tprm/document-checks').fromAiReading({ document_kind: kind, approval_date: null, version_history: false, matches_request: 'yes' }, '2026-11-24').map(c => c.key);
+  assert.deepEqual(plain('ISO 27001 certificate'), ['ai_read'], 'a certificate is not flagged for approval or versions');
+  assert.deepEqual(plain('Screenshot of the MFA settings'), ['ai_read']);
+  assert.deepEqual(plain('SOC 2 Type II report'), ['ai_read']);
+  assert.deepEqual(plain('Business continuity plan'), ['ai_read', 'ai_no_approval', 'ai_no_versions']);
+});
+
+test('deciding on the answer: suggestions sit on their answer, "AI to decide" lists them, and accept or reject keeps the reviewer on that answer', async () => {
+  const ctx = await submitted('Decide In Place Co');
+  reply = () => toolReply([
+    { question_id: 'GOV-01', control_ref: 'A.5.1', severity: 'medium', title: 'Policy owner not named', description: 'The policy names no owner.', rationale: 'r1', evidence_ids: [] },
+  ], {}, { conclusions: [
+    { question_id: 'GOV-01', conclusion: 'partially_satisfactory', rationale: 'The policy names no owner.' },
+    { question_id: 'CLM-01', conclusion: 'partially_satisfactory', rationale: 'The matrix does not name the backup owner.' },
+  ] });
+  await run();
+  const gov = await answerOf(ctx.a, 'GOV-01');
+  const list = await consultant.session.get(`${base(ctx)}?step=review&answers=ai`);
+  assert.match(list.text, /data-tprm-answer-filter-current="ai">Brevis to decide<span class="tpa-filter-n"> 2</);
+  assert.match(list.text, /data-tprm-ai-to-decide="3"[^>]*>3 suggestions to decide: 2 conclusions and 1 finding\./);
+  assert.match(list.text, new RegExp(`data-tprm-answer-pane="${gov.id}"[\\s\\S]*?Brevis suggests: Partially satisfactory[\\s\\S]*?Brevis suggests a finding: Policy owner not named`));
+  assert.doesNotMatch(list.text, /data-tprm-ai-group=/, 'no long list of every suggestion above the answers');
+  const sugg = await suggestionsOf(ctx.a);
+  const govConclusion = sugg.find(s => s.question_id === 'GOV-01' && s.kind === 'conclusion');
+  const govFinding = sugg.find(s => s.question_id === 'GOV-01' && s.kind !== 'conclusion');
+  const plain = await consultant.session.post(`${base(ctx)}/ai-suggestions/${govConclusion.id}/accept`, { answer_id: String(gov.id), answers_filter: 'ai' });
+  assert.equal(plain.status, 302);
+  assert.match(String(plain.location), new RegExp(`\\?step=review&answers=ai(&|#)[\\s\\S]*#answer-${gov.id}$|\\?step=review&answers=ai#answer-${gov.id}`), 'back on the same answer, same filter');
+  const json = await consultant.session.post(`${base(ctx)}/ai-suggestions/${govFinding.id}/reject`, { answer_id: String(gov.id), reason: 'Owner named in the appendix' },
+    { headers: { accept: 'application/json' } });
+  assert.equal(json.status, 200);
+  assert.deepEqual(JSON.parse(json.text), { ok: true, message: 'Brevis suggestion rejected' });
+  const again = await consultant.session.post(`${base(ctx)}/ai-suggestions/${govFinding.id}/reject`, {}, { headers: { accept: 'application/json' } });
+  assert.equal(again.status, 400);
+  assert.equal(JSON.parse(again.text).ok, false);
+  const page = await consultant.session.get(`${base(ctx)}?step=review&answers=all`);
+  assert.match(page.text, new RegExp(`data-tprm-ai-suggestion="${govFinding.id}" data-tprm-ai-suggestion-status="rejected"[\\s\\S]*?data-tprm-ai-decided>Rejected by [^<]*: Owner named in the appendix`));
+  assert.match(page.text, new RegExp(`data-tprm-ai-suggestion="${govConclusion.id}" data-tprm-ai-suggestion-status="accepted"[\\s\\S]*?set as the answer's reviewer conclusion`));
+  assert.match(page.text, /data-tprm-ai-to-decide="1"/);
 });

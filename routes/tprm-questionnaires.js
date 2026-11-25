@@ -124,11 +124,36 @@ function registerRoutes(app, { db, requireAuth, handler, renderAssessment }) {
 
   app.post(`${BASE}/clarifications`, requireAuth, handler(step(async (req, res, actor, thirdParty) => {
     const result = await review.askClarification(db, actor, thirdParty.id, req.params.aid, req.body);
-    if (!result.needsLink) await require('../lib/tprm/messages').clarificationAsked(db, { workspaceId: actor.ws.id, assessmentId: Number(req.params.aid), clarificationId: result.clarificationId });
-    return res.redirect(withToast(answersUrl(actor, thirdParty.id, req.params.aid, req.body, result.needsLink ? 'questionnaire' : 'questionnaire-answers'),
-      result.needsLink
-        ? `Clarification on ${result.questionId} recorded. The submitted link is used up: issue a new link so the third party can answer it`
-        : `Clarification on ${result.questionId} recorded: the third party sees it on its link`));
+    return res.redirect(withToast(answersUrl(actor, thirdParty.id, req.params.aid, req.body),
+      `Follow-up on ${result.questionId} saved, not sent yet. ${result.waiting} waiting: send them together from the top of the review`));
+  }), { permission: 'tp.manage' }));
+
+  app.post(`${BASE}/clarifications/drafts/:did/remove`, requireAuth, handler(step(async (req, res, actor, thirdParty) => {
+    const result = await review.removeDraftClarification(db, actor, thirdParty.id, req.params.aid, req.params.did);
+    return res.redirect(withToast(answersUrl(actor, thirdParty.id, req.params.aid, req.body), `Follow-up on ${result.questionId} removed`));
+  }), { permission: 'tp.manage' }));
+
+  app.post(`${BASE}/clarifications/send`, requireAuth, handler(step(async (req, res, actor, thirdParty) => {
+    const sent = await review.sendClarifications(db, actor, thirdParty.id, req.params.aid);
+    const n = `${sent.count} follow-up${sent.count === 1 ? '' : 's'}`;
+    let message;
+    let kind;
+    if (sent.needsLink) {
+      try {
+        const r = await require('../lib/tprm/questionnaire-tracker').reopen(db, actor, req.params.aid);
+        message = r.emailed && r.emailed.ok ? `${n} sent to ${r.recipient} in one email, with a new link` : `${n} recorded and a new link made for ${r.recipient}, but the email was not sent: ${(r.emailed && r.emailed.error) || 'unknown error'}. Copy the link from the questionnaire step`;
+        if (!(r.emailed && r.emailed.ok)) kind = 'warn';
+      } catch (err) {
+        if (!(err instanceof TprmError)) throw err;
+        message = `${n} recorded, but no link could be made: ${err.message}`;
+        kind = 'error';
+      }
+    } else {
+      const r = await require('../lib/tprm/messages').clarificationsSent(db, { workspaceId: actor.ws.id, assessmentId: Number(req.params.aid), ids: sent.ids });
+      message = r && r.ok ? `${n} sent to the third party in one email` : `${n} recorded: the third party sees them on its link, but the email was not sent${r && r.skipped === 'disabled' ? ' (email is switched off on this server)' : ''}`;
+      if (!(r && r.ok)) kind = 'warn';
+    }
+    return res.redirect(withToast(answersUrl(actor, thirdParty.id, req.params.aid, req.body), message, kind));
   }), { permission: 'tp.manage' }));
 
   app.post(`${BASE}/clarifications/:cid/close`, requireAuth, handler(step(async (req, res, actor, thirdParty) => {

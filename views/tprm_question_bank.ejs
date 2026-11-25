@@ -32,7 +32,39 @@
   </div>
   <% } %>
 </div>
+<% if (canEdit) { const baseGroups = groups.filter(g => g.set === 'Base'); const moduleGroups = groups.filter(g => g.set === 'Module'); %>
+<div class="fx-card fx-mt" id="sections" data-tprm-bank-sections>
+  <div class="qb-qhead"><h2 class="qb-h">Add a question</h2></div>
+  <form method="GET" action="/tprm/settings/question-bank/add" class="qb-row" data-tprm-bank-add-form>
+    <label class="sr-only" for="qb-add-section">Section for the new question</label>
+    <select class="select qb-wide" id="qb-add-section" name="like">
+      <optgroup label="Base questions"><% baseGroups.forEach(g => { %><option value="<%= g.last %>"><%= g.title %></option><% }) %></optgroup>
+      <optgroup label="Modules"><% moduleGroups.forEach(g => { %><option value="<%= g.last %>"><%= g.title %></option><% }) %></optgroup>
+    </select>
+    <button class="btn btn-primary btn-xs" type="submit">Add a question</button>
+    <a class="fx-link fx-sm qb-plain" href="/tprm/settings/question-bank/add?new=1" data-tprm-bank-new-section>or start a new section</a>
+  </form>
+  <h3 class="fx-h4 fx-mt">Sections of the base questions</h3>
+  <p class="fx-muted fx-sm">Third parties see them in this order. A section disappears when all its questions are retired. Module sections keep their module's name.</p>
+  <div class="qb-seclist">
+  <% baseGroups.forEach((g, i) => { %>
+    <div class="qb-secrow" data-tprm-bank-section="<%= g.title %>">
+      <span><%= g.title %> <span class="qb-n"><%= g.count %></span></span>
+      <span class="qb-tools">
+        <details class="qb-inline"><summary class="fx-link">Rename</summary>
+          <form method="POST" action="/tprm/settings/question-bank/sections/rename" class="qb-row"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= D.row_version %>"><input type="hidden" name="section" value="<%= g.title %>">
+            <input class="input" name="title" maxlength="80" value="<%= g.title %>" aria-label="New name for <%= g.title %>" required><button class="btn btn-secondary btn-xs" type="submit">Save</button></form>
+        </details>
+        <% if (i > 0) { %><form method="POST" action="/tprm/settings/question-bank/sections/move" class="qb-inline"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= D.row_version %>"><input type="hidden" name="section" value="<%= g.title %>"><input type="hidden" name="dir" value="up"><button class="fx-link qb-linkbtn" type="submit">Move up</button></form><% } %>
+        <% if (i < baseGroups.length - 1) { %><form method="POST" action="/tprm/settings/question-bank/sections/move" class="qb-inline"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= D.row_version %>"><input type="hidden" name="section" value="<%= g.title %>"><input type="hidden" name="dir" value="down"><button class="fx-link qb-linkbtn" type="submit">Move down</button></form><% } %>
+      </span>
+    </div>
+  <% }) %>
+  </div>
+</div>
+<% } %>
 <% } else if (canEdit) { %>
+<p class="fx-muted fx-sm fx-mt" data-tprm-bank-start-hint>Start a draft to add questions, change sections or reword questions. Nothing reaches third parties until you publish.</p>
 <p class="fx-muted fx-sm fx-mt">To change many questions at once, download the Excel file, change it and upload it. The upload starts a draft for you.</p>
 <form method="POST" action="/tprm/settings/question-bank/import" enctype="multipart/form-data" class="fx-actions" data-tprm-bank-import>
   <input type="hidden" name="_csrf" value="<%= csrf %>">

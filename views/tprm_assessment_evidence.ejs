@@ -97,7 +97,7 @@
         <% if (f.impact) { %><div class="tpu-mt-6" data-tprm-finding-impact-text><span class="meta text-xs">Why it matters:</span> <span class="tpu-pre"><%= f.impact %></span></div><% } %>
         <div class="meta text-xs tpu-mt-6">
           <% if (f.evidence.length) { %>Evidence: <% f.evidence.forEach((e, i) => { %><%= i ? ', ' : '' %><a href="<%= evBase %>/evidence/<%= e.id %>/download"><%= e.original_name %></a><% }) %><% } else { %>No evidence linked<% } %>
-          · Added by <%= f.created_by_name || 'Unknown user' %> · <%= evWhen(f.created_at) %><% if (f.source === 'ai_accepted') { %> · <span data-tprm-finding-source="ai_accepted">accepted from an AI suggestion</span><% } %>
+          · Added by <%= f.created_by_name || 'Unknown user' %> · <%= evWhen(f.created_at) %><% if (f.source === 'ai_accepted') { %> · <span data-tprm-finding-source="ai_accepted">accepted from a Brevis suggestion</span><% } %>
         </div>
         <% const notes = ep.clientNotes ? (ep.clientNotes.get(Number(f.id)) || []) : []; %>
         <% if (notes.length) { %>

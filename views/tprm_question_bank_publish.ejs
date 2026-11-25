@@ -1,5 +1,5 @@
 <%- include('partials/header', { title: 'Publish the question bank · Third-party risk', user, active }) %>
-<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; const names = { theme: 'Theme', question: 'Question', guidance: 'Guidance', evidence: 'Evidence asked for', evidence_mandatory: 'Evidence required', min_tier: 'Lowest tier', benchmark: 'Benchmark', iso27001: 'ISO 27001' }; const show = (k, val) => (k === 'evidence_mandatory' ? (val ? 'Yes' : 'No') : (val == null || val === '' ? '(empty)' : val)); %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; const names = { theme: 'Theme', question: 'Question', guidance: 'Guidance', evidence: 'Evidence asked for', evidence_mandatory: 'Evidence required', min_tier: 'Lowest tier', benchmark: 'Benchmark', iso27001: 'ISO 27001', ask_when: 'Asked when', ...fieldNames }; const show = (k, val) => (k === 'ask_when' ? (val && val.question ? 'Only when ' + val.question + ' is answered ' + ({ yes: 'Yes', no: 'No', na: 'Not applicable' }[val.answer] || val.answer) : 'Always') : k === 'evidence_mandatory' ? (val ? 'Yes' : 'No') : (val == null || val === '' ? '(empty)' : val)); const showQ = (k, q) => { const t = fieldText(k, q); return t === null ? show(k, q[k]) : t; }; %>
 <nav class="tprm-crumbs" aria-label="Breadcrumb"><a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><a href="/tprm/settings/question-bank">Question bank</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><span aria-current="page">Review and publish</span></nav>
 <div class="tprm-head" data-tprm-bank-publish>
   <div class="tprm-head-main">
@@ -18,7 +18,7 @@
 <div class="fx-table" data-tprm-bank-changed>
   <table><thead><tr><th>Number</th><th>What</th><th>Published</th><th>Draft</th></tr></thead><tbody>
   <% d.changed.forEach(c => { c.fields.forEach((k, i) => { %>
-    <tr><% if (i === 0) { %><td class="fx-nowrap" rowspan="<%= c.fields.length %>"><a href="/tprm/settings/question-bank/questions/<%= encodeURIComponent(c.id) %>"><b><%= c.id %></b></a></td><% } %><td><%= names[k] || k %></td><td class="fx-sm fx-muted"><%= show(k, byId.get(c.id)[k]) %></td><td class="fx-sm"><%= show(k, draftById.get(c.id)[k]) %></td></tr>
+    <tr><% if (i === 0) { %><td class="fx-nowrap" rowspan="<%= c.fields.length %>"><a href="/tprm/settings/question-bank/questions/<%= encodeURIComponent(c.id) %>"><b><%= c.id %></b></a></td><% } %><td><%= names[k] || k %></td><td class="fx-sm fx-muted"><%= showQ(k, byId.get(c.id)) %></td><td class="fx-sm"><%= showQ(k, draftById.get(c.id)) %></td></tr>
   <% }) }) %>
   </tbody></table>
 </div>

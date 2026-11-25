@@ -218,7 +218,7 @@ function registerRoutes(app, deps) {
   app.post(`${BASE}/ai-suggestions/:sid/accept-edited`, requireAuth, handler(async (req, res, actor) => {
     try {
       const { finding } = await aiReview.acceptEdited(db, actor, req.params.tpId, req.params.aid, req.params.sid, req.body);
-      return res.redirect(withToast(`${aUrl(actor, req.params.tpId, req.params.aid)}?step=evidence#findings`, `Finding added from the AI suggestion: ${finding.title}`));
+      return res.redirect(withToast(`${aUrl(actor, req.params.tpId, req.params.aid)}?step=evidence#findings`, `Finding added from Brevis's suggestion: ${finding.title}`));
     } catch (err) {
       if (err instanceof TprmError && err.status === 400) {
         return renderFindingForm(req, res, actor, { values: req.body, errors: err.errors || [err.message], status: 400,

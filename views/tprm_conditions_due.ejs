@@ -16,6 +16,7 @@
     <div class="page-subtitle">Follow up each condition below until it is verified or waived.
       <details class="tprm-how"><summary>How this works</summary>Conditions the client decided with that are not verified or waived yet, across the clients you can reach. A condition is overdue once its due date has passed, in the client's time zone.</details></div>
   </div>
+  <a class="btn btn-secondary" href="/tprm/settings" data-tprm-settings-button>Settings</a>
 </div>
 <%- include('partials/tprm_home_tabs', { current: 'conditions' }) %>
 <% if (allRows) { %><%- L.form({ placeholder: 'Search a third party, client or condition', shown: shownRows, total: allRows }) %><% } %>

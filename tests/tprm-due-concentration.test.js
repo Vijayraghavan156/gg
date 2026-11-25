@@ -212,8 +212,8 @@ test('due queue access: firm users only, each sees the clients they can reach; a
   assert.ok([403, 404].includes((await s.get(`/tprm/clients/${assigned}/concentration`)).status));
   const home = await client.get('/tprm');
   assert.match(home.text, /href="\/tprm\/due" data-tprm-due-link/);
-  assert.match(home.text, /data-tprm-firm-concentration-link/, 'managers get the firm-wide concentration link');
-  assert.doesNotMatch((await consultant.session.get('/tprm')).text, /data-tprm-firm-concentration-link/);
+  assert.match((await client.get('/tprm/settings')).text, /data-tprm-firm-concentration-link/, 'managers get the firm-wide concentration link');
+  assert.doesNotMatch((await consultant.session.get('/tprm/settings')).text, /data-tprm-firm-concentration-link/);
 });
 
 test('recording a trigger sets the due date to today, keeps the previous one, writes the events and shows in the queue', async () => {

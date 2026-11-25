@@ -1,11 +1,12 @@
-<%- include('partials/header', { title: 'Marking guides · Third-party risk', user, active }) %>
+<%- include('partials/header', { title: 'Marking rules · Third-party risk', user, active }) %>
 <% const v = values || {}; const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; %>
-<nav class="tprm-crumbs" aria-label="Breadcrumb"><a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><span aria-current="page">Marking guides</span></nav>
+<nav class="tprm-crumbs" aria-label="Breadcrumb"><a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><span aria-current="page">Marking rules</span></nav>
 <div class="tprm-head" data-tprm-marking-guides>
   <div class="tprm-head-main">
-    <h1 class="page-title">Marking guides</h1>
-    <p class="tprm-status-line">What a satisfactory answer looks like, what counts as partly, and the red flags, for each question. Reviewers see the guide beside the supplier's answer. Only your firm sees it: never the supplier or the client.</p>
-    <p class="fx-muted fx-sm"><%= written %> of <%= total %> questions have a guide<%= bankVersion ? ' · question bank version ' + bankVersion : '' %>. A question without one shows the question bank's own guidance.</p>
+    <h1 class="page-title">Marking rules</h1>
+    <p class="tprm-status-line">An overview of your firm's marking rules: a valid answer, satisfactory when, partly satisfactory when, and red flags. You write them on each question's own page. Reviewers see them beside the supplier's answer, and Brevis judges answers against them.</p>
+    <p class="fx-muted fx-sm"><%= written %> of <%= total %> question bank questions have marking rules<%= bankVersion ? ' · question bank version ' + bankVersion : '' %>. A question without them shows the question's own guidance.</p>
+    <% if ((firmQuestionnaires || []).length) { %><p class="fx-muted fx-sm" data-tprm-guides-firm>Your questionnaires: <% firmQuestionnaires.forEach((t, i) => { %><%= i ? '; ' : '' %><a class="fx-link qb-plain" href="/tprm/settings/questionnaires/<%= t.id %>"><%= t.name %></a>, <%= t.withRules %> of <%= t.questions %> with marking rules<% }) %>.</p><% } %>
   </div>
 </div>
 <% if (errors.length) { %><div class="callout tprm-callout-error" role="alert" data-tprm-form-errors><div class="callout-title">Nothing was saved</div><ul class="tprm-list"><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul></div><% } %>
@@ -14,23 +15,14 @@
   <label class="sr-only" for="mg-d">Domain</label><select class="select" id="mg-d" name="domain"><option value="">Every domain</option><% domains.forEach(d => { %><option value="<%= d %>"<%= domain === d ? ' selected' : '' %>><%= d %></option><% }) %></select>
   <button class="btn btn-secondary btn-xs" type="submit">Show</button>
 </form>
-<% if (!q && !domain) { %><p class="fx-muted fx-sm">Search for a question or pick a domain to write its guide.</p><% } else { %>
+<% if (!q && !domain) { %><p class="fx-muted fx-sm">Search for a question or pick a domain to see its marking rules.</p><% } else { %>
 <p class="fx-muted fx-sm"><%= shown.length + more %> question<%= shown.length + more === 1 ? '' : 's' %> found<%= more ? ', showing the first 40: narrow the search to see the rest' : '' %>.</p>
-<% shown.forEach(x => { const mine = v.question_id === x.id; const g = x.guide || {}; const val = k => mine ? (v[k] || '') : (g[k] || ''); %>
+<% shown.forEach(x => { const g = x.guide || {}; %>
   <section class="fx-card fx-mt" id="guide-<%= x.id %>" data-tprm-guide-row="<%= x.id %>">
-    <h2 class="fx-h4"><span class="fx-strong"><%= x.id %> <%= x.theme %></span><span><%= x.domain %><%= x.guide ? ' · guide by ' + (x.guide.updated_by_name || 'your firm') : ' · no guide yet' %></span></h2>
+    <h2 class="fx-h4"><span class="fx-strong"><%= x.id %> <%= x.theme %></span><span><%= x.domain %><%= x.guide ? ' · by ' + (x.guide.updated_by_name || 'your firm') : ' · no marking rules yet' %></span></h2>
     <p class="fx-sm"><%= x.question %></p>
-    <% if (x.guidance) { %><p class="fx-muted fx-sm">Question bank guidance: <%= x.guidance %></p><% } %>
-    <% if (x.benchmark) { %><p class="fx-muted fx-sm">Benchmark: <%= x.benchmark %></p><% } %>
-    <% if (canEdit) { %>
-    <form method="POST" action="/tprm/settings/marking-guides/<%= x.id %>" class="fx-guide-form" data-tprm-guide-form="<%= x.id %>">
-      <input type="hidden" name="_csrf" value="<%= csrf %>"><% if (x.guide) { %><input type="hidden" name="row_version" value="<%= x.guide.row_version %>"><% } %>
-      <label class="label" for="g-s-<%= x.id %>">Satisfactory</label><textarea class="input" id="g-s-<%= x.id %>" name="satisfactory" rows="2" maxlength="1500" placeholder="What a good answer and its evidence show"><%= val('satisfactory') %></textarea>
-      <label class="label" for="g-p-<%= x.id %>">Partly</label><textarea class="input" id="g-p-<%= x.id %>" name="partly" rows="2" maxlength="1500" placeholder="What makes an answer only partly satisfactory"><%= val('partly') %></textarea>
-      <label class="label" for="g-r-<%= x.id %>">Red flags</label><textarea class="input" id="g-r-<%= x.id %>" name="red_flags" rows="2" maxlength="1500" placeholder="Signs the answer should not be accepted"><%= val('red_flags') %></textarea>
-      <div class="fx-actions"><button class="btn btn-primary btn-xs" type="submit">Save guide</button><span class="fx-muted fx-sm">Leave all three empty and save to remove the guide.</span></div>
-    </form>
-    <% } else if (x.guide) { %><ul class="fx-guide-list"><% if (g.satisfactory) { %><li><b>Satisfactory:</b> <%= g.satisfactory %></li><% } %><% if (g.partly) { %><li><b>Partly:</b> <%= g.partly %></li><% } %><% if (g.red_flags) { %><li><b>Red flags:</b> <%= g.red_flags %></li><% } %></ul><% } %>
+    <% if (x.guide) { %><ul class="fx-guide-list"><% [['valid_answer', 'A valid answer'], ['satisfactory', 'Satisfactory when'], ['partly', 'Partly satisfactory when'], ['red_flags', 'Red flags']].forEach(([k, l]) => { if (g[k]) { %><li><b><%= l %>:</b> <%= g[k] %></li><% } }) %></ul><% } %>
+    <a class="fx-link qb-plain" href="/tprm/settings/question-bank/questions/<%= encodeURIComponent(x.id) %>#reviewers" data-tprm-guide-edit="<%= x.id %>"><%= canEdit ? (x.guide ? 'Change them on the question page' : 'Write them on the question page') : 'Open the question' %></a>
   </section>
 <% }) %>
 <% } %>

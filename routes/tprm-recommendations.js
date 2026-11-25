@@ -11,6 +11,7 @@ const BASE = '/tprm/clients/:wsId/third-parties/:tpId/assessments/:aid/recommend
 
 function registerRoutes(app, deps) {
   const { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces } = deps;
+  const stageMail = (actor, assessmentId, step) => require('../lib/tprm/messages').stageChanged(db, { workspaceId: actor.ws.id, assessmentId: Number(assessmentId), step, actorId: actor.user.id });
   const lookup = { db, getWorkspace, permissionsFor, listWorkspaces };
   const stepUrl = (actor, tpId, aid) => `/tprm/clients/${actor.ws.id}/third-parties/${Number(tpId)}/assessments/${Number(aid)}?step=recommendation#recommendation`;
 
@@ -89,12 +90,14 @@ function registerRoutes(app, deps) {
       }
       throw err;
     }
+    await stageMail(actor, req.params.aid, 'recommendation_submitted');
     return res.redirect(withToast(back, 'Submitted for review. A second person issues it from the review queue'));
   }, { permission: 'tp.manage' }));
 
   app.post(`${BASE}/:rid/issue`, requireAuth, handler(async (req, res, actor, thirdParty, back) => {
     const { recommendation, alreadyIssued } = await recommendations.issue(db, actor, thirdParty.id, req.params.aid, req.params.rid, req.body);
     if (!alreadyIssued) await require('../lib/tprm/messages').recommendationIssued(db, { workspaceId: actor.ws.id, assessmentId: Number(req.params.aid), recommendationId: recommendation.id });
+    if (!alreadyIssued) await stageMail(actor, req.params.aid, 'recommendation_issued');
     return res.redirect(withToast(back, alreadyIssued
       ? `Recommendation version ${recommendation.version} was already issued`
       : `Recommendation version ${recommendation.version} issued`));
@@ -102,6 +105,7 @@ function registerRoutes(app, deps) {
 
   app.post(`${BASE}/:rid/request-changes`, requireAuth, handler(async (req, res, actor, thirdParty, back) => {
     await recommendations.requestChanges(db, actor, thirdParty.id, req.params.aid, req.params.rid, req.body);
+    await stageMail(actor, req.params.aid, 'recommendation_returned');
     return res.redirect(withToast(back, 'Changes requested from the author'));
   }, { permission: 'tp.review' }));
 

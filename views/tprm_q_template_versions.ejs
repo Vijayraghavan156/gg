@@ -1,0 +1,29 @@
+<%- include('partials/header', { title: 'Version history · ' + t.name, user, active }) %>
+<% const base = '/tprm/settings/questionnaires/' + t.id;
+   const day = d => { try { return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }); } catch (_) { return ''; } }; %>
+<nav class="tprm-crumbs" aria-label="Breadcrumb"><a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><a href="/tprm/settings/questionnaires">Questionnaires</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><a href="<%= base %>"><%= t.name %></a><span class="tprm-crumb-sep" aria-hidden="true">/</span><span aria-current="page">Version history</span></nav>
+<div class="tprm-head" data-tprm-q-template-versions>
+  <div class="tprm-head-main">
+    <h1 class="page-title">Version history</h1>
+    <p class="tprm-status-line"><%= t.name %>. <%= t.draft_changed ? 'The draft has changes that are not published yet.' : 'The draft matches the latest version.' %></p>
+  </div>
+</div>
+<% if (!list.length) { %>
+<p class="fx-mt">Nothing is published yet. <a href="<%= base %>">Back to the questionnaire</a></p>
+<% } else { %>
+<div class="fx-table fx-mt"><table>
+  <thead><tr><th>Version</th><th>Published</th><th>Questions</th><th>Used by</th><th></th></tr></thead>
+  <tbody>
+  <% list.forEach((v, i) => { %>
+    <tr data-tprm-q-version="<%= v.version %>">
+      <td class="fx-nowrap"><b>Version <%= v.version %></b><% if (i === 0) { %><span class="fx-sub">Latest</span><% } %></td>
+      <td><%= day(v.publishedAt) %><% if (v.by) { %> by <%= v.by %><% } %><% if (v.note) { %><span class="fx-sub"><%= v.note %></span><% } %></td>
+      <td><%= v.questionCount %></td>
+      <td><%= v.used %> questionnaire<%= v.used === 1 ? '' : 's' %></td>
+      <td class="fx-nowrap"><a class="btn btn-secondary btn-xs" href="<%= base %>/versions/<%= v.version %>"><%= v.version === 1 ? 'See its questions' : 'See what changed' %></a></td>
+    </tr>
+  <% }) %>
+  </tbody>
+</table></div>
+<% } %>
+<%- include('partials/footer') %>

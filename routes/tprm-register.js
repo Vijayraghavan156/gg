@@ -10,6 +10,7 @@ const clientSettings = require('../lib/tprm/client-settings');
 const tpSettings = require('../lib/tprm/settings');
 const placement = require('../lib/tprm/placement');
 const vendorPeople = require('../lib/tprm/vendor-people');
+const team = require('../lib/tprm/team');
 const { TprmError } = require('../lib/tprm/errors');
 
 const NOT_FOUND = 'This third-party risk client does not exist, or it is not available to your account.';
@@ -105,11 +106,12 @@ function registerRoutes(app, deps) {
     saveThirdParty(req, res, actor, null), { permission: 'tp.manage' }));
 
   async function renderThirdParty(req, res, actor, thirdParty, extra = {}, status = 200) {
-    const [services, history, duplicates] = await Promise.all([
+    const [services, history, sameNamed] = await Promise.all([
       register.listServices(db, actor, thirdParty.id),
       register.recentEvents(db, actor, thirdParty.id),
       register.sameNamed(db, actor.ws.id, thirdParty.name, thirdParty.id),
     ]);
+    const duplicates = await require('../lib/tprm/scope').keep(db, actor.user, sameNamed.map(d => ({ ...d, workspace_id: actor.ws.id })), { tp: 'id' });
     return renderPage(req, res, 'tprm_third_party', actor, {
       thirdParty, services, history, duplicates, today: register.today(actor),
       party: await require('../lib/tprm/firm-party').build(db, actor.ws, thirdParty.id),
@@ -121,8 +123,22 @@ function registerRoutes(app, deps) {
       tab: req.query && typeof req.query.tab === 'string' ? req.query.tab : null,
       ...extra,
       peoplePanel: { list: await vendorPeople.list(db, actor.ws.id, thirdParty.id), labels: vendorPeople.ROLE_LABELS, errors: [], values: {}, editErrors: {}, ...(extra.peoplePanel || {}) },
+      teamPanel: { team: await team.forThirdParty(db, actor.ws.id, thirdParty.id), people: await team.candidates(db, actor.ws), reviewers: await team.reviewerCandidates(db, actor.ws), errors: [], ...(extra.teamPanel || {}) },
     }, status);
   }
+
+  app.post('/tprm/clients/:wsId/third-parties/:tpId/team', requireAuth, handler(async (req, res, actor) => {
+    const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+    try {
+      const result = await team.set(db, actor, thirdParty.id, req.body);
+      return res.redirect(withToast(`${base(actor)}/third-parties/${thirdParty.id}#team`, result.unchanged ? 'Nothing changed' : 'Team saved'));
+    } catch (err) {
+      if (err instanceof TprmError && err.status === 400) {
+        return renderThirdParty(req, res, actor, thirdParty, { teamPanel: { errors: err.errors || [err.message], open: true } }, 400);
+      }
+      throw err;
+    }
+  }, { permission: 'tp.manage' }));
 
   app.post('/tprm/clients/:wsId/third-parties/bulk-start', requireAuth, handler(async (req, res, actor) => {
     const raw = req.body && req.body.ids;

@@ -1,0 +1,17 @@
+<%- include('partials/header', { title: 'Settings · Third-party risk', user, active }) %>
+<nav class="tprm-crumbs" aria-label="Breadcrumb"><a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><span aria-current="page">Settings</span></nav>
+<div class="tprm-head" data-tprm-firm-settings>
+  <div class="tprm-head-main">
+    <h1 class="page-title">Settings</h1>
+    <p class="tprm-status-line">These apply to every third-party risk client.<% if (!canChange) { %> Only a manager can change them.<% } %></p>
+  </div>
+</div>
+<% groups.forEach(g => { const items = g.items.filter(i => i.show); if (!items.length) return; %>
+<h2 class="fx-section-h"><%= g.title %></h2>
+<div class="fx-card fx-settings-list">
+  <% items.forEach(i => { %>
+  <a class="fx-settings-row" href="<%= i.href %>" <%- i.hook %>><b><%= i.label %></b><span class="fx-muted fx-sm"><%= i.about %></span></a>
+  <% }) %>
+</div>
+<% }) %>
+<%- include('partials/footer') %>

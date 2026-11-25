@@ -812,7 +812,8 @@ test('clarifications: asked on an answer, a new link for them, answered by the t
   const gov1 = await answerOf(ctx.a, 'GOV-01');
   const ask = await consultant.session.post(`${qBase(ctx)}/clarifications`, { question_id: 'GOV-01', body: 'Please send the approval minutes.' });
   assert.equal(ask.status, 302);
-  assert.match(toast(ask), /issue a new link/);
+  assert.match(toast(ask), /saved, not sent yet/);
+  assert.match(toast(await consultant.session.post(`${qBase(ctx)}/clarifications/send`, {})), /1 follow-up/);
   assert.equal((await qRow(ctx.a)).status, 'under_review');
   const c = await db.prepare('SELECT * FROM tp_clarifications WHERE assessment_id=?').get(ctx.a);
   assert.equal(c.status, 'open');
@@ -899,6 +900,7 @@ test('submitted questionnaires appear in the firm review queue with their open c
   const count = Number((home.text.match(/data-tprm-review-link>Review queue \((\d+)\)/) || [])[1]);
   assert.ok(count >= 1);
   await consultant.session.post(`${qBase(ctx)}/clarifications`, { question_id: 'GOV-01', body: 'Which policy?' });
+  await consultant.session.post(`${qBase(ctx)}/clarifications/send`, {});
   queue = await senior.session.get('/tprm/review');
   assert.match(queue.text, new RegExp(`data-tprm-review-questionnaire="${q.id}"[\\s\\S]*?Under review[\\s\\S]*?data-tprm-review-questionnaire-clarifications>1<`));
   const consultantQueue = await consultant.session.get('/tprm/review');
@@ -1236,6 +1238,7 @@ test('every change is an event in the assessment chain, the chain verifies, and 
   await save(ctx.token, { 'GOV-01': { t: 'Yearly', ref: 'x' } }, { files: [{ field: 'file__GOV-01', filename: 'evt.txt', content: 'event file' }] });
   assert.equal((await submitLink(ctx.token)).status, 200);
   await consultant.session.post(`${qBase(ctx)}/clarifications`, { question_id: 'GOV-01', body: 'More please' });
+  await consultant.session.post(`${qBase(ctx)}/clarifications/send`, {});
   const rows = (await chain(ctx.ws, ctx.a)).map(e => e.action);
   for (const want of ['questionnaire.answering_started', 'questionnaire.answers_saved', 'questionnaire.module_added', 'evidence.uploaded',
     'questionnaire.submitted', 'vendor_link.used', 'questionnaire.review_started', 'clarification.asked']) assert.ok(rows.includes(want), want);
@@ -1307,4 +1310,131 @@ test('Your documents: upload once with a description, choose on several question
   const chain = (await db.prepare("SELECT action FROM tp_events WHERE workspace_id=? AND chain_id=? ORDER BY chain_seq").all(ctx.ws, ctx.a)).map(e => e.action);
   assert.ok(chain.includes('evidence.described') && chain.includes('evidence.deleted'));
   assert.deepEqual(await events.verifyChains(db, ctx.ws), []);
+});
+
+test('the firm enters answers for the third party: each is marked as entered by the firm, the third party can still change it, and the firm can submit', async () => {
+  const ctx = await linked('Firm Entry Co');
+  const base = `${aBase(ctx.ws, ctx.tp, ctx.a)}/answer-for-supplier`;
+  const firmPost = async (suffix, fields) => {
+    const form = multipart(fields, []);
+    const res = await fetch(`${await consultant.session.baseUrl()}${base}${suffix}`, { method: 'POST', body: form.body, redirect: 'manual',
+      headers: { ...form.headers, cookie: consultant.session.getCookies() } });
+    return { status: res.status, location: res.headers.get('location'), text: await res.text() };
+  };
+  const step = await consultant.session.get(`${aBase(ctx.ws, ctx.tp, ctx.a)}?step=questionnaire`);
+  assert.match(step.text, /data-tprm-enter-answers/);
+  const page = await consultant.session.get(`${base}?s=1`);
+  assert.equal(page.status, 200);
+  assert.match(page.text, /data-vendor-firm-entry>You are entering answers for the third party/);
+  const overview = (await consultant.session.get(base)).text;
+  assert.doesNotMatch(overview, /data-vendor-sheet-upload/, 'no spreadsheet upload for the firm');
+  const aft = aftOf(page.text);
+  assert.ok(aft);
+  assert.notEqual(aft, aftOf((await vget(ctx.token)).text), 'the firm form token is not the third party\'s');
+  assert.equal((await request('GET', base)).status, 302, 'not signed in: sent to sign in');
+
+  let res = await firmPost('/save', [['_aft', aftOf((await vget(ctx.token)).text)], ...answerFields({ 'GOV-01': good('GOV-01') }), ['intent', 'save']]);
+  assert.equal(res.status, 403, 'the third party\'s form token does not work on the firm page');
+  res = await firmPost('/save', [['_aft', aft], ...answerFields({ 'GOV-01': good('GOV-01') }), ['intent', 'save']]);
+  assert.equal(res.status, 303, res.text.slice(0, 200));
+  assert.ok(res.location.startsWith(base));
+  let gov1 = await answerOf(ctx.a, 'GOV-01');
+  assert.equal(Number(gov1.saved_by_user_id), consultant.id);
+  const saved = (await chain(ctx.ws, ctx.a)).filter(e => e.action === 'questionnaire.answers_saved').at(-1);
+  assert.deepEqual([saved.after_state.by, Number(saved.after_state.by_user_id)], ['firm', consultant.id]);
+  assert.match((await request('GET', `/vendor/q/${ctx.token}?s=1`)).text, /data-vendor-answered-by>Answered by [^<]+ of [^<]+, on your behalf, on/);
+
+  await answerAll(ctx, { 'GOV-01': good('GOV-01', { ref: 'Policy v3, changed by the third party' }) });
+  gov1 = await answerOf(ctx.a, 'GOV-01');
+  assert.equal(gov1.saved_by_user_id, null, 'the third party changed it, so it is theirs now');
+  res = await firmPost('/save', [['_aft', aft], ...answerFields({ 'GOV-02': good('GOV-02', { ref: 'Entered from the email of 20 Nov' }) }), ['intent', 'save']]);
+  assert.equal(res.status, 303);
+  res = await firmPost('/submit', [['_aft', aft]]);
+  assert.equal(res.status, 303, res.text.slice(0, 300));
+  assert.match(decodeURIComponent(res.location), /step=review&toast=Submitted for the third party/);
+  assert.equal((await qRow(ctx.a)).status, 'submitted');
+  const sub = (await chain(ctx.ws, ctx.a)).find(e => e.action === 'questionnaire.submitted');
+  assert.equal(sub.after_state.by, 'firm');
+  assert.match((await firmPage(ctx)).text, /data-tprm-entered-by-firm>Entered by [^<]+ for the third party/);
+  for (const suffix of ['/documents', '/spreadsheet', '/reports']) {
+    assert.equal((await firmPost(suffix, [['_aft', aft]])).status, 404, `${suffix} is the third party's own action, not the firm's`);
+  }
+  const after = await consultant.session.get(base);
+  assert.equal(after.status, 303, 'after submission there is nothing to enter');
+  assert.match(decodeURIComponent(after.location), /step=review&toast=The questionnaire is submitted/);
+});
+
+test('follow-up questions: asked only after the chosen answer, cleared when the answer changes, never blocking submission or the review', async () => {
+  const editor = require('../lib/tprm/bank-editor');
+  const mgr = await makeUser(`va-bank-manager-${Date.now()}@test.local`, { role: 'manager' });
+  const before = await linked('Follow Up Old Co');
+  await editor.startDraft(db, mgr);
+  const added = await editor.addQuestion(db, mgr, { like: 'GOV-02', answer_type: 'free_text', theme: 'Security decisions without a named executive',
+    question: 'Who decides on information security risks, and how are those decisions recorded?', guidance: '', evidence: '', min_tier: 'All tiers',
+    ask_mode: 'when', ask_when_question: 'GOV-02', ask_when_answer: 'no' });
+  const F = added.id;
+  await assert.rejects(editor.addQuestion(db, mgr, { like: F, theme: 'x', question: 'A follow-up of a follow-up?', min_tier: 'All tiers',
+    ask_mode: 'when', ask_when_question: F, ask_when_answer: 'yes' }), /answer type|cannot have follow-ups|Yes, No or Not applicable/);
+  await assert.rejects(editor.retireQuestion(db, mgr, 'GOV-02', {}), /asked only after GOV-02/);
+  await editor.publish(db, mgr, {});
+
+  const oldQ = await qRow(before.a);
+  assert.ok(oldQ.sections.every(s => !s.followups), 'a questionnaire prepared before keeps its questions');
+  const ctx = await linked('Follow Up Co');
+  const q = await qRow(ctx.a);
+  assert.deepEqual(q.sections.flatMap(s => s.followups || []), [{ id: F, parent: 'GOV-02', when: 'no' }]);
+  assert.ok(!q.sections.some(s => s.ids.includes(F)), 'not one of the questions every questionnaire must answer');
+
+  const section = async () => (await vsection(ctx.token, ctx.a, 'GOV-02')).text;
+  let page = await section();
+  assert.match(page, new RegExp(`data-vendor-question="${F}" data-vendor-followup-of="GOV-02" data-vendor-followup-when="no" hidden`));
+  assert.doesNotMatch(page.slice(page.indexOf(`data-vendor-question="${F}"`), page.indexOf(`data-vendor-question="${F}"`) + 4000), / required[ >]/, 'no required field to trap a hidden follow-up');
+
+  await answerAll(ctx);
+  const followText = [[`t[${F}]`, 'The risk committee decides; minutes are kept.']];
+  const saveWith = async (answers, extra = []) => {
+    const vp = await vget(ctx.token);
+    const form = multipart([['_aft', aftOf(vp.text)], ...answerFields(answers), ...extra, ['intent', 'save']], []);
+    const res = await request('POST', `/vendor/q/${ctx.token}/save`, { body: form.body, headers: form.headers });
+    assert.equal(res.status, 303, res.text.slice(0, 300));
+  };
+  await saveWith({ 'GOV-02': good('GOV-02') }, followText);
+  assert.equal(await answerOf(ctx.a, F), undefined, 'while the parent is Yes, a posted follow-up is ignored');
+
+  await saveWith({ 'GOV-02': { r: 'no', d: 'There is no named executive.' } }, followText);
+  let f = await answerOf(ctx.a, F);
+  assert.equal(f.response, 'text');
+  page = await section();
+  const tag = (page.match(new RegExp(`<div[^>]*data-vendor-question="${F}"[^>]*>`)) || [''])[0];
+  assert.match(tag, /data-vendor-followup-of="GOV-02"/);
+  assert.doesNotMatch(tag, / hidden/, 'shown once the parent is No');
+  assert.match(page, /data-vendor-followup-why>Asked because you answered No to GOV-02\./);
+
+  await saveWith({ 'GOV-02': good('GOV-02') }, followText);
+  f = await answerOf(ctx.a, F);
+  assert.equal(f.response, null, 'the parent changed to Yes: the follow-up answer is cleared');
+  const res = await submitLink(ctx.token);
+  assert.equal(res.status, 200, res.text.slice(0, 300));
+  assert.equal((await qRow(ctx.a)).status, 'submitted');
+
+  const review = (await firmPage(ctx)).text;
+  assert.doesNotMatch(review, new RegExp(`data-tprm-answer-row="${F}"`), 'the review skips a follow-up that was not asked');
+  for (const a of (await answersOf(ctx.a)).filter(x => x.response)) {
+    assert.equal((await consultant.session.post(`${qBase(ctx)}/answers/${a.id}/review`, { conclusion: 'satisfactory', row_version: String(a.row_version) })).status, 302);
+  }
+  const closed = await consultant.session.post(`${qBase(ctx)}/close`, { row_version: String((await qRow(ctx.a)).row_version) });
+  assert.equal(closed.status, 302, toast(closed));
+  assert.equal((await qRow(ctx.a)).status, 'closed', 'the cleared follow-up does not block closing');
+
+  const asked = await linked('Follow Up Asked Co');
+  await answerAll(asked, { 'GOV-02': { r: 'no', d: 'No named executive.' } });
+  let stuck = await submitLink(asked.token);
+  assert.notEqual((await qRow(asked.a)).status, 'submitted', 'a follow-up that is asked must be answered');
+  const vp = await vget(asked.token);
+  const form = multipart([['_aft', aftOf(vp.text)], ...followText, ['intent', 'save']], []);
+  assert.equal((await request('POST', `/vendor/q/${asked.token}/save`, { body: form.body, headers: form.headers })).status, 303);
+  stuck = await submitLink(asked.token);
+  assert.equal(stuck.status, 200);
+  assert.equal((await qRow(asked.a)).status, 'submitted');
+  assert.match((await firmPage(asked)).text, new RegExp(`data-tprm-answer-row="${F}"[\\s\\S]*?The risk committee decides`));
 });

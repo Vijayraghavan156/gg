@@ -1,0 +1,96 @@
+<%- include('partials/header', { title: 'Email · Third-party risk', user, active }) %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; const title = label.charAt(0).toUpperCase() + label.slice(1); const base = '/tprm/settings/emails/' + encodeURIComponent(kind);
+   const when = d => { try { return new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC'; } catch (_) { return ''; } }; %>
+<nav class="tprm-crumbs" aria-label="Breadcrumb"><a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><a href="/tprm/settings/emails">Emails</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><span aria-current="page"><%= title %></span></nav>
+<div class="tprm-head" data-tprm-email-editor-page="<%= kind %>">
+  <div class="tprm-head-main">
+    <h1 class="page-title"><%= title %></h1>
+    <p class="tprm-status-line">Goes to <%= audience %>. <%= saved ? 'Changed by ' + (saved.updated_by_name || 'your firm') + ', ' + when(saved.updated_at) + '.' : 'Uses the standard wording.' %></p>
+    <p class="fx-muted fx-sm">You write the subject, the heading, and words before and after the standard part. The standard part, with the dates, the link and the details, always stays.</p>
+  </div>
+</div>
+
+<% if (errors && errors.length) { %>
+<div class="callout tprm-callout-error fx-mt" role="alert" data-tprm-email-errors><ul><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul></div>
+<% } %>
+<% if (notice) { %><div class="callout fx-mt" role="status" data-tprm-email-notice><%= notice %></div><% } %>
+
+<div class="fx-email-editor fx-mt">
+  <form method="POST" action="<%= base %>/edit" class="fx-card fx-guide-form" id="email-editor-form" data-tprm-email-editor data-tp-unsaved>
+    <input type="hidden" name="_csrf" value="<%= csrf %>"><% if (saved) { %><input type="hidden" name="row_version" value="<%= saved.row_version %>"><% } %>
+    <label class="label" for="em-subject">Subject <span class="meta text-xs">blank keeps the standard</span></label>
+    <input class="input" id="em-subject" name="subject" maxlength="<%= limits.subject %>" value="<%= source.subject %>" placeholder="<%= std.subject %>" <%= canEdit ? '' : 'readonly' %>>
+    <label class="label" for="em-headline">Heading <span class="meta text-xs">the large line at the top</span></label>
+    <input class="input" id="em-headline" name="headline" maxlength="<%= limits.headline %>" value="<%= source.headline %>" <%= canEdit ? '' : 'readonly' %>>
+
+    <% [['opening', 'Your opening words', 'After the greeting, before the standard part.'], ['closing', 'Your closing words', 'After the standard part, before the sign-off.']].forEach(([f, name, hint]) => { %>
+    <div class="fx-email-region" data-tprm-email-region="<%= f %>">
+      <label class="label" for="em-<%= f %>"><%= name %> <span class="meta text-xs"><%= hint %></span></label>
+      <% if (canEdit) { %>
+      <div class="fx-email-tools" data-tprm-email-tools hidden>
+        <button type="button" class="btn btn-ghost btn-xs" data-tprm-email-cmd="bold" aria-label="Bold"><b>B</b></button>
+        <button type="button" class="btn btn-ghost btn-xs" data-tprm-email-cmd="italic" aria-label="Italic"><i>I</i></button>
+        <button type="button" class="btn btn-ghost btn-xs" data-tprm-email-cmd="list">List</button>
+        <button type="button" class="btn btn-ghost btn-xs" data-tprm-email-cmd="link">Link</button>
+        <select class="select fx-select-s" data-tprm-email-field aria-label="Insert a detail"><option value="">Insert a detail</option><% fields.forEach(x => { %><option value="<%= x.key %>"><%= x.label %></option><% }) %></select>
+      </div>
+      <div class="input fx-email-rich" data-tprm-email-rich="<%= f %>" role="textbox" aria-multiline="true" aria-label="<%= name %>" hidden><%- editorHtml[f] %></div>
+      <% } %>
+      <textarea class="input fx-email-src" id="em-<%= f %>" name="<%= f %>" rows="5" maxlength="<%= limits[f] %>" data-tprm-email-src="<%= f %>" <%= canEdit ? '' : 'readonly' %>><%= source[f] %></textarea>
+    </div>
+    <% if (f === 'opening') { %><p class="fx-email-fixed fx-sm fx-muted" data-tprm-email-fixed>The standard part of the email goes here.</p><% } %>
+    <% }) %>
+
+    <details class="fx-email-help fx-sm" data-tprm-email-help>
+      <summary>How to format without the buttons</summary>
+      <p>Leave a blank line between paragraphs. Start lines with "- " for a list. **Bold**, *italic*, and [words](https://example.com) for a link. Links must start with https:// or mailto:.</p>
+      <p>Details this email can fill in: <%= fields.map(x => '{' + x.key + '}').join(', ') %>.<% if (fields.some(x => x.key === 'contact')) { %> {contact} becomes the reviewer's name and email, linked.<% } %></p>
+    </details>
+
+    <% if (canEdit) { %>
+    <div class="fx-actions">
+      <button class="btn btn-primary btn-xs" type="submit" name="intent" value="save">Save</button>
+      <button class="btn btn-ghost btn-xs" type="submit" name="intent" value="test" data-tprm-email-test>Send me a test email</button>
+      <% if (saved) { %><button class="btn btn-ghost btn-xs" type="submit" name="intent" value="reset" data-tprm-email-reset>Back to the standard wording</button><% } %>
+    </div>
+    <p class="fx-muted fx-sm">The test goes only to you<%= toEmail ? ', at ' + toEmail : '' %>, with sample details.</p>
+    <% } %>
+  </form>
+
+  <div class="fx-email-side">
+    <div class="fx-email-view" data-tprm-email-view>
+      <button class="btn btn-ghost btn-xs" type="submit" form="email-editor-form" formaction="<%= base %>/preview" formtarget="email-preview" name="as" value="html" data-tprm-email-show="html">Email</button>
+      <button class="btn btn-ghost btn-xs" type="submit" form="email-editor-form" formaction="<%= base %>/preview" formtarget="email-preview" name="as" value="text" data-tprm-email-show="text">Plain text</button>
+      <span class="fx-muted fx-sm" data-tprm-email-state>Sample details. Press Email to refresh the preview.</span>
+    </div>
+    <iframe class="fx-email-preview fx-email-preview--tall" name="email-preview" title="Preview of <%= label %>" sandbox src="<%= base %>/preview" data-tprm-email-frame></iframe>
+  </div>
+</div>
+
+<% if (versions.length) { %>
+<h2 class="fx-section-h">Versions <span><%= versions.length %></span></h2>
+<div class="fx-card" data-tprm-email-versions>
+  <table class="fx-table">
+    <thead><tr><th scope="col">Saved</th><th scope="col">By</th><th scope="col">Subject</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+    <% versions.forEach((v, i) => { %>
+      <tr data-tprm-email-version="<%= v.id %>">
+        <td><%= when(v.saved_at) %><% if (i === 0) { %> <span class="fx-muted">(in use)</span><% } %></td>
+        <td><%= v.saved_by_name || 'Unknown' %></td>
+        <td><%= v.is_standard ? 'Standard wording' : (v.subject || std.subject) %></td>
+        <td>
+          <a class="btn btn-ghost btn-xs" href="<%= base %>/preview?v=<%= v.id %>" target="email-preview">Preview</a>
+          <% if (canEdit && i > 0) { %>
+          <form method="POST" action="<%= base %>/versions/<%= v.id %>/restore">
+            <input type="hidden" name="_csrf" value="<%= csrf %>"><% if (saved) { %><input type="hidden" name="row_version" value="<%= saved.row_version %>"><% } %>
+            <button class="btn btn-ghost btn-xs" type="submit">Put this back</button>
+          </form>
+          <% } %>
+        </td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+<%- include('partials/footer') %>

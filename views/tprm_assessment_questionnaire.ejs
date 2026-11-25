@@ -67,7 +67,26 @@
           <div><span class="label">Delivery model</span><%= qp.A.DELIVERY_MODEL_LABELS[qp.deliveryFromAnswers] %></div>
         <% } %>
         <% if (qp.note) { %><div class="meta text-xs" data-tprm-delivery-note><%= qp.note %></div><% } %>
+        <% if ((qp.firmQuestionnaires || []).length) { %>
+          <fieldset class="tprm-fieldset" data-tprm-questionnaire-mode>
+            <legend>Questions to send</legend>
+            <% ['automatic', 'instead', 'with'].forEach((m, i) => { %>
+              <label class="tprm-check"><input type="radio" name="questionnaire_mode" value="<%= m %>"<%= i === 0 ? ' checked' : '' %>> <span><%= qp.modeLabels[m] %></span></label>
+            <% }) %>
+            <label class="label" for="tprm-template-id">Your questionnaire <span class="meta text-xs">used when you choose one of yours</span></label>
+            <select class="select" id="tprm-template-id" name="template_id" data-tprm-template-choice>
+              <% qp.firmQuestionnaires.forEach(t => { %><option value="<%= t.id %>"><%= t.name %> (version <%= t.version %>, <%= t.questionCount %> questions)</option><% }) %>
+            </select>
+          </fieldset>
+        <% } %>
         <div><span class="label">Rulebooks</span><span data-tprm-rulebooks-to-pin><% if ((qp.rulebooksToPin || []).length) { %><%= qp.rulebooksToPin.map(r => r.name).join(', ') %> <span class="meta text-xs">(ticked for the client: their questions are added and they stay with this questionnaire)</span><% } else { %><span class="meta">None ticked for the client.</span><% } %></span><% if (typeof canSettings !== 'undefined' && canSettings) { %> <a class="tprm-link" href="/tprm/clients/<%= tpClient.id %>/settings#rulebooks" data-tprm-rulebooks-change>Change</a><% } %></div>
+        <% if ((qp.firmQuestionnaires || []).length && (qp.rulebooksToPin || []).length) { %>
+          <div data-tprm-instead-rulebooks>
+            <input type="hidden" name="rulebooks_choice_shown" value="1">
+            <label class="tprm-check"><input type="checkbox" name="include_rulebooks" value="1" checked> <span>When one of yours is sent instead, still ask the questions <%= qp.rulebooksToPin.map(r => r.name).join(' and ') %> require<%= qp.rulebooksToPin.length === 1 ? 's' : '' %> (recommended)</span></label>
+            <div class="meta text-xs">They come from the client's regulator, and are added after your questions. If you leave them out, the assessment history records who did.</div>
+          </div>
+        <% } %>
         <div class="tprm-actions"><button class="btn btn-primary" type="submit" data-tprm-prepare>Prepare questionnaire</button></div>
       </form>
     <% } else { %>
@@ -76,7 +95,7 @@
   <% } else { %>
     <% const qRegulatory = Object.values(qp.counts.rulebooks || {}).reduce((n, c) => n + c, 0); %>
     <% const qAllIds = (qp.sections || []).reduce((all, s) => all.concat(s.ids), []); %>
-    <p class="panel-pad tprm-summary-line" data-tprm-questionnaire-summary><strong data-tprm-vendor-count><%= qq.vendor_question_count %></strong> questions for the third party, <span data-tprm-evidence-required-count><%= evidenceCount(qAllIds) %></span> of <%= qAllIds.length %> asking for evidence: <span data-tprm-base-count><%= qp.counts.base %></span> base<% if ((qq.rulebooks || []).length) { %>, <span data-tprm-regulatory-count><%= qRegulatory %></span> regulatory<% } %>. Tier <%= tp.TIER_LABELS[qq.tier] %>, <span data-tprm-delivery-model><%= qp.A.DELIVERY_MODEL_LABELS[qq.delivery_model] %></span><% if (qq.delivery_model_source === 'consultant') { %> (chosen by the consultant)<% } %>.</p>
+    <p class="panel-pad tprm-summary-line" data-tprm-questionnaire-summary><strong data-tprm-vendor-count><%= qq.vendor_question_count %></strong> questions for the third party, <span data-tprm-evidence-required-count><%= evidenceCount(qAllIds) %></span> of <%= qAllIds.length %> asking for evidence: <% if (qp.counts.template) { %><span data-tprm-template-count><%= qp.counts.template %></span> from your questionnaire, <% } %><span data-tprm-base-count><%= qp.counts.base %></span> base<% if ((qq.rulebooks || []).length) { %>, <span data-tprm-regulatory-count><%= qRegulatory %></span> regulatory<% } %>. Tier <%= tp.TIER_LABELS[qq.tier] %>, <span data-tprm-delivery-model><%= qp.A.DELIVERY_MODEL_LABELS[qq.delivery_model] %></span><% if (qq.delivery_model_source === 'consultant') { %> (chosen by the consultant)<% } %>.</p>
     <div class="panel-pad meta text-xs">Prepared by <%= qq.prepared_by_name || 'Unknown user' %> on <%= qWhen(qq.prepared_at) %> from question bank <span data-tprm-bank-version>Version <%= qq.bank_version %></span>.</div>
     <% if (qp.note) { %><div class="panel-pad meta text-xs tprm-divide" data-tprm-delivery-note><%= qp.note %></div><% } %>
     <% if (qp.blocked && !['completed', 'cancelled'].includes(assessment.status)) { %>
@@ -90,7 +109,12 @@
   <% } %>
 </div>
 
+<% const qInstead = !!(qq && qq.template && (typeof qq.template === 'string' ? JSON.parse(qq.template) : qq.template).mode === 'instead'); %>
+<% const qLeft = qInstead ? (typeof qq.template === 'string' ? JSON.parse(qq.template) : qq.template).rulebooks_left_out : null; %>
+<% if (qInstead) { %><p class="fx-muted fx-sm fx-mt" data-tprm-questionnaire-instead-note>Your questionnaire was sent instead of the automatic one, so there are no automatic questions, modules or AI screening question in it.<% if ((qp.rulebooks || []).length) { %> The questions the client's rulebooks require are added after yours.<% } %></p><% } %>
+<% if (qLeft) { %><p class="fx-sm fx-mt" data-tprm-rulebooks-left-out>The questions <%= qLeft.rulebooks.map(r => r.name).join(' and ') %> require<%= qLeft.rulebooks.length === 1 ? 's' : '' %> were left out by <%= qLeft.by_name || 'a team member' %> on <%= qWhen(qLeft.at) %>.</p><% } %>
 <% if (qq) { %>
+<% if (!qInstead) { %>
 <div class="panel" data-tprm-modules>
   <div class="panel-head"><h2>Modules</h2><span class="meta"><%= (qq.modules || []).filter(m => m.included).length %> included</span></div>
   <% if (!(qq.modules || []).length) { %><div class="panel-pad meta">No modules.</div><% } %>
@@ -142,6 +166,7 @@
     </div>
   <% } %>
 </div>
+<% } %>
 
 <div class="panel" data-tprm-links>
   <div class="panel-head"><h2>Link for the third party</h2><% if (qp.activeLink) { %><%- include('partials/tprm_status', { text: 'Active link', tone: 'good' }) %><% } %></div>
@@ -154,6 +179,10 @@
       <span class="meta">Reminders also go automatically 7 days and 1 day before the link stops working.</span>
       <button class="btn btn-secondary btn-xs" type="submit" data-tprm-remind>Send a reminder now</button>
     </form>
+    <div class="panel-pad tprm-divide-b fx-bulk" data-tprm-enter-for-supplier>
+      <span class="meta">If the third party sent its answers another way, for example by email, you can enter them yourself. Each answer shows that you entered it, and the third party can still change it until the questionnaire is submitted.</span>
+      <a class="btn btn-secondary btn-xs" href="<%= qBase.replace(/\/questionnaire$/, '') %>/answer-for-supplier" data-tprm-enter-answers>Enter answers for the third party</a>
+    </div>
     <% } %>
     <div class="table-scroll"><table class="t" data-tprm-link-list>
       <thead><tr><th>Recipient</th><th>Created</th><th>Valid until</th><th>Status</th><th class="tprm-right">Actions</th></tr></thead>
@@ -216,6 +245,19 @@
 
 <div class="panel" data-tprm-question-list>
   <div class="panel-head"><h2>Questions</h2><span class="meta">Open a section to see its questions</span></div>
+  <% const tplSections = qp.sections.filter(s => s.kind === 'template'); const tplMeta = typeof qq.template === 'string' ? JSON.parse(qq.template) : qq.template; %>
+  <% if (tplSections.length && tplMeta) { %>
+  <div data-tprm-template-sections>
+    <div class="panel-pad tprm-group-title">Your questionnaire: <%= tplMeta.name %> <span class="meta text-xs">version <%= tplMeta.version %>, <%= tplMeta.mode === 'instead' ? 'sent instead of the automatic questions' : 'sent with the automatic questions' %></span></div>
+    <% tplSections.forEach(s => { %>
+      <details class="tprm-qgroup" data-tprm-section="<%= s.title %>">
+        <summary class="tprm-summary"><span class="tpu-grow"><%= s.title %></span> <span class="tprm-qgroup-meta"><span data-tprm-section-count><%= s.ids.length %></span> question<%= s.ids.length === 1 ? '' : 's' %><%= (s.followups || []).length ? ', plus ' + s.followups.length + ' asked only when a rule is met' : '' %></span></summary>
+        <% questionTable(s.ids.concat((s.followups || []).map(f => f.id))) %>
+      </details>
+    <% }) %>
+  </div>
+  <% } %>
+  <% if (qp.sections.some(s => s.kind === 'base')) { %>
   <div data-tprm-base-sections>
     <div class="panel-pad tprm-group-title">Base questions by domain</div>
     <% qp.sections.filter(s => s.kind === 'base').forEach(s => { %>
@@ -225,6 +267,8 @@
       </details>
     <% }) %>
   </div>
+  <% } %>
+  <% if (!qInstead || (qp.rulebooks || []).length) { %>
   <div data-tprm-regulatory>
     <div class="panel-pad tprm-group-title tprm-divide">Regulatory <span class="meta text-xs">(the client's rulebooks, pinned when the questionnaire was prepared)</span></div>
     <% if (!(qp.rulebooks || []).length) { %>
@@ -245,6 +289,7 @@
       </div>
     <% }) %>
   </div>
+  <% } %>
 </div>
 
 <div class="panel" data-tprm-consultant-checks>

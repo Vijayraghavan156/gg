@@ -361,7 +361,7 @@ test('a manager creates a draft, edits an answer\'s tier, saves, and activates i
   assert.match(page.text, /data-tprm-new-version/);
   assert.doesNotMatch(page.text, /data-tprm-criticality-readonly/, "managers keep the editor");
   assert.match(page.text, /data-tprm-version-history/);
-  assert.match((await client.get('/tprm')).text, /href="\/tprm\/settings\/criticality"/, 'the /tprm page links to the editor');
+  assert.match((await client.get('/tprm/settings')).text, /href="\/tprm\/settings\/criticality"/, 'the settings page links to the editor');
 
   const created = await client.post('/tprm/settings/criticality/drafts', {});
   assert.equal(created.status, 302);
@@ -525,7 +525,7 @@ test('only managers can edit or activate the model; consultants and senior consu
       assert.equal((await session.post(`/tprm/settings/criticality/versions/${draft.id}`, formBody(savedDraft, { op: 'save' }))).status, 403);
       assert.equal((await session.post(`/tprm/settings/criticality/versions/${draft.id}/activate`, { row_version: String(savedDraft.rowVersion) })).status, 403);
       assert.equal((await session.post(`/tprm/settings/criticality/versions/${draft.id}/discard`, {})).status, 403);
-      assert.match((await session.get('/tprm')).text, /href="\/tprm\/settings\/criticality"/, `${role}: the read-only page is linked`);
+      assert.match((await session.get('/tprm/settings')).text, /href="\/tprm\/settings\/criticality"/, `${role}: the read-only page is linked`);
     } finally {
       await session.close();
     }

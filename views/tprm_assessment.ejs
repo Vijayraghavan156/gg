@@ -60,7 +60,7 @@
   else if (qq.not_returned) addStep('questionnaire', 'Questionnaire', 'done', 'Not returned');
   else addStep('questionnaire', 'Questionnaire', 'done', 'Submitted' + (qq.submitted_at ? ' ' + day(qq.submitted_at) : ''));
 
-  const aiNote = ap && ap.latest && ap.pendingCount ? ', ' + plural(ap.pendingCount, 'AI suggestion') + ' to decide' : '';
+  const aiNote = ap && ap.latest && ap.pendingCount ? ', ' + plural(ap.pendingCount, 'Brevis suggestion') + ' to decide' : '';
   if (qq && qq.not_returned) addStep('review', 'Review of answers', 'na', 'No answers to review');
   else if (!qSubmitted) addStep('review', 'Review of answers', (!tierConfirmed && st === 'cancelled') || (frozen && !qq) ? 'na' : 'todo', qq && rv && ['sent', 'in_progress'].includes(qq.status) ? 'After the third party submits' : 'After the answers come in');
   else if (qq.status === 'closed') addStep('review', 'Review of answers', 'done', 'Review closed' + aiNote);
@@ -164,7 +164,7 @@
   </div>
 </div>
 
-<div class="tprm-workspace">
+<div class="tprm-workspace<%= selected === 'review' ? ' tprm-workspace--wide' : '' %>">
   <nav class="tprm-rail" aria-label="Assessment steps" data-tprm-steps>
     <div class="tprm-rail-group">
     <% steps.forEach(s => { %>
@@ -422,6 +422,7 @@
 <% if (selected === 'review') { %>
 <% stepTitle('review') %>
 <div class="tprm-stack">
+  <% if (ap) { Object.assign(actionLabels, aiEventLabels); %><%- include('tprm_assessment_ai') %><% } %>
   <% if (qq) { %>
     <div class="panel tprm-answers-panel">
       <div class="panel-head"><h2>The third party's answers</h2><% if (rv && rv.submitted) { %><span class="meta"><%= rv.allCount %> answers</span><% } %></div>
@@ -433,7 +434,6 @@
   <% } else { %>
     <div class="panel panel-pad meta" data-tprm-review-empty>The answers are reviewed here once the questionnaire is prepared, sent and returned by the third party.</div>
   <% } %>
-  <% if (ap) { Object.assign(actionLabels, aiEventLabels); %><%- include('tprm_assessment_ai') %><% } %>
 </div>
 <% stepFoot('review') %>
 <% } %>

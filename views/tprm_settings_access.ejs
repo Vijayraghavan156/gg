@@ -1,0 +1,29 @@
+<%- include('partials/header', { title: 'Who sees what · Third-party risk', user, active }) %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; %>
+<div class="page-head" data-tprm-access-settings>
+  <div>
+    <a class="text-xs tpu-back" href="/tprm">← Third-party risk clients</a>
+    <h1 class="page-title tpu-mt-6">Who sees what</h1>
+    <div class="page-subtitle">Choose whether consultants see every third party of the clients they work on, or only their own.</div>
+    <details class="tprm-how"><summary>How this works</summary>
+      <p>A consultant's own third parties are the ones they added, own, review, lead a review of, or wrote a recommendation for.</p>
+      <p>Senior consultants and managers always see every third party of their clients, so a tier or recommendation never waits for someone who cannot see it.</p>
+    </details>
+  </div>
+</div>
+
+<div class="panel tpu-narrow">
+  <div class="panel-head"><h2>Consultants</h2></div>
+  <form method="POST" action="/tprm/settings/access" class="panel-pad tpu-form" data-tprm-access-form>
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div>
+      <label class="tpu-row">
+        <input type="checkbox" name="consultants_own_only" value="1" <%= ownOnly ? 'checked' : '' %> data-tprm-own-only>
+        Consultants see only their own third parties
+      </label>
+      <div class="meta text-xs">Off by default: consultants see every third party of the clients they work on. On: lists, counts and pages show a consultant only their own third parties; others are not found.</div>
+    </div>
+    <div class="tpu-end"><button class="btn btn-primary" type="submit" data-tprm-access-save>Save</button></div>
+  </form>
+</div>
+<%- include('partials/footer') %>

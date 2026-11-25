@@ -1,0 +1,125 @@
+<%- include('partials/header', { title: t.name + ' · Questionnaires', user, active }) %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; const base = '/tprm/settings/questionnaires/' + t.id;
+   const day = d => { try { return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }); } catch (_) { return ''; } };
+   const rv = '<input type="hidden" name="_csrf" value="' + csrf + '"><input type="hidden" name="row_version" value="' + t.row_version + '">';
+   const titleOf = new Map(t.draft.questions.map(q => [q.id, q.theme]));
+   const ruleText = q => q.show_when ? 'Shown when ' + q.show_when.conditions.map(c => c.question + ' ' + opLabels[c.op] + (c.value ? ' ' + c.value : '')).join(q.show_when.mode === 'any' ? ', or ' : ' and ') + '.' : 'Shown to every third party.';
+   const total = t.draft.questions.length; %>
+<nav class="tprm-crumbs" aria-label="Breadcrumb"><a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><a href="/tprm/settings">Settings</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><a href="/tprm/settings/questionnaires">Questionnaires</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><span aria-current="page"><%= t.name %></span></nav>
+<div class="tprm-head" data-tprm-q-template-page="<%= t.id %>">
+  <div class="tprm-head-main">
+    <h1 class="page-title"><%= t.name %></h1>
+    <p class="tprm-status-line" data-tprm-q-template-state><% if (t.latest && !t.draft_changed) { %>Version <%= t.latest.version %>, published <%= day(t.latest.publishedAt) %>. <% } else if (t.latest) { %>Changes since version <%= t.latest.version %> are not published yet. <% } else { %>Not published yet. <% } %><%= total %> question<%= total === 1 ? '' : 's' %> in <%= t.draft.sections.length %> section<%= t.draft.sections.length === 1 ? '' : 's' %>.<% if (t.status === 'archived') { %> Archived: not offered when preparing a questionnaire.<% } %></p>
+    <% if (t.description) { %><p class="fx-muted fx-sm"><%= t.description %></p><% } %>
+  </div>
+  <div class="tprm-head-actions">
+    <% if (t.latest) { %><a class="btn btn-secondary" href="<%= base %>/versions" data-tprm-q-template-history>Version history</a><% } %>
+  <% if (canEdit) { %>
+    <% if (t.latest && t.draft_changed) { %><form method="POST" action="<%= base %>/discard"><%- rv %><%- include('partials/tprm_confirm_fields', { title: 'Discard the changes?', body: 'The draft goes back to the published version. Every change since then is lost.', action: 'Discard', tone: 'problem' }) %><button class="btn btn-secondary" type="submit" data-tprm-q-template-discard>Discard changes</button></form><% } %>
+    <% if (!t.latest || t.draft_changed) { %><a class="btn btn-primary" href="<%= base %>/publish" data-tprm-q-template-publish>Review and publish</a><% } %>
+  <% } %>
+  </div>
+</div>
+<% if (canEdit && problems.length && total) { %>
+<div class="callout fx-mt" role="status" data-tprm-q-template-problems><p class="qb-m0"><b>Before you can publish:</b></p><ul class="qb-list"><% problems.forEach(p => { %><li><%= p %></li><% }) %></ul></div>
+<% } %>
+
+<div class="qb-builder" data-tprm-q-builder<% if (canEdit) { %> data-tprm-q-base="<%= base %>" data-tprm-q-current="<%= chosen ? chosen.key : '' %>"<% } %>>
+  <nav class="qb-sections" aria-label="Sections">
+    <% sections.forEach((s, i) => { %>
+      <a class="qb-section<%= chosen && chosen.key === s.key ? ' is-on' : '' %>" href="<%= base %>?s=<%= encodeURIComponent(s.key) %>" data-tprm-q-section="<%= s.key %>"<%- chosen && chosen.key === s.key ? ' aria-current="true"' : '' %>><span><%= s.title %></span><span class="qb-n"><%= s.count %></span></a>
+    <% }) %>
+    <% if (canEdit) { %>
+    <details class="qb-add-section" data-tprm-q-section-add><summary class="fx-link">Add a section</summary>
+      <form method="POST" action="<%= base %>/sections" class="fx-guide-form"><%- rv %>
+        <label class="label sr-only" for="qb-new-section">Section name</label>
+        <input class="input" id="qb-new-section" name="title" maxlength="<%= limits.section %>" required placeholder="Section name">
+        <button class="btn btn-secondary btn-xs" type="submit">Add</button>
+      </form>
+    </details>
+    <% } %>
+  </nav>
+
+  <div class="qb-questions">
+    <% if (chosen) { const idx = sections.findIndex(s => s.key === chosen.key); %>
+    <div class="qb-qhead">
+      <h2 class="qb-h"><%= chosen.title %></h2>
+      <% if (canEdit) { %>
+      <div class="qb-tools">
+        <details class="qb-inline" data-tprm-q-section-rename><summary class="fx-link">Rename</summary>
+          <form method="POST" action="<%= base %>/sections/<%= encodeURIComponent(chosen.key) %>" class="qb-row"><%- rv %>
+            <input class="input" name="title" maxlength="<%= limits.section %>" value="<%= chosen.title %>" aria-label="New section name" required>
+            <button class="btn btn-secondary btn-xs" type="submit">Save</button>
+          </form>
+        </details>
+        <% if (idx > 0) { %><form method="POST" action="<%= base %>/sections/<%= encodeURIComponent(chosen.key) %>/move" class="qb-inline"><%- rv %><input type="hidden" name="dir" value="up"><button class="fx-link qb-linkbtn" type="submit">Move up</button></form><% } %>
+        <% if (idx < sections.length - 1) { %><form method="POST" action="<%= base %>/sections/<%= encodeURIComponent(chosen.key) %>/move" class="qb-inline"><%- rv %><input type="hidden" name="dir" value="down"><button class="fx-link qb-linkbtn" type="submit">Move down</button></form><% } %>
+        <% if (sections.length > 1) { %><form method="POST" action="<%= base %>/sections/<%= encodeURIComponent(chosen.key) %>/remove" class="qb-inline"><%- rv %><button class="fx-link qb-linkbtn" type="submit" data-tprm-q-section-remove<%= chosen.count ? ' title="Move or remove its questions first"' : '' %>>Remove section</button></form><% } %>
+      </div>
+      <% } %>
+    </div>
+    <% if (!questions.length) { %><p class="fx-muted fx-sm" data-tprm-q-section-empty>No questions in this section yet.</p><% } %>
+    <% if (canEdit && questions.length) { %>
+    <form method="POST" action="<%= base %>/questions/bulk" id="qb-bulk" class="qb-bulk" data-tprm-q-bulk>
+      <%- rv %><input type="hidden" name="s" value="<%= chosen.key %>">
+      <label class="tprm-check qb-bulk-all"><input type="checkbox" data-tprm-q-tick-all> <span data-tprm-q-tick-count>Tick all</span></label>
+      <span class="fx-muted fx-sm">With the ticked questions:</span>
+      <button class="btn btn-secondary btn-xs" type="submit" name="bulk" value="required">Make required</button>
+      <button class="btn btn-secondary btn-xs" type="submit" name="bulk" value="optional">Make optional</button>
+      <% if (sections.length > 1) { %>
+      <span class="qb-row qb-m0"><label class="sr-only" for="qb-bulk-to">Section to move them to</label><select class="select qb-small" id="qb-bulk-to" name="to_section"><% sections.filter(x => x.key !== chosen.key).forEach(x => { %><option value="<%= x.key %>"><%= x.title %></option><% }) %></select><button class="btn btn-secondary btn-xs" type="submit" name="bulk" value="move">Move</button></span>
+      <% } %>
+      <button class="btn btn-ghost btn-xs" type="submit" name="bulk" value="remove" data-tprm-q-bulk-remove>Remove</button>
+    </form>
+    <% } %>
+    <% questions.forEach((q, qi) => { %>
+      <div class="qb-q<%= canEdit ? ' qb-q-pick' : '' %><%= q.show_when ? ' is-child' : '' %>" data-tprm-q-question="<%= q.id %>">
+        <% if (canEdit) { %><span class="qb-pick"><input type="checkbox" name="ids" value="<%= q.id %>" form="qb-bulk" aria-label="Tick <%= q.id %>" data-tprm-q-tick></span><% } %>
+        <span class="qb-code"><%= q.id %></span>
+        <span class="qb-text"><%= q.question %>
+          <small><%= q.required ? 'Required.' : 'Optional.' %> <%= ruleText(q) %><% if (q.options) { %> Options: <%= q.options.join(', ') %>.<% } %><% if (q.ai_valid || q.ai_meets || q.ai_partly || q.ai_red_flags) { %> Marking rules set.<% } %></small></span>
+        <span class="qb-type"><%= typeLabels[q.answer_type] %></span>
+        <span class="qb-act">
+          <a class="btn btn-secondary btn-xs" href="<%= base %>/questions/<%= encodeURIComponent(q.id) %>"><%= canEdit ? 'Edit' : 'View' %></a>
+          <% if (canEdit && questions.length > 1) { %>
+            <% if (qi > 0) { %><form method="POST" action="<%= base %>/questions/<%= encodeURIComponent(q.id) %>/move" class="qb-inline"><%- rv %><input type="hidden" name="s" value="<%= chosen.key %>"><input type="hidden" name="dir" value="up"><button class="fx-link qb-linkbtn" type="submit" aria-label="Move <%= q.id %> up">Up</button></form><% } %>
+            <% if (qi < questions.length - 1) { %><form method="POST" action="<%= base %>/questions/<%= encodeURIComponent(q.id) %>/move" class="qb-inline"><%- rv %><input type="hidden" name="s" value="<%= chosen.key %>"><input type="hidden" name="dir" value="down"><button class="fx-link qb-linkbtn" type="submit" aria-label="Move <%= q.id %> down">Down</button></form><% } %>
+          <% } %>
+        </span>
+      </div>
+    <% }) %>
+    <% if (canEdit) { %><div class="qb-addrow"><a class="btn btn-secondary btn-xs" href="<%= base %>/questions/new?section=<%= encodeURIComponent(chosen.key) %>" data-tprm-q-add>Add a question</a><% if (questions.length > 1 || sections.length > 1) { %><span class="fx-muted fx-sm qb-hint" data-tprm-q-drag-hint hidden>Drag a question to change its place, or onto a section on the left to move it there. Drag sections to reorder them.</span><% } %></div><% } %>
+    <% } %>
+  </div>
+</div>
+
+<div class="fx-card fx-mt" data-tprm-q-template-excel>
+  <h2 class="qb-h">Excel</h2>
+  <p class="fx-muted fx-sm">Download every question with its settings and marking rules<%= canEdit ? ', change them in Excel and upload the file again. Leave the number empty to add a question, and write Remove to take one out. Uploads change the draft only' : '' %>.</p>
+  <div class="fx-actions">
+    <a class="btn btn-secondary btn-xs" href="<%= base %>/export.xlsx" data-tprm-q-template-export>Download Excel</a>
+    <% if (canEdit) { %>
+    <form method="POST" action="<%= base %>/import" enctype="multipart/form-data" class="fx-actions" data-tprm-q-template-import>
+      <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= t.row_version %>">
+      <label class="sr-only" for="qt-sheet">Excel file</label><input id="qt-sheet" type="file" name="sheet" accept=".xlsx" required>
+      <button class="btn btn-secondary btn-xs" type="submit">Upload changes</button>
+    </form>
+    <% } %>
+  </div>
+</div>
+
+<% if (canEdit) { %>
+<details class="fx-card fx-mt" data-tprm-q-template-details><summary class="qb-summary">Name, description and archiving</summary>
+  <form method="POST" action="<%= base %>/details" class="fx-guide-form qb-narrow"><%- rv %>
+    <label class="label" for="qt-name">Name</label><input class="input" id="qt-name" name="name" maxlength="<%= limits.name %>" value="<%= t.name %>" required>
+    <label class="label" for="qt-desc">Description</label><input class="input" id="qt-desc" name="description" maxlength="<%= limits.description %>" value="<%= t.description || '' %>">
+    <p class="fx-muted fx-sm">Question code: <%= t.prefix %>. It stays fixed so answers keep their meaning.</p>
+    <div class="fx-actions"><button class="btn btn-secondary btn-xs" type="submit">Save</button></div>
+  </form>
+  <form method="POST" action="<%= base %>/<%= t.status === 'archived' ? 'restore' : 'archive' %>" class="fx-actions"><%- rv %>
+    <button class="btn btn-secondary btn-xs" type="submit" data-tprm-q-template-<%= t.status === 'archived' ? 'restore' : 'archive' %>><%= t.status === 'archived' ? 'Offer it again' : 'Archive' %></button>
+    <span class="fx-muted fx-sm"><%= t.status === 'archived' ? 'Archived questionnaires are not offered when preparing a questionnaire.' : 'Archiving stops it being offered; questionnaires already prepared keep it.' %></span>
+  </form>
+</details>
+<% } %>
+<%- include('partials/footer') %>

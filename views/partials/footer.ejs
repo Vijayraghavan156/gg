@@ -811,7 +811,7 @@ function toast(msg, kind) {
     const kind = p.get('toastKind') || (key === 'error' ? 'error' : 'success');
     setTimeout(() => toast(msg, kind), 50);
     p.delete(key); p.delete('toastKind');
-    const newUrl = location.pathname + (p.toString() ? '?' + p.toString() : '');
+    const newUrl = location.pathname + (p.toString() ? '?' + p.toString() : '') + location.hash;
     history.replaceState({}, '', newUrl);
   }
 })();

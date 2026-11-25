@@ -64,6 +64,61 @@
     });
   });
 
+  function domAnswer(qid) {
+    var picked = Array.prototype.filter.call(document.querySelectorAll('input[name="r[' + qid + ']"]'), function (r) { return r.checked; })[0];
+    if (picked) return { response: picked.value, fields: null };
+    var vals = Array.prototype.filter.call(document.querySelectorAll('[name="f[' + qid + '][value]"], [name="f[' + qid + '][value][]"]'), function (el) {
+      return el.type === 'radio' || el.type === 'checkbox' ? el.checked : true;
+    }).map(function (el) { return String(el.value || '').trim(); }).filter(Boolean);
+    return vals.length ? { response: 'value', fields: { value: vals.join('; ') } } : null;
+  }
+  function conditionMet(c, a) {
+    var answered = !!(a && a.response);
+    if (c.op === 'answered') return answered;
+    if (c.op === 'not_answered') return !answered;
+    if (!answered) return false;
+    var value = a.response === 'value' ? String((a.fields || {}).value || '') : String(a.response);
+    var list = value.split(/;\s*/).map(function (x) { return x.trim(); }).filter(Boolean);
+    var want = String(c.value || '').trim();
+    if (c.op === 'is') return value === want || (list.length > 1 && list.indexOf(want) >= 0);
+    if (c.op === 'is_not') return !(value === want || list.indexOf(want) >= 0);
+    if (c.op === 'includes') return list.indexOf(want) >= 0;
+    var n = Number(value.replace(',', '.')), m = Number(want.replace(',', '.'));
+    if (isNaN(n) || isNaN(m)) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value) && /^\d{4}-\d{2}-\d{2}$/.test(want)) return c.op === 'more_than' ? value > want : value < want;
+      return false;
+    }
+    return c.op === 'more_than' ? n > m : n < m;
+  }
+  var ruleBoxes = Array.prototype.filter.call(document.querySelectorAll('[data-vendor-followup-rule]'), function (box) {
+    try { box._rule = JSON.parse(box.getAttribute('data-vendor-followup-rule')); } catch (_) { return false; }
+    return !!box._rule && box._rule.conditions.every(function (c) { return !!document.querySelector('[data-vendor-question="' + c.question + '"]'); });
+  });
+  function syncRules() {
+    ruleBoxes.forEach(function (box) {
+      var results = box._rule.conditions.map(function (c) { return conditionMet(c, domAnswer(c.question)); });
+      var parentBox = document.querySelector('[data-vendor-question="' + box.getAttribute('data-vendor-followup-of') + '"]');
+      box.hidden = !!(parentBox && parentBox.hidden) || !(box._rule.mode === 'any' ? results.some(Boolean) : results.every(Boolean));
+    });
+  }
+  if (ruleBoxes.length) {
+    document.addEventListener('change', syncRules);
+    document.addEventListener('input', syncRules);
+    syncRules();
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-vendor-followup-of][data-vendor-followup-when]'), function (box) {
+    var parent = box.getAttribute('data-vendor-followup-of');
+    var when = box.getAttribute('data-vendor-followup-when');
+    var radios = document.querySelectorAll('input[name="r[' + parent + ']"]');
+    function sync() {
+      var picked = Array.prototype.filter.call(radios, function (r) { return r.checked; })[0];
+      box.hidden = !(picked && picked.value === when);
+    }
+    Array.prototype.forEach.call(radios, function (r) { r.addEventListener('change', sync); });
+    if (radios.length) sync();
+  });
+
   Array.prototype.forEach.call(document.querySelectorAll('[data-vendor-jump]'), function (box) {
     var select = box.querySelector('select');
     var go = box.querySelector('[data-vendor-jump-go]');

@@ -16,6 +16,7 @@
     <h1 class="page-title">Third-party risk</h1>
     <p class="tprm-status-line" data-tprm-pipeline-summary><% if (!pl.all) { %>No assessment is open.<% } else { %><%= plural(pl.all, 'assessment') %> open<%= pl.clientCount > 1 ? ' across ' + plural(pl.clientCount, 'client') : '' %>.<% if (pl.counts.late) { %> <%= pl.counts.late %> <%= pl.counts.late === 1 ? 'is' : 'are' %> late.<% } %><% if (pl.counts.waitingForMe) { %> <%= pl.counts.waitingForMe %> <%= pl.counts.waitingForMe === 1 ? 'is' : 'are' %> waiting for you.<% } %><% } %></p>
   </div>
+  <% if (typeof canViewCriticality !== 'undefined' && canViewCriticality) { %><div class="tprm-head-actions"><a class="btn btn-secondary" href="/tprm/settings" data-tprm-settings-button>Settings</a></div><% } %>
 </div>
 
 <%- include('partials/tprm_home_tabs', { current: 'pipeline', reviewCount: typeof reviewCount === 'number' ? reviewCount : null }) %>
@@ -144,27 +145,6 @@
 </div>
 <% } %>
 
-<% const tprmSettingsLinks = (typeof canViewCriticality !== 'undefined' && canViewCriticality) || (typeof canAiSettings !== 'undefined' && canAiSettings); %>
-<% if (tprmSettingsLinks) { %>
-<div class="panel" data-tprm-firm-settings>
-  <div class="panel-head"><h2>Firm settings</h2><span class="meta">Apply to every third-party risk client</span></div>
-  <p class="panel-pad tprm-link-row">
-  <% if (typeof canViewCriticality !== 'undefined' && canViewCriticality) { %>
-    <a href="/tprm/settings/criticality" data-tprm-criticality-link>Criticality model</a>
-  <% } %>
-  <% if (typeof canAiSettings !== 'undefined' && canAiSettings) { %>
-    · <a href="/tprm/settings/ai-review" data-tprm-ai-settings-link>AI review</a>
-    · <a href="/tprm/settings/letterhead" data-tprm-letterhead-link>Letterhead</a>
-    · <a href="/tprm/settings/rulebooks" data-tprm-rulebooks-link>Rulebooks</a>
-    · <a href="/tprm/settings/two-person" data-tprm-two-person-link>Two-person rules</a>
-    · <a href="/tprm/settings/marking-guides" data-tprm-marking-guides-link>Marking guides</a>
-    · <a href="/tprm/settings/emails" data-tprm-emails-link>Emails</a>
-    · <a href="/tprm/settings/question-bank" data-tprm-question-bank-link>Question bank</a>
-    · <a href="/tprm/concentration" data-tprm-firm-concentration-link>Concentration across clients</a>
-  <% } %>
-  </p>
-</div>
-<% } %>
 </div>
 </div>
 <%- include('partials/footer') %>

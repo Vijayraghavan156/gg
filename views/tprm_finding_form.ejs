@@ -18,8 +18,8 @@
     <% if (finding) { %><input type="hidden" name="row_version" value="<%= v.row_version != null ? v.row_version : finding.row_version %>"><% } %>
     <% if (fromAi) { %>
       <div class="callout tpu-span-all" role="status" data-tprm-finding-from-suggestion="<%= fromSuggestion.id %>">
-        <div class="callout-title">AI suggestion - not reviewed</div>
-        Filled in from an AI suggestion<% if (fromSuggestion.question_id) { %> on <strong><%= fromSuggestion.question_id %></strong><% } %>. Check every field and the linked files: saving adds the finding and records the suggestion as edited and accepted by you.
+        <div class="callout-title">Brevis suggestion - not reviewed</div>
+        Filled in from a Brevis suggestion<% if (fromSuggestion.question_id) { %> on <strong><%= fromSuggestion.question_id %></strong><% } %>. Check every field and the linked files: saving adds the finding and records the suggestion as edited and accepted by you.
       </div>
     <% } %>
     <% if (typeof fromDataLocation !== 'undefined' && fromDataLocation) { %><div class="callout tpu-span-all" role="status" data-tprm-finding-from-data-location="<%= fromDataLocation.kind %>">Raised from a data-location flag: the client's rulebooks require its data to stay in <strong><%= fromDataLocation.country_name %></strong>. Check every field before you add the finding.</div><% } %>

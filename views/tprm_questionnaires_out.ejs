@@ -1,0 +1,82 @@
+<%- include('partials/header', { title: 'Questionnaires out · Third-party risk', user, active }) %>
+<%
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const day = v => (v ? tpf.day(new Date(v).toISOString().slice(0, 10)) : '-');
+  const showLabels = { all: 'All', overdue: 'Overdue', due_soon: 'Due within ' + T.SOON_DAYS + ' days', not_opened: 'Not opened', mine: 'Mine' };
+  const keep = '<input type="hidden" name="show" value="' + out.filter + '"><input type="hidden" name="q" value="' + String(out.q).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])) + '">';
+%>
+<div class="page-head" data-tprm-questionnaires-out>
+  <div>
+    <h1 class="page-title">Questionnaires out</h1>
+    <div class="page-subtitle">Every questionnaire sent to a third party and not yet submitted, across your clients.
+      <details class="tprm-how"><summary>How this works</summary>A questionnaire is overdue when its link has stopped working and the third party has not submitted. Reopen sends the same person a new link that works for <%= T.REOPEN_DAYS %> days. Cancel closes the questionnaire as not returned: the link stops working and the review carries on without the answers.</details></div>
+  </div>
+  <a class="btn btn-secondary" href="/tprm/settings" data-tprm-settings-button>Settings</a>
+</div>
+<%- include('partials/tprm_home_tabs', { current: 'out' }) %>
+
+<div class="panel tpu-mb-14">
+  <form method="GET" action="/tprm/questionnaires" class="panel-pad tprm-due-filter" data-tprm-out-filter>
+    <div><label class="label" for="out-q">Search</label>
+      <input class="input" id="out-q" type="search" name="q" value="<%= out.q %>" placeholder="Third party, client, contact or lead" autocomplete="off"></div>
+    <div><label class="label" for="out-show">Show</label>
+      <select class="select" id="out-show" name="show">
+        <% T.FILTERS.forEach(f => { %><option value="<%= f %>" <%= out.filter === f ? 'selected' : '' %>><%= showLabels[f] %> (<%= out.counts[f] || 0 %>)</option><% }) %>
+      </select></div>
+    <button class="btn btn-secondary btn-xs" type="submit">Apply</button>
+    <% if (out.filter !== 'all' || out.q) { %><a class="btn btn-ghost btn-xs" href="/tprm/questionnaires">Clear</a><% } %>
+    <span class="meta" data-tprm-out-count>Showing <%= out.rows.length %> of <%= out.all %></span>
+  </form>
+</div>
+
+<% if (!out.rows.length) { %>
+  <div class="panel"><div class="empty-state" data-tprm-out-empty>
+    <div class="text-lg tpu-label-strong"><%= out.all ? 'No questionnaire matches' : 'No questionnaire is out' %></div>
+    <div class="meta">Questionnaires appear here once they are sent, until the third party submits them.</div>
+  </div></div>
+<% } else { %>
+  <div class="panel">
+    <div class="table-scroll">
+    <table class="t" data-tprm-out-table>
+      <thead><tr><th>Third party</th><th>Sent to</th><th class="fx-nowrap">Sent</th><th class="fx-nowrap">Link works until</th><th class="fx-nowrap">Answered</th><th class="fx-nowrap">Last opened</th><th>State</th><th></th></tr></thead>
+      <tbody>
+      <% out.rows.forEach(r => { const aHref = '/tprm/clients/' + r.workspaceId + '/third-parties/' + r.thirdPartyId + '/assessments/' + r.assessmentId + '?step=questionnaire#questionnaire'; const act = '/tprm/clients/' + r.workspaceId + '/questionnaires-out/' + r.assessmentId; %>
+        <tr data-tprm-out-row="<%= r.assessmentId %>" data-tprm-out-state="<%= r.state %>">
+          <td><a href="<%= aHref %>"><strong><%= r.thirdPartyName %></strong></a><div class="meta text-xs"><%= r.clientName %><%= r.leadName ? ' · lead ' + r.leadName : '' %></div></td>
+          <td><%= r.recipientName || '-' %><% if (r.recipientEmail) { %><div class="meta text-xs"><%= r.recipientEmail %></div><% } %></td>
+          <td class="fx-nowrap"><%= day(r.sentAt) %></td>
+          <td class="fx-nowrap"><%= day(r.expiresAt) %><% if (r.daysLeft != null && r.daysLeft > 0) { %><div class="meta text-xs"><%= r.daysLeft %> day<%= r.daysLeft === 1 ? '' : 's' %> left</div><% } %></td>
+          <td class="fx-nowrap"><%= r.answered %> of <%= r.total %></td>
+          <td class="fx-nowrap"><%= r.lastOpenedAt ? day(r.lastOpenedAt) : 'Never' %></td>
+          <td><%- include('partials/tprm_status', { text: r.stateLabel, tone: r.stateTone, as: 'div' }) %>
+            <% if (r.reviewLate) { %><%- include('partials/tprm_status', { text: 'Review due date passed (' + day(r.reviewDue) + ')', tone: 'problem', as: 'div', attrs: 'data-tprm-out-review-late' }) %><% } %></td>
+          <td class="fx-nowrap">
+            <% if (r.canManage) { %>
+              <% if (r.canRemind) { %>
+                <form method="POST" action="<%= act %>/remind" class="tpu-inline-form" data-tprm-out-remind><input type="hidden" name="_csrf" value="<%= csrf %>"><%- keep %><button class="btn btn-secondary btn-xs" type="submit">Remind</button></form>
+              <% } %>
+              <% if (r.canReopen) { %>
+                <form method="POST" action="<%= act %>/reopen" class="tpu-inline-form" data-tprm-out-reopen><input type="hidden" name="_csrf" value="<%= csrf %>"><%- keep %>
+                  <%- include('partials/tprm_confirm_fields', { title: 'Send ' + (r.recipientName || 'them') + ' a new link?', body: 'They get a new link by email that works for ' + T.REOPEN_DAYS + ' days. Their answers so far are kept.', action: 'Send the new link' }) %>
+                  <button class="btn btn-secondary btn-xs" type="submit">Reopen</button></form>
+              <% } %>
+              <details class="tpu-inline" data-tprm-out-cancel>
+                <summary class="btn btn-ghost btn-xs">Cancel</summary>
+                <form method="POST" action="<%= act %>/cancel" class="tprm-mt">
+                  <input type="hidden" name="_csrf" value="<%= csrf %>"><%- keep %>
+                  <label class="label" for="out-reason-<%= r.assessmentId %>">Why is it closed without the answers?</label>
+                  <textarea class="input" id="out-reason-<%= r.assessmentId %>" name="reason" rows="2" maxlength="500" required></textarea>
+                  <p class="meta text-xs">The link stops working and the review carries on without the answers.</p>
+                  <button class="btn btn-secondary btn-xs" type="submit">Close as not returned</button>
+                </form>
+              </details>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+    </div>
+  </div>
+<% } %>
+<%- include('partials/footer') %>

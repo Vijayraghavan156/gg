@@ -22,6 +22,7 @@ function clientView(ws) {
 
 function registerRoutes(app, deps) {
   const { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces } = deps;
+  const stageMail = (actor, assessmentId, step) => require('../lib/tprm/messages').stageChanged(db, { workspaceId: actor.ws.id, assessmentId: Number(assessmentId), step, actorId: actor.user.id });
   const lookup = { db, getWorkspace, permissionsFor, listWorkspaces };
   const tpUrl = (actor, tpId) => `/tprm/clients/${actor.ws.id}/third-parties/${tpId}`;
   const aUrl = (actor, a) => `${tpUrl(actor, a.third_party_id)}/assessments/${a.id}`;
@@ -149,6 +150,7 @@ function registerRoutes(app, deps) {
     try {
       if (proposing) {
         const { assessment } = await assessments.propose(db, actor, thirdParty.id, req.params.aid, req.body);
+        await stageMail(actor, assessment.id, 'tier_proposed');
         return res.redirect(withToast(aUrl(actor, assessment), 'Tier proposed. A second person confirms it from the review queue'));
       }
       const result = await assessments.saveScope(db, actor, thirdParty.id, req.params.aid, req.body);
@@ -173,6 +175,7 @@ function registerRoutes(app, deps) {
       }
       throw err;
     }
+    await stageMail(actor, assessment.id, 'tier_confirmed');
     return res.redirect(withToast(aUrl(actor, assessment), `Tier confirmed: ${placement.TIER_LABELS[assessment.final_tier]}${assessment.self_approval_reason ? ' (self-approved, the reason is recorded)' : ''}`));
   }, { permission: 'tp.review' }));
 
@@ -180,6 +183,7 @@ function registerRoutes(app, deps) {
     const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
     try {
       const assessment = await assessments.sendBack(db, actor, thirdParty.id, req.params.aid, req.body);
+      await stageMail(actor, assessment.id, 'tier_returned');
       return res.redirect(withToast(aUrl(actor, assessment), 'Sent back to the consultant'));
     } catch (err) {
       if (err instanceof TprmError && err.status === 400) {

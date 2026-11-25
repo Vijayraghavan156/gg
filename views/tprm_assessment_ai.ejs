@@ -4,109 +4,44 @@
   const aiCsrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
   const aiWhen = d => tpf.dayTime(d) || '-';
   const runTone = s => ({ succeeded: 'good', failed: 'problem' })[s] || 'quiet';
-  const decidedTone = s => ({ accepted: 'good', edited_accepted: 'good' })[s] || 'quiet';
 %>
-<% const aiPendingFindings = (ap.groups || []).reduce((n, g) => n + g.items.filter(x => x.status === 'pending' && x.kind !== 'conclusion').length, 0); %>
-<div class="panel" id="ai-review" data-tprm-ai-review>
-  <details class="tprm-ai-fold"<%= ap.active || aiPendingFindings ? ' open' : '' %>>
-  <summary class="panel-head tprm-ai-fold-head">
-    <h2>AI first-pass review</h2>
-    <span class="meta text-xs" data-tprm-ai-provider-note><% if (ap.configured) { %><%= ap.provider %> · <%= ap.model %><% } else { %>Not set up<% } %><% if (ap.latest) { %> · <%= ap.pendingCount %> suggestion<%= ap.pendingCount === 1 ? '' : 's' %> not decided<% } %></span>
-  </summary>
-  <div class="panel-pad meta text-xs">
-    <% if (!ap.autoReview) { %>The firm has switched the automatic review off: run it by hand.<% } else if (ap.canRun || ap.canDecide) { %>Run the review, then accept or reject each suggestion.<% } %>
-    <details class="tprm-how"><summary>How this works</summary>
-      <div>Firm-internal: the client never sees this panel or its suggestions. A suggestion becomes a finding, or an answer's reviewer conclusion, only when a consultant accepts it.</div>
-      <% if (ap.autoReview) { %><div class="tpu-mt-4">Runs automatically when the third party submits its questionnaire.</div><% } %>
+<div class="tpw-ailine" id="ai-review" data-tprm-ai-review>
+  <div class="tpw-ailine-row">
+    <p class="tpw-ailine-text" data-tprm-ai-summary>
+      <b>Brevis</b>
+      <% if (!ap.configured) { %><span data-tprm-ai-not-configured><%= ap.notConfiguredMessage %> Runs are recorded as "Not set up" and nothing is sent anywhere.</span>
+      <% } else if (ap.active) { %><span data-tprm-ai-active="<%= ap.active.status %>"><%= ap.statusLabels[ap.active.status] %>, requested <%= aiWhen(ap.active.created_at) %>. Reload the page in a minute to see its suggestions.</span>
+      <% } else if (!ap.latest) { %><span data-tprm-ai-suggestions-empty>Brevis has not finished a review of this assessment yet.</span>
+      <% } else { const toDecide = ap.pendingConclusions + ap.pendingFindings; %>finished <%= aiWhen(ap.latest.finished_at) %>.
+        <span class="meta" data-tprm-ai-to-decide="<%= toDecide %>"><% if (!ap.pendingCount && !ap.groups.length) { %><span data-tprm-ai-suggestions-empty>The latest run made no suggestions.</span><% } else if (!toDecide) { %>Every suggestion on the answers is decided.<% } else { %><%= toDecide %> suggestion<%= toDecide === 1 ? '' : 's' %> to decide<%= ap.pendingConclusions && ap.pendingFindings ? ': ' + ap.pendingConclusions + ' conclusion' + (ap.pendingConclusions === 1 ? '' : 's') + ' and ' + ap.pendingFindings + ' finding' + (ap.pendingFindings === 1 ? '' : 's') : (ap.pendingFindings ? ', all findings' : ', all conclusions') %>. Each one is shown on its answer below.<% } %></span>
+      <% } %>
+      <span class="meta" data-tprm-ai-provider-note><% if (ap.configured) { %><%= ap.provider %>, <%= ap.model %>.<% } %></span>
+    </p>
+    <details class="tprm-how tpw-ailine-how"><summary>How this works</summary>
+      <div>Firm-internal: the client never sees these suggestions. A suggestion becomes a finding, or an answer's reviewer conclusion, only when a consultant accepts it.<% if (ap.autoReview) { %> It runs automatically when the third party submits its questionnaire.<% } else { %> The firm has switched the automatic review off: run it by hand.<% } %></div>
+      <div class="tpu-mt-4" data-tprm-ai-run-note>
+        <% if (ap.blocked) { %><span data-tprm-ai-blocked><%= ap.blocked %></span><% } else if (ap.active) { %>A review is already waiting or running.<% } else if (ap.limitReached) { %><span data-tprm-ai-limit><%= ap.limitMessage %><% if (ap.nextRunAt) { %> The next run is possible from <%= aiWhen(ap.nextRunAt) %>.<% } %></span><% } else if (ap.runs.length) { %>Running again replaces the suggestions you have not decided on yet.<% } %>
+        <% if (ap.configured) { %><span data-tprm-ai-recent> Runs in the last 24 hours: <%= ap.recentRuns %> of <%= ap.limits.runsPerDay %>.</span><% } %>
+      </div>
     </details>
-  </div>
-
-  <% if (!ap.configured) { %>
-    <div class="callout tprm-ai-callout" role="status" data-tprm-ai-not-configured>
-      <div class="callout-title"><%= ap.notConfiguredMessage %></div>
-      <div class="meta">Runs are recorded as "Not set up" and nothing is sent anywhere.</div>
-    </div>
-  <% } %>
-
-  <% if (ap.active) { %>
-    <div class="callout tprm-ai-callout" role="status" data-tprm-ai-active="<%= ap.active.status %>">
-      <div class="callout-title"><%= ap.statusLabels[ap.active.status] %></div>
-      <div class="meta">Requested <%= aiWhen(ap.active.created_at) %>. Reload the page to see its suggestions when it finishes.</div>
-    </div>
-  <% } %>
-
-  <div class="panel-pad tpu-rule-top tprm-actions-split">
-    <span class="meta text-xs" data-tprm-ai-run-note>
-      <% if (ap.blocked) { %><span data-tprm-ai-blocked><%= ap.blocked %></span><% } else if (ap.active) { %>A review is already waiting or running.<% } else if (ap.limitReached) { %><span data-tprm-ai-limit><%= ap.limitMessage %><% if (ap.nextRunAt) { %> The next run without a reason is possible after <%= aiWhen(ap.nextRunAt) %>.<% } %></span><% } else if (ap.latest) { %>Running again replaces the suggestions you have not decided on yet.<% } else { %>Reviews the third party's submitted answers, the clarifications and the assessment's files.<% } %>
-      <% if (ap.configured) { %><span data-tprm-ai-recent> Runs in the last 24 hours: <%= ap.recentRuns %> of <%= ap.limits.runsPerDay %>.</span><% } %>
-    </span>
     <% if (ap.canRun) { %>
-      <form method="POST" action="<%= aiBase %>/ai-review" class="tprm-aw-inline-row" data-tprm-ai-run-form>
+      <form method="POST" action="<%= aiBase %>/ai-review" class="tpw-ailine-run" data-tprm-ai-run-form>
         <input type="hidden" name="_csrf" value="<%= aiCsrf %>">
         <% if (ap.needsOverride) { %>
-          <input name="override_reason" required maxlength="<%= ap.limits.overrideReason %>" placeholder="Reason to run past the limit" class="input tprm-ai-override-input" aria-label="Why run the AI review past the limit" data-tprm-ai-override-reason>
-          <button class="btn btn-secondary" type="submit" data-tprm-ai-run>Run anyway</button>
+          <input name="override_reason" required maxlength="<%= ap.limits.overrideReason %>" placeholder="Reason to run past the limit" class="input tprm-ai-override-input" aria-label="Why run Brevis past the limit" data-tprm-ai-override-reason>
+          <button class="btn btn-secondary btn-xs" type="submit" data-tprm-ai-run>Run anyway</button>
         <% } else { %>
-          <button class="btn btn-secondary" type="submit" data-tprm-ai-run><%= ap.runs.length ? 'Run again' : 'Run AI review' %></button>
+          <button class="btn btn-secondary btn-xs" type="submit" data-tprm-ai-run><%= ap.runs.length ? 'Run Brevis again' : 'Run Brevis' %></button>
         <% } %>
       </form>
     <% } %>
   </div>
 
-  <div class="panel-pad tprm-divide" data-tprm-ai-suggestions>
-    <div class="tprm-sub">AI suggestions <span class="meta text-xs"><% if (ap.latest) { %><%= ap.pendingCount %> not decided, from the run of <%= aiWhen(ap.latest.finished_at) %><% } %></span></div>
-    <% if (!ap.latest) { %>
-      <div class="meta" data-tprm-ai-suggestions-empty>No AI review has finished on this assessment yet.</div>
-    <% } else if (!ap.groups.length) { %>
-      <div class="meta" data-tprm-ai-suggestions-empty>The latest run made no suggestions.</div>
-    <% } %>
-    <% ap.groups.forEach(g => { %>
-      <div class="tprm-ai-group" data-tprm-ai-group="<%= g.questionId || 'assessment' %>">
-        <div class="text-xs tpu-mb-4">
-          <% if (g.questionId) { %><span class="meta"><%= g.questionId %></span> <strong><%= g.theme %></strong><% if (g.answerId) { %> · <a href="<%= aiBase %>?answers=all#answer-<%= g.answerId %>">the answer</a><% } %><% } else { %><strong>The assessment as a whole</strong><% } %>
-        </div>
-        <% g.items.forEach(s => { %>
-          <div class="tprm-ai-suggestion" data-tprm-ai-suggestion="<%= s.id %>" data-tprm-ai-suggestion-status="<%= s.status %>">
-            <div class="tprm-aw-wrap-8">
-              <% if (s.status === 'pending') { %><%- include('partials/tprm_status', { text: 'AI suggestion - not reviewed', tone: 'attention', attrs: 'data-tprm-ai-label' }) %><% } else { %><%- include('partials/tprm_status', { text: ap.suggestionStatusLabels[s.status], tone: decidedTone(s.status), attrs: 'data-tprm-ai-decided' }) %><% } %>
-              <% if (s.kind === 'conclusion') { %>
-                <span class="meta" data-tprm-ai-kind="conclusion">Reviewer conclusion</span>
-                <strong data-tprm-ai-title data-tprm-ai-conclusion="<%= s.conclusion %>">Suggested conclusion: <%= ap.conclusionLabels[s.conclusion] %></strong>
-              <% } else { %>
-                <span class="tpu-medium"><%= ap.severityLabels[s.severity] %></span>
-                <% if (s.control_ref) { %><span class="meta"><%= s.control_ref %></span><% } %>
-                <strong data-tprm-ai-title><%= s.title %></strong>
-              <% } %>
-            </div>
-            <% if (s.description) { %><div class="text-xs tpu-mt-4 tpu-pre"><%= s.description %></div><% } %>
-            <% if (s.rationale) { %><div class="meta text-xs tpu-mt-4 tpu-pre">Why: <%= s.rationale %></div><% } %>
-            <% if (s.evidence.length) { %><div class="meta text-xs tpu-mt-4">Files: <% s.evidence.forEach((e, i) => { %><%= i ? ', ' : '' %><a href="<%= aiBase %>/evidence/<%= e.id %>/download"><%= e.original_name %></a><% }) %></div><% } %>
-            <% if (s.status !== 'pending') { %>
-              <div class="meta text-xs tpu-mt-4"><%= s.decided_by_name || 'Unknown user' %> · <%= aiWhen(s.decided_at) %><% if (s.reject_reason) { %>: <%= s.reject_reason %><% } %><% if (s.kind === 'conclusion') { %><% if (s.status === 'accepted') { %> · set as the answer's reviewer conclusion<% } %><% } else if (s.finding_id) { %> · <a href="<%= aiBase %>#findings">finding</a><% } else if (s.status !== 'rejected') { %> · the finding was removed later<% } %></div>
-            <% } else if (ap.canDecide) { %>
-              <div class="tprm-aw-wrap-6 tpu-mt-6">
-                <form method="POST" action="<%= aiBase %>/ai-suggestions/<%= s.id %>/accept" class="tpu-m-0" data-tprm-ai-accept-form>
-                  <input type="hidden" name="_csrf" value="<%= aiCsrf %>">
-                  <button class="btn btn-secondary btn-xs" type="submit" data-tprm-ai-accept><%= s.kind === 'conclusion' ? 'Accept conclusion' : 'Accept as finding' %></button>
-                </form>
-                <% if (s.kind !== 'conclusion') { %><a class="btn btn-secondary btn-xs" href="<%= aiBase %>/findings/new?suggestion=<%= s.id %>" data-tprm-ai-edit>Edit, then accept</a><% } %>
-                <form method="POST" action="<%= aiBase %>/ai-suggestions/<%= s.id %>/reject" class="tprm-ai-reject-form" data-tprm-ai-reject-form>
-                  <input type="hidden" name="_csrf" value="<%= aiCsrf %>">
-                  <input name="reason" maxlength="<%= ap.limits.rejectReason %>" placeholder="Reason (optional)" class="input tprm-ai-reason-input" aria-label="Why reject this suggestion">
-                  <button class="btn btn-ghost btn-xs" type="submit" data-tprm-ai-reject>Reject</button>
-                </form>
-              </div>
-            <% } %>
-          </div>
-        <% }) %>
-      </div>
-    <% }) %>
-    <% if (ap.superseded) { %><div class="meta text-xs tpu-mt-6" data-tprm-ai-superseded><%= ap.superseded %> suggestion<%= ap.superseded === 1 ? '' : 's' %> of earlier runs were not decided and were replaced by a later run.</div><% } %>
-  </div>
+  <% if (ap.superseded) { %><p class="meta text-xs" data-tprm-ai-superseded><%= ap.superseded %> suggestion<%= ap.superseded === 1 ? '' : 's' %> of earlier runs were not decided and were replaced by a later run.</p><% } %>
 
   <% if (ap.runs.length) { %>
-    <div class="panel-pad tprm-divide" data-tprm-ai-runs>
-      <div class="tprm-sub">Runs</div>
+    <details class="tpw-ailine-runs" data-tprm-ai-runs>
+      <summary>Runs <span class="meta"><%= ap.runs.length %></span></summary>
       <div class="table-scroll"><table class="t">
         <thead><tr><th>Requested</th><th>By</th><th>Status</th><th>Model</th><th>Input</th><th>Suggestions</th></tr></thead>
         <tbody>
@@ -122,7 +57,6 @@
         <% }) %>
         </tbody>
       </table></div>
-    </div>
+    </details>
   <% } %>
-  </details>
 </div>

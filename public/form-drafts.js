@@ -98,7 +98,7 @@
   function scan(){document.querySelectorAll('form[data-form-draft]').forEach(attach);for(const form of controllers.keys())if(!form.isConnected)controllers.delete(form);}
   document.addEventListener('click',async event=>{
     const link=event.target.closest('a[href]');if(!link||event.defaultPrevented||event.metaKey||event.ctrlKey||link.target==='_blank'||link.hasAttribute('download'))return;
-    const url=new URL(link.href,location.href);if(url.origin!==location.origin||url.href===location.href||!(url.pathname.startsWith('/workspaces/')||url.pathname.startsWith('/tprm/')))return;
+    const url=new URL(link.href,location.href);if(url.origin!==location.origin||url.href===location.href||(url.pathname===location.pathname&&url.search===location.search&&url.hash)||!(url.pathname.startsWith('/workspaces/')||url.pathname.startsWith('/tprm/')))return;
     const dirty=[...controllers.values()].filter(c=>c.dirty());if(!dirty.length)return;
     event.preventDefault();event.stopImmediatePropagation();try{await Promise.all(dirty.map(c=>c.flush()));location.assign(url.href);}catch(_){window.AppPageLoader?.hide({immediate:true});}
   },true);

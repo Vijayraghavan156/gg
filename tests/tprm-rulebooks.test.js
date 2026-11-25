@@ -529,7 +529,7 @@ test('managers edit a rulebook: each change is the next version and every versio
   const list = await client.get('/tprm/settings/rulebooks');
   assert.equal(list.status, 200);
   assert.equal((list.text.match(/data-tprm-rulebook="/g) || []).length, 31);
-  assert.match((await client.get('/tprm')).text, /data-tprm-rulebooks-link/);
+  assert.match((await client.get('/tprm/settings')).text, /data-tprm-rulebooks-link/);
   const page = await client.get(url);
   assert.equal(page.status, 200);
   assert.match(page.text, /data-tprm-rulebook-form/);

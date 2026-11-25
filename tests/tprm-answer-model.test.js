@@ -887,3 +887,44 @@ test('a questionnaire on a bank without answer types keeps Partially; a reassess
   const prefilled = (await chain(ctx.ws, a2)).find(e => e.action === 'questionnaire.prefilled');
   assert.ok(prefilled.after_state.not_copied > 0);
 });
+
+test('the AI reads the certificate: its dates show beside the third party\'s, and an accepted certificate can keep the date in the file', async () => {
+  const ctx = await submittedWithReports('AI Reads Certificates Co', { iso: true });
+  const reports = await reportsOf(ctx.a);
+  const iso = reports.find(r => r.kind === 'iso27001');
+  const soc = reports.find(r => r.kind === 'soc2_type2');
+  const q = await db.prepare('SELECT id FROM tp_questionnaires WHERE assessment_id = ?').get(ctx.a);
+  const run = Number((await db.prepare(`INSERT INTO tp_ai_reviews (workspace_id, assessment_id, questionnaire_id, run_trigger, status, requested_by)
+    VALUES (?, ?, ?, 'manual', 'queued', ?) RETURNING id`).get(ctx.ws, ctx.a, q.id, consultant.id)).id);
+  await db.prepare("UPDATE tp_ai_reviews SET status = 'running', started_at = now() WHERE id = ?").run(run);
+  const reading = (id, extra) => ({ evidence_id: Number(id), document_kind: 'Certificate', matches_request: 'yes', title: null, version_history: false,
+    approval_date: null, contents_list: false, note: null, partly_read: false, certificate_expires_on: null, period_start: null, period_end: null,
+    opinion: null, exceptions_noted: null, issuer: null, assurance_scope: null, ...extra });
+  await db.prepare(`UPDATE tp_ai_reviews SET status = 'succeeded', finished_at = now(), input_sha256 = repeat('a', 64), dropped_count = 0, suggestions = '[]'::jsonb, conclusions = '[]'::jsonb, documents = ?::jsonb WHERE id = ?`)
+    .run(JSON.stringify([
+      reading(iso.evidence_id, { document_kind: 'ISO 27001 certificate', certificate_expires_on: '2098-12-31', issuer: 'BSI', assurance_scope: 'Hosting in Mumbai and Chennai' }),
+      reading(soc.evidence_id, { document_kind: 'SOC 2 Type II report', period_start: '2025-07-01', period_end: '2026-06-30', opinion: 'qualified', exceptions_noted: true, issuer: 'Audit LLP' }),
+    ]), run);
+
+  const page = (await firmPage(ctx, '?step=review')).text;
+  assert.match(page, /data-tprm-report-ai="iso27001">[\s\S]*?Brevis read the certificate:<\/span>\s*expires 31 Dec 2098 · by BSI\./);
+  assert.match(page, /data-tprm-report-ai-differs>The third party gave 31 Jan 2099, the file says 31 Dec 2098\./);
+  assert.match(page, /Scope in the file: Hosting in Mumbai and Chennai/);
+  assert.match(page, /data-tprm-report-ai="soc2_type2">[\s\S]*?period 1 Jul 2025 to 30 Jun 2026 · by Audit LLP · opinion qualified · exceptions listed\./);
+  assert.match(page, /data-tprm-report-ai-same>It matches the date the third party gave\./);
+  assert.match(page, /data-tprm-report-use-ai/);
+
+  let res = await checkReport(ctx, 'iso27001', { decision: 'reject', reason: 'Wrong date', use_ai_date: '1' });
+  assert.match(decodeURIComponent(res.location || ''), /kept only when you accept/);
+  res = await checkReport(ctx, 'iso27001', { decision: 'accept', in_date: '1', scope: '1', reason: 'Checked against the certificate', use_ai_date: '1' });
+  assert.equal(res.status, 302);
+  const after = (await reportsOf(ctx.a)).find(r => r.kind === 'iso27001');
+  assert.equal(after.check_status, 'accepted');
+  const days = await db.prepare(`SELECT to_char(confirmed_expires_on, 'YYYY-MM-DD') AS kept, to_char(certificate_expires_on, 'YYYY-MM-DD') AS given
+    FROM tp_assurance_reports WHERE id = ?`).get(after.id);
+  assert.deepEqual([days.kept, days.given], ['2098-12-31', '2099-01-31'], 'the third party\'s own answer is kept as given');
+  const ev = (await db.prepare(`SELECT after_state FROM tp_events WHERE workspace_id = ? AND chain_id = ? AND action = 'assurance_report.accepted' ORDER BY id DESC`).get(ctx.ws, ctx.a)).after_state;
+  assert.deepEqual([ev.confirmed_date, ev.supplier_date], ['2098-12-31', '2099-01-31']);
+  assert.match((await firmPage(ctx, '?step=review')).text, /data-tprm-report-confirmed>Date kept from the file: 31 Dec 2098\./);
+  await assert.rejects(db.prepare('UPDATE tp_assurance_reports SET confirmed_period_end = now() WHERE id = ?').run(after.id), /confirmed_dates/);
+});

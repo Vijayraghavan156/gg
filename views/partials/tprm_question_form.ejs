@@ -1,0 +1,127 @@
+<%
+  const F = locals;
+  const v = F.v || {};
+  const posted = !!F.posted;
+  const ro = F.ro || '';
+  const val = k => (v[k] == null ? '' : Array.isArray(v[k]) ? v[k][0] : v[k]);
+  const type = val('answer_type') || 'yes_no_na';
+  const checked = (k, dflt) => (posted ? String(v[k] || '') === '1' : (v[k] === undefined ? !!dflt : !!v[k]));
+  const options = [].concat(v.options || []).map(String).filter(o => o.trim());
+  const fileOn = posted ? String(v.ask_file || '') === '1'
+    : type === 'file' ? true
+    : type === 'yes_no_na' || type === 'free_text' ? (F.isNew ? false : v.evidence_on !== 'none')
+    : !!v.ask_file;
+  const fileWhen = posted ? (val('file_when') || 'yes') : ({ yes: 'yes', no: 'no', any: 'any', answer: 'yes' }[v.evidence_on] || 'yes');
+  const fileRequired = posted ? String(v.evidence_mandatory || '') === '1' : !!v.evidence_mandatory;
+  const explainOn = posted ? [].concat(v.explain_on || []) : (Array.isArray(v.explain_on) ? v.explain_on : ['no', 'na']);
+  const reqOn = posted ? String(v.required || '') === '1' : v.required !== false;
+  const legacy = !posted && v.ask_when ? { mode: 'all', conditions: [{ question: v.ask_when.question, op: 'is', value: v.ask_when.answer }] } : null;
+  const rule = posted
+    ? (v.show_mode === 'when' ? { mode: v.show_join === 'any' ? 'any' : 'all', conditions: [].concat(v.cond_question || []).map((x, i) => ({ question: x, op: [].concat(v.cond_op || [])[i], value: [].concat(v.cond_value || [])[i] })).filter(c => c.question) } : null)
+    : (v.show_when || legacy);
+  const conds = (rule ? rule.conditions : []).concat([{ question: '', op: 'is', value: '' }, { question: '', op: 'is', value: '' }]).slice(0, Math.max(2, (rule ? rule.conditions.length : 0) + 1));
+  const cands = F.candidates || [];
+%>
+<input type="hidden" name="settings_shown" value="1">
+<% if (!F.isProtected) { %><input type="hidden" name="required_shown" value="1"><% } %>
+
+<label class="label" for="qf-question">Question</label>
+<textarea class="input qb-ta" id="qf-question" name="question" rows="3" maxlength="<%= F.limits.question %>" required<%= ro %>><%= val('question') %></textarea>
+<% if (F.baseQuestion && F.baseQuestion !== val('question')) { %><p class="fx-sm fx-muted" data-tprm-bank-was>Published wording: <%= F.baseQuestion %></p><% } %>
+<label class="label" for="qf-theme"><%= F.themeLabel || 'Short title' %> <span class="meta text-xs"><%= F.themeHint || 'shown in lists' %></span></label>
+<input class="input" id="qf-theme" name="theme" maxlength="<%= F.limits.theme %>" value="<%= F.themeValue !== undefined ? F.themeValue : val('theme') %>"<%= F.themeRequired ? ' required' : '' %><%= ro %>>
+<label class="label" for="qf-guidance">Guidance <span class="meta text-xs">shown to the third party under the question</span></label>
+<textarea class="input qb-ta" id="qf-guidance" name="guidance" rows="2" maxlength="<%= F.limits.guidance %>"<%= ro %>><%= val('guidance') %></textarea>
+
+<fieldset class="qb-fieldset" data-tprm-bank-answer-type data-tprm-q-types><legend class="label">How it is answered<% if (F.typeLocked) { %> <span class="meta text-xs">fixed once published, so answers already given keep their meaning</span><% } %></legend>
+  <% if (F.typeLocked) { %>
+    <input type="hidden" name="answer_type" value="<%= type %>"><p class="qb-m0" data-tprm-q-type-fixed><%= F.typeLabels[type] || type %></p>
+  <% } else { %>
+    <div class="qb-types"><% F.types.forEach(ty => { %><label class="tprm-check"><input type="radio" name="answer_type" value="<%= ty %>"<%= ty === type ? ' checked' : '' %><%= ro %>> <span><%= F.typeLabels[ty] %></span></label><% }) %></div>
+  <% } %>
+</fieldset>
+
+<fieldset class="qb-fieldset" data-tprm-q-options data-tprm-q-for="single_choice multiple_choice"><legend class="label">Options</legend>
+  <div data-tprm-q-option-list>
+    <% options.concat(['', '']).slice(0, Math.max(options.length + (F.isNew ? 2 : 1), F.isNew ? 3 : 2)).forEach((o, i) => { %>
+      <div class="qb-row qb-option" data-tprm-q-option><input class="input qb-grow" name="options" maxlength="<%= F.limits.option %>" value="<%= o %>" aria-label="Option <%= i + 1 %>"<%= ro %>><% if (!ro) { %><button class="fx-link qb-linkbtn" type="button" data-tprm-q-remove-option hidden>Remove</button><% } %></div>
+    <% }) %>
+  </div>
+  <% if (!ro) { %><button class="fx-link qb-linkbtn qb-left" type="button" data-tprm-q-add-option hidden>Add an option</button><% } %>
+  <p class="fx-muted fx-sm" data-tprm-q-option-help>Leave a box empty to drop that option. An option a show-when rule uses cannot be removed until the rule changes.</p>
+  <label class="tprm-check"><input type="checkbox" name="allow_other" value="1"<%= checked('allow_other') ? ' checked' : '' %><%= ro %>> <span>Let them add "Other" in their own words</span></label>
+</fieldset>
+
+<fieldset class="qb-fieldset qb-part" data-tprm-q-also><legend class="label">Also ask for</legend>
+  <div data-tprm-q-for="yes_no_na free_text single_choice multiple_choice date number url">
+    <label class="tprm-check"><input type="checkbox" name="ask_file" value="1"<%= fileOn ? ' checked' : '' %><%= ro %> data-tprm-q-file-toggle> <span class="tpu-medium">A supporting file</span></label>
+  </div>
+  <p class="qb-m0 tpu-medium" data-tprm-q-for="file">The answer is the file they upload.</p>
+  <div class="qb-sub" data-tprm-q-file>
+    <div class="qb-row" data-tprm-q-for="yes_no_na"><span class="fx-muted fx-sm">when they answer</span>
+      <% [['yes', 'Yes'], ['no', 'No'], ['any', 'Any answer']].forEach(([k, l]) => { %><label class="tprm-check"><input type="radio" name="file_when" value="<%= k %>"<%= fileWhen === k ? ' checked' : '' %><%= ro %>> <span><%= l %></span></label><% }) %>
+    </div>
+    <label class="label" for="qf-evidence">What the file should be</label>
+    <input class="input" id="qf-evidence" name="evidence" maxlength="<%= F.limits.evidence %>" value="<%= val('evidence') %>" placeholder="For example: the approved policy, showing its version, approver and review date"<%= ro %>>
+    <div class="qb-row" data-tprm-q-for="yes_no_na free_text single_choice multiple_choice date number url">
+      <label class="tprm-check"><input type="radio" name="evidence_mandatory" value="1"<%= fileRequired ? ' checked' : '' %><%= ro %>> <span>Required</span></label>
+      <label class="tprm-check"><input type="radio" name="evidence_mandatory" value="0"<%= fileRequired ? '' : ' checked' %><%= ro %>> <span>Optional</span></label>
+    </div>
+  </div>
+  <div data-tprm-q-for="yes_no_na" data-tprm-q-explain>
+    <input type="hidden" name="explain_shown" value="1">
+    <p class="qb-m0 qb-gap"><span class="tpu-medium">An explanation</span> <span class="fx-muted fx-sm">required when they answer</span></p>
+    <div class="qb-row qb-sub"><% [['yes', 'Yes'], ['no', 'No'], ['na', 'Not applicable']].forEach(([k, l]) => { %><label class="tprm-check"><input type="checkbox" name="explain_on" value="<%= k %>"<%= explainOn.includes(k) ? ' checked' : '' %><%= ro %>> <span><%= l %></span></label><% }) %></div>
+  </div>
+  <p class="fx-muted fx-sm qb-m0" data-tprm-q-for="free_text">A written answer can be marked Not applicable, with a reason.</p>
+  <label class="tprm-check" data-tprm-q-for="single_choice multiple_choice date number file url"><input type="checkbox" name="allow_na" value="1"<%= checked('allow_na') ? ' checked' : '' %><%= ro %>> <span>They may answer Not applicable, with a reason</span></label>
+</fieldset>
+
+<% if (!F.isProtected) { %>
+<fieldset class="qb-fieldset qb-part" data-tprm-bank-required><legend class="label">Answer</legend>
+  <label class="tprm-check"><input type="checkbox" name="required" value="1"<%= reqOn ? ' checked' : '' %><%= ro %>> <span>Required before the third party can submit</span></label>
+</fieldset>
+
+<fieldset class="qb-fieldset qb-part" data-tprm-bank-ask data-tprm-q-rule><legend class="label">Show this question</legend>
+  <div class="qb-row">
+    <label class="tprm-check"><input type="radio" name="show_mode" value="always"<%= rule ? '' : ' checked' %><%= ro %>> <span>Always</span></label>
+    <label class="tprm-check"><input type="radio" name="show_mode" value="when"<%= rule ? ' checked' : '' %><%= ro %><%= cands.length ? '' : ' disabled' %>> <span>Only when</span></label>
+    <select class="select qb-small" name="show_join" aria-label="All or any of the conditions"<%= ro %>><option value="all"<%= !rule || rule.mode !== 'any' ? ' selected' : '' %>>all</option><option value="any"<%= rule && rule.mode === 'any' ? ' selected' : '' %>>any</option></select>
+    <span class="fx-muted fx-sm">of these are true:</span>
+  </div>
+  <% if (!cands.length) { %><p class="fx-muted fx-sm">A rule can only use questions asked before this one<%= F.kind === 'bank' ? ' in the same section' : '' %>, and there are none yet.</p><% } %>
+  <% conds.forEach((c, i) => { %>
+    <div class="qb-row" data-tprm-q-condition>
+      <select class="select qb-wide" name="cond_question" aria-label="Question for condition <%= i + 1 %>"<%= ro %>><option value="">Choose a question</option><% cands.forEach(x => { %><option value="<%= x.id %>"<%= x.id === c.question ? ' selected' : '' %>><%= x.id %> <%= x.theme %></option><% }) %></select>
+      <select class="select qb-small" name="cond_op" aria-label="Comparison for condition <%= i + 1 %>"<%= ro %>><% F.ops.forEach(o => { %><option value="<%= o %>"<%= o === c.op ? ' selected' : '' %>><%= F.opLabels[o] %></option><% }) %></select>
+      <input class="input qb-mid" name="cond_value" value="<%= c.value || '' %>" list="qf-values" aria-label="Value for condition <%= i + 1 %>" placeholder="yes, no, na, an option, a number or a date"<%= ro %>>
+    </div>
+  <% }) %>
+  <datalist id="qf-values"><option value="yes"></option><option value="no"></option><option value="na"></option><% [...new Set(cands.flatMap(x => x.options || []))].forEach(o => { %><option value="<%= o %>"></option><% }) %></datalist>
+  <p class="fx-muted fx-sm">For Yes and No questions use yes, no or na. For choice questions use the option exactly as written. Empty rows are ignored. When the rule is not met the question is not shown, counted or required.</p>
+</fieldset>
+<% } %>
+
+<% if (F.tiers) { %>
+<fieldset class="qb-fieldset qb-part"><legend class="label">Who gets it</legend>
+  <div class="qb-row"><label class="fx-muted fx-sm" for="qf-tier">Lowest tier asked</label>
+    <select class="select qb-small" id="qf-tier" name="min_tier"<%= ro %>><% F.tiers.forEach(t => { %><option value="<%= t %>"<%= val('min_tier') === t ? ' selected' : '' %>><%= t %></option><% }) %></select></div>
+</fieldset>
+<% } %>
+
+<fieldset class="qb-fieldset qb-part" data-tprm-bank-ai><legend class="label">For your reviewers <span class="meta text-xs">only your firm sees these</span></legend>
+  <label class="label" for="qf-benchmark">Benchmark <span class="meta text-xs">a short line on what a good answer looks like</span></label>
+  <input class="input" id="qf-benchmark" name="benchmark" maxlength="<%= F.limits.benchmark %>" value="<%= val('benchmark') %>"<%= ro %>>
+  <% if (F.kind === 'bank') { %>
+  <label class="label" for="qf-iso">ISO 27001 reference</label>
+  <input class="input qb-mid" id="qf-iso" name="iso27001" maxlength="<%= F.limits.iso27001 %>" value="<%= val('iso27001') %>"<%= ro %>>
+  <p class="fx-muted fx-sm" data-tprm-q-rules-below>Your firm's marking rules for this question, which reviewers and Brevis use, are in their own box below this form.</p>
+  <% } else { %>
+  <p class="fx-muted fx-sm qb-m0">Marking rules: reviewers see them beside the answer, and Brevis judges the answer against them.</p>
+  <% [['ai_valid', 'A valid answer', 'For example: names at least one test date in the last 12 months'], ['ai_meets', 'Satisfactory when', 'For example: tested in the last 12 months and covers site loss and cyber attack'],
+      ['ai_partly', 'Partly satisfactory when', 'For example: tested, but more than 12 months ago'], ['ai_red_flags', 'Red flags', 'For example: never tested, or the plan is a template']].forEach(([k, l, ph]) => { %>
+  <label class="label" for="qf-<%= k %>"><%= l %></label>
+  <textarea class="input qb-ta" id="qf-<%= k %>" name="<%= k %>" rows="2" maxlength="<%= F.limits.ai %>" placeholder="<%= ph %>"<%= ro %>><%= val(k) %></textarea>
+  <% }) %>
+  <% } %>
+</fieldset>

@@ -10,6 +10,8 @@
   const evTone = k => ({ missing: 'problem', requested: 'attention' })[k] || 'quiet';
   const conclTone = c => ({ unsatisfactory: 'problem', partially_satisfactory: 'attention', not_reviewed: 'attention' })[c] || 'quiet';
   const rp = rv && rv.reportPanel;
+  const aiP = typeof aiPanel !== 'undefined' && aiPanel ? aiPanel : null;
+  const aiLabels = aiP ? { conclusion: aiP.conclusionLabels, severity: aiP.severityLabels, status: aiP.suggestionStatusLabels } : null;
   const checkLabel = (r, k) => ({ in_date: r.kind === 'iso27001' ? 'The certificate is in date' : 'The report is in date',
     scope: 'Its scope covers this service', opinion: 'The auditor\'s opinion is unqualified',
     period: 'The period ended within the last 12 months, or a bridge letter covers the gap' })[k];
@@ -20,15 +22,31 @@
     <% if (rv.aiFlag) { %><p class="tpa-note tpa-tone-attention" data-tprm-ai-flag><%= rv.aiFlag %></p><% } %>
   </div>
 <% } %>
-<% if (rv && rv.submitted) { const blocked = rv.blockers.unreviewed || rv.blockers.unclosed || rv.blockers.unchecked; %>
+<% if (rv && rv.submitted) { const blocked = rv.blockers.unreviewed || rv.blockers.unclosed || rv.blockers.unchecked || rv.blockers.unsent; %>
   <div class="tpa" id="questionnaire-answers" data-tprm-answers>
     <div class="tpa-head" role="status" data-tprm-questionnaire-submitted>
       <p class="tpa-lead">Submitted by the third party on <%= aDay(qq.submitted_at) %>.<% if (qq.status === 'closed') { %> Review closed on <%= aDay(qq.closed_at) %>.<% } %></p>
-      <p class="tpa-meta" data-tprm-answer-counts><% if (rv.typed) { %><%= rv.counts.yes %> Yes · <%= rv.counts.no %> No · <%= rv.counts.na %> Not applicable · <%= plural(rv.counts.text, 'written answer') %>.<% } else { %><%= rv.counts.yes %> Yes · <%= rv.counts.partial %> Partially · <%= rv.counts.no %> No · <%= rv.counts.na %> Not applicable.<% } %></p>
+      <p class="tpa-meta" data-tprm-answer-counts><% if (rv.typed) { %><%= rv.counts.yes %> Yes · <%= rv.counts.no %> No · <%= rv.counts.na %> Not applicable · <%= plural(rv.counts.text, 'written answer') %><%= rv.counts.value ? ' · ' + plural(rv.counts.value, 'other answer') : '' %>.<% } else { %><%= rv.counts.yes %> Yes · <%= rv.counts.partial %> Partially · <%= rv.counts.no %> No · <%= rv.counts.na %> Not applicable.<% } %></p>
       <% if (rv.typed) { const ec = rv.evidenceCounts || {}; const waivedN = (ec.waived_iso || 0) + (ec.waived_soc2 || 0) + (ec.waived_both || 0); %>
         <p class="tpa-meta" data-tprm-evidence-counts>Evidence: <%= (ec.provided || 0) + (ec.provided_in_clarification || 0) %> provided · <%= waivedN %> waived by a report · <%= ec.requested || 0 %> asked for again · <%= ec.missing || 0 %> missing.</p>
       <% } %>
+      <% if (rv.aiSummary) { const sm = rv.aiSummary; %>
+        <p class="tpa-meta" data-tprm-ai-marks>Brevis review of <%= aDay(sm.runAt) %>, <%= sm.marked %> of <%= sm.total %> answers marked: <%= sm.checks.answers_question %> answer the question · <%= sm.checks.partly_answers %> partly · <%= sm.checks.does_not_answer %> do not. Suggested: <%= sm.conclusions.satisfactory %> satisfactory · <%= sm.conclusions.partially_satisfactory %> partly · <%= sm.conclusions.unsatisfactory %> unsatisfactory.<% if (rv.typed) { %> Evidence missing, from your records: <%= sm.evidenceMissing %>.<% } %></p>
+      <% } %>
       <% if (rv.aiFlag) { %><p class="tpa-note tpa-tone-attention" data-tprm-ai-flag><%= rv.aiFlag %></p><% } %>
+      <% if (rv.blockers.unsent) { %>
+        <div class="tpa-send-follow" data-tprm-followups-waiting="<%= rv.blockers.unsent %>">
+          <p class="tpa-meta"><%= plural(rv.blockers.unsent, 'follow-up') %> written and not sent yet. The third party sees none of them until you send them; they go together in one email<%= rv.canReview ? '' : '.' %></p>
+          <% if (rv.canReview) { %>
+            <form method="POST" action="<%= qBase %>/clarifications/send" class="tpa-inline-form" data-tprm-followups-send-form>
+              <input type="hidden" name="_csrf" value="<%= qCsrf %>">
+              <input type="hidden" name="answers_filter" value="<%= rv.filter %>">
+              <%- include('partials/tprm_confirm_fields', { title: 'Send ' + plural(rv.blockers.unsent, 'follow-up') + ' to the third party?', body: 'They go in one email. If the third party\'s link has stopped working, a new one is made and sent with them.', action: 'Send' }) %>
+              <button class="tpa-btn tpa-btn--primary" type="submit" data-tprm-followups-send>Send <%= plural(rv.blockers.unsent, 'follow-up') %></button>
+            </form>
+          <% } %>
+        </div>
+      <% } %>
       <% if (rv.reviewBlocked && qq.status !== 'closed') { %><p class="tpa-note" data-tprm-review-blocked><%= rv.reviewBlocked %></p><% } %>
     </div>
 
@@ -48,6 +66,15 @@
               · <% if (soc) { %>Period ended <%= aDay(r.period_end) %><% if (r.hints.periodRecent === false && !r.hints.bridge) { %> <span class="tpa-tone-attention">(more than 12 months ago, no bridge letter)</span><% } %><% } else { %>Expires <%= aDay(r.certificate_expires_on) %><% if (r.hints.inDate === false) { %> <span class="tpa-tone-problem">(expired)</span><% } %><% } %>
             </p>
             <% if (r.scope) { %><p class="tpa-meta tpa-pre" data-tprm-report-scope>Scope: <%= r.scope %></p><% } %>
+            <% if (r.ai) { const ai = r.ai; const opinionWords = { unqualified: 'unqualified', qualified: 'qualified', adverse: 'adverse', disclaimer: 'a disclaimer of opinion', not_stated: 'not stated' }; %>
+              <div class="tpa-ai-read" data-tprm-report-ai="<%= r.kind %>">
+                <p class="tpa-meta"><span class="tpa-strong">Brevis read the <%= soc ? 'report' : 'certificate' %><%= ai.partlyRead ? ' (only the first part)' : '' %>:</span>
+                  <% if (ai.date) { %><%= soc ? 'period ' + (ai.periodStart ? aDay(ai.periodStart) + ' to ' : 'ending ') + aDay(ai.date) : 'expires ' + aDay(ai.date) %><% } else { %>no <%= soc ? 'period end' : 'expiry date' %> found<% } %><% if (ai.issuer) { %> · by <%= ai.issuer %><% } %><% if (soc && ai.opinion) { %> · opinion <%= opinionWords[ai.opinion] %><% } %><% if (soc && ai.exceptions !== null) { %> · <%= ai.exceptions ? 'exceptions listed' : 'no exceptions listed' %><% } %>.</p>
+                <% if (ai.differs) { %><p class="tpa-meta tpa-tone-attention" data-tprm-report-ai-differs>The third party gave <%= aDay(ai.given) %>, the file says <%= aDay(ai.date) %>.</p><% } else if (ai.date && ai.given) { %><p class="tpa-meta" data-tprm-report-ai-same>It matches the date the third party gave.</p><% } %>
+                <% if (ai.scope) { %><p class="tpa-meta tpa-pre" data-tprm-report-ai-scope>Scope in the file: <%= ai.scope %></p><% } %>
+              </div>
+            <% } %>
+            <% if (r.check_status === 'accepted' && (r.confirmed_expires_on || r.confirmed_period_end)) { %><p class="tpa-meta" data-tprm-report-confirmed>Date kept from the file: <%= aDay(r.confirmed_expires_on || r.confirmed_period_end) %>.</p><% } %>
             <% if (r.check_status !== 'pending') { %>
               <p class="tpa-meta" data-tprm-report-decision><%= r.check_status === 'accepted' ? 'Accepted' : 'Rejected' %> by <%= r.checkedByName %>, <%= aDay(r.checked_at) %>: <%= r.check_reason %></p>
               <% if (r.exception_question_ids.length) { %><p class="tpa-meta" data-tprm-report-exceptions>Exceptions affect: <%= r.exception_question_ids.join(', ') %> (evidence asked for again).</p><% } %>
@@ -65,6 +92,7 @@
                   <label class="tpa-option"><input type="radio" name="decision" value="accept" required> Accept</label>
                   <label class="tpa-option"><input type="radio" name="decision" value="reject"> Reject</label>
                 </fieldset>
+                <% if (r.ai && r.ai.differs) { %><label class="tpa-option" data-tprm-report-use-ai><input type="checkbox" name="use_ai_date" value="1"> When accepting, keep the date in the file (<%= aDay(r.ai.date) %>) instead of the one the third party gave (<%= aDay(r.ai.given) %>). Expiry warnings then use it.</label><% } %>
                 <textarea class="tpa-input" name="reason" rows="2" maxlength="<%= rp.limits.reason %>" required placeholder="Reason (internal; the third party never sees it)" aria-label="Reason for the decision on the <%= r.label %>"></textarea>
                 <% if (soc) { %>
                   <input class="tpa-input" name="exceptions" placeholder="Questions affected by exceptions, for example IAM-05, LOG-03 (optional)" aria-label="Question ids affected by SOC 2 exceptions">
@@ -78,8 +106,8 @@
     <% } %>
 
     <nav class="tpa-filters" aria-label="Filter the answers" data-tprm-answer-filters>
-      <% rv.filters.forEach(f => { %>
-        <% if (f === rv.filter) { %><strong class="tpa-filter is-current" aria-current="true" data-tprm-answer-filter-current="<%= f %>"><%= rv.filterLabels[f] %></strong><% } else { %><a class="tpa-filter" href="<%= aBaseUrl %>?step=review&amp;answers=<%= f %>#questionnaire-answers" data-tprm-answer-filter="<%= f %>"><%= rv.filterLabels[f] %></a><% } %>
+      <% rv.filters.filter(f => f !== 'ai' || f === rv.filter || (rv.filterCounts && rv.filterCounts.ai)).forEach(f => { const n = rv.filterCounts ? ' ' + rv.filterCounts[f] : ''; %>
+        <% if (f === rv.filter) { %><strong class="tpa-filter is-current" aria-current="true" data-tprm-answer-filter-current="<%= f %>"><%= rv.filterLabels[f] %><span class="tpa-filter-n"><%= n %></span></strong><% } else { %><a class="tpa-filter" href="<%= aBaseUrl %>?step=review&amp;answers=<%= f %>#questionnaire-answers" data-tprm-answer-filter="<%= f %>"><%= rv.filterLabels[f] %><span class="tpa-filter-n"><%= n %></span></a><% } %>
       <% }) %>
       <span class="tpa-filter-count">Showing <%= rv.rows.length %> of <%= rv.allCount %></span>
     </nav>
@@ -113,6 +141,8 @@
                   <span class="tpw-item-id"><%= r.question_id %></span>
                   <span class="tpw-item-theme"><%= r.theme %></span>
                   <span class="tpw-item-state"><span class="tpa-status tpa-tone-<%= respTone(r.response) %>"><%= rv.responseLabels[r.response] || 'No answer' %></span><span class="tpa-status tpa-tone-<%= conclTone(r.review_conclusion) %>" data-tprm-item-conclusion><%= rv.conclusionLabels[r.review_conclusion] %></span></span>
+                  <% if (r.aiPending) { const pc = r.aiList.find(x => x.status === 'pending' && x.kind === 'conclusion'); const pf = r.aiList.filter(x => x.status === 'pending' && x.kind !== 'conclusion').length; %><span class="tpw-item-ai" data-tprm-item-ai-pending="<%= r.aiPending %>">Brevis to decide: <%= [pc ? rv.conclusionLabels[pc.conclusion] : null, pf ? plural(pf, 'finding') : null].filter(Boolean).join(', ') %></span>
+                  <% } else if (r.aiMark && (r.aiMark.conclusion !== 'satisfactory' || (r.aiMark.answerCheck && r.aiMark.answerCheck !== 'answers_question'))) { %><span class="tpw-item-ai" data-tprm-item-ai="<%= r.aiMark.conclusion %>">Brevis: <%= rv.conclusionLabels[r.aiMark.conclusion] %><%= r.aiMark.answerCheck && r.aiMark.answerCheck !== 'answers_question' ? ', ' + lowerFirst(rv.answerCheckLabels[r.aiMark.answerCheck]) : '' %></span><% } %>
                 </a></li>
               <% }) %>
             </ol>
@@ -137,22 +167,24 @@
           <p class="tpa-q-title"><span class="tpa-code"><%= r.question_id %></span> <span class="tpa-strong" data-tprm-answer-theme><%= r.theme %></span> <span class="tpa-meta-inline"><% if (r.iso27001) { %>ISO 27001 <%= r.iso27001 %><% } %></span></p>
           <p class="tpa-q-text"><%= r.question %></p>
           <div class="fx-guide" data-tprm-marking-guide="<%= r.question_id %>">
-            <p class="fx-guide-h">Marking guide <span><%= r.guide ? 'your firm\'s guide' + (r.guide.updated_by_name ? ', by ' + r.guide.updated_by_name : '') : 'from the question bank' %> · only your firm sees it</span></p>
+            <p class="fx-guide-h">Marking rules <span><%= r.guide ? 'your firm\'s' + (r.guide.updated_by_name ? ', by ' + r.guide.updated_by_name : '') : 'guidance from the question' %> · only your firm sees them</span></p>
             <% if (r.guide) { %><ul class="fx-guide-list">
-              <% if (r.guide.satisfactory) { %><li><b>Satisfactory:</b> <%= r.guide.satisfactory %></li><% } %>
-              <% if (r.guide.partly) { %><li><b>Partly:</b> <%= r.guide.partly %></li><% } %>
+              <% if (r.guide.valid_answer) { %><li><b>A valid answer:</b> <%= r.guide.valid_answer %></li><% } %>
+              <% if (r.guide.satisfactory) { %><li><b>Satisfactory when:</b> <%= r.guide.satisfactory %></li><% } %>
+              <% if (r.guide.partly) { %><li><b>Partly satisfactory when:</b> <%= r.guide.partly %></li><% } %>
               <% if (r.guide.red_flags) { %><li><b>Red flags:</b> <%= r.guide.red_flags %></li><% } %>
             </ul><% } else if (r.guidance) { %><p class="fx-sm"><%= r.guidance %></p><% } %>
             <% if (r.benchmark) { %><p class="fx-sm" data-tprm-answer-benchmark>Benchmark (firm only): <%= r.benchmark %></p><% } %>
-            <% if (typeof canEditGuides !== 'undefined' && canEditGuides) { %><a class="fx-link" href="/tprm/settings/marking-guides?q=<%= encodeURIComponent(r.question_id) %>#guide-<%= r.question_id %>"><%= r.guide ? 'Change the guide' : 'Write a guide for this question' %></a><% } %>
+            <% if (typeof canEditGuides !== 'undefined' && canEditGuides && r.guideHref) { %><a class="fx-link" href="<%= r.guideHref %>"><%= r.guide ? 'Change the marking rules' : 'Write marking rules for this question' %></a><% } %>
           </div>
-          <% if (r.reasons.length) { %><p class="tpa-meta" data-tprm-answer-reasons>Needs judgement: <%= r.reasons.map(k => k === 'ai' && r.aiSuggestion ? 'AI review suggests ' + rv.conclusionLabels[r.aiSuggestion.conclusion].toLowerCase() : rv.reasonLabels[k].toLowerCase()).join(', ') %>.</p><% } %>
+          <% if (r.reasons.length) { %><p class="tpa-meta" data-tprm-answer-reasons>Needs judgement: <%= r.reasons.map(k => k === 'ai' && r.aiSuggestion ? 'Brevis suggests ' + rv.conclusionLabels[r.aiSuggestion.conclusion].toLowerCase() : rv.reasonLabels[k].toLowerCase()).join(', ') %>.</p><% } %>
 
           <div class="tpw-answer">
             <p class="tpa-meta">
               <span class="tpa-status tpa-tone-<%= respTone(r.response) %>" data-tprm-answer-tag><%= rv.responseLabels[r.response] || 'No answer' %></span>
               <% if (rv.typed && r.evidenceState) { %><span class="tpa-status tpa-tone-<%= evTone(r.evidenceState.key) %>" data-tprm-evidence-state="<%= r.evidenceState.key %>"><%= evWords(r.evidenceState) %></span><% } %>
               <% if (r.prefilled_from_answer_id) { %><span class="tpa-meta-inline">Confirmed from last time</span><% } %>
+              <% if (r.entered_by_firm_name) { %><span class="tpa-meta-inline" data-tprm-entered-by-firm>Entered by <%= r.entered_by_firm_name %> for the third party</span><% } %>
             </p>
             <% if (r.answerText) { %><p class="tpa-answer" data-tprm-answer-text><%= r.answerText %></p><% } else if (r.detail) { %><p class="tpa-answer" data-tprm-answer-detail><%= r.detail %></p><% } %>
             <% if (r.comments && r.comments.length) { %><ul class="tpa-comments" data-tprm-answer-comments><% r.comments.forEach(c => { %><li><span class="tpa-meta"><%= c.name %>, <%= qWhen(c.at) %></span><span class="tpu-pre"><%= c.body %></span></li><% }) %></ul><% } %>
@@ -167,21 +199,17 @@
             <% } %>
           </div>
 
-          <% if (r.aiSuggestion) { const s = r.aiSuggestion; %>
-            <div class="tpw-ai" data-tprm-answer-ai="<%= s.id %>">
-              <p class="tpa-meta"><span class="tpa-strong">AI review suggests <%= rv.conclusionLabels[s.conclusion].toLowerCase() %>.</span> <%= s.rationale %></p>
-              <% if (rv.canReview) { %>
-                <div class="tpa-actions">
-                  <form method="POST" action="<%= aBaseUrl %>/ai-suggestions/<%= s.id %>/accept" class="tpa-inline-form" data-tprm-ai-accept-form>
-                    <input type="hidden" name="_csrf" value="<%= qCsrf %>">
-                    <button class="tpa-btn" type="submit">Accept the suggestion</button>
-                  </form>
-                  <form method="POST" action="<%= aBaseUrl %>/ai-suggestions/<%= s.id %>/reject" class="tpa-inline-form" data-tprm-ai-reject-form>
-                    <input type="hidden" name="_csrf" value="<%= qCsrf %>">
-                    <button class="tpa-link" type="submit">Reject</button>
-                  </form>
+
+          <% const aiL = (aiP && r.aiList) || []; const pendC = aiL.filter(x => x.kind === 'conclusion' && x.status === 'pending'); const doneC = aiL.find(x => x.kind === 'conclusion' && x.status !== 'pending'); const findL = aiL.filter(x => x.kind !== 'conclusion'); %>
+          <% if (pendC.length || findL.length || r.aiMark) { %>
+            <div class="tpw-ai" data-tprm-answer-ai="<%= r.id %>">
+              <% if (!pendC.length && r.aiMark) { const m = r.aiMark; %>
+                <div class="tpw-ai-markbox"<%- doneC ? ' data-tprm-ai-suggestion="' + doneC.id + '" data-tprm-ai-suggestion-status="' + doneC.status + '"' : '' %>>
+                  <p class="tpa-meta tpw-ai-mark" data-tprm-answer-ai-mark="<%= m.conclusion %>">Brevis marked it <%= rv.conclusionLabels[m.conclusion].toLowerCase() %><%= m.answerCheck ? ' · ' + lowerFirst(rv.answerCheckLabels[m.answerCheck]) : '' %>.<% if (m.rationale) { %> <%= m.rationale %><% } %></p>
+                  <% if (doneC) { %><p class="tpw-sugg-done" data-tprm-ai-decided><%= aiLabels.status[doneC.status] %> by <%= doneC.decided_by_name || 'Unknown user' %>, <%= tpf.dayTime(doneC.decided_at) || '' %><% if (doneC.reject_reason) { %>: <%= doneC.reject_reason %><% } %><% if (doneC.status === 'accepted') { %>, set as the answer's reviewer conclusion<% } %>.</p><% } %>
                 </div>
               <% } %>
+              <% pendC.concat(findL).forEach(sg => { %><%- include('partials/tprm_ai_suggestion', { sg, labels: aiLabels, base: aBaseUrl, csrf: qCsrf, canDecide: aiP.canDecide, answerId: r.id, filter: rv.filter, tpfmt: tpf, reasonMax: aiP.limits ? aiP.limits.rejectReason : 500 }) %><% }) %>
             </div>
           <% } %>
 
@@ -211,13 +239,13 @@
             <% } %>
             <% if (rv.canReview) { %>
               <details class="tpa-ask" data-tprm-ask-clarification>
-                <summary class="tpa-link">Ask a clarification<% if (openOnes.length) { %> (<%= openOnes.length %> not closed)<% } %></summary>
+                <summary class="tpa-link">Add a follow-up<% if (openOnes.length) { %> (<%= openOnes.length %> not closed)<% } %></summary>
                 <form method="POST" action="<%= qBase %>/clarifications" class="tpa-ask-form" data-tprm-ask-clarification-form>
                   <input type="hidden" name="_csrf" value="<%= qCsrf %>">
                   <input type="hidden" name="question_id" value="<%= r.question_id %>">
                   <input type="hidden" name="answers_filter" value="<%= rv.filter %>">
-                  <textarea class="tpa-input" name="body" rows="2" maxlength="<%= rv.limits.clarification %>" required aria-label="Clarification on <%= r.question_id %>" placeholder="What do you need from the third party? They see this text."></textarea>
-                  <div class="tpa-actions"><button class="tpa-btn" type="submit" data-tprm-ask>Ask</button></div>
+                  <textarea class="tpa-input" name="body" rows="2" maxlength="<%= rv.limits.clarification %>" required aria-label="Follow-up on <%= r.question_id %>" placeholder="What do you need from the third party? They see this text once you send the follow-ups."></textarea>
+                  <div class="tpa-actions"><button class="tpa-btn" type="submit" data-tprm-ask>Save the follow-up</button></div>
                 </form>
               </details>
             <% } %>
@@ -250,6 +278,23 @@
             </form>
           <% } %>
 
+          <% if (r.drafts && r.drafts.length) { %>
+            <div class="tpa-clars" data-tprm-followup-drafts>
+            <% r.drafts.forEach(d => { %>
+              <div class="tpa-clar" data-tprm-followup-draft="<%= d.id %>">
+                <p class="tpa-meta"><span class="tpa-strong">Follow-up, not sent yet</span> · <%= d.created_by_name || 'Unknown user' %>, <%= aDay(d.created_at) %></p>
+                <p class="tpa-answer"><%= d.body %></p>
+                <% if (rv.canReview) { %>
+                  <form method="POST" action="<%= qBase %>/clarifications/drafts/<%= d.id %>/remove" class="tpa-inline-form" data-tprm-followup-remove-form>
+                    <input type="hidden" name="_csrf" value="<%= qCsrf %>">
+                    <input type="hidden" name="answers_filter" value="<%= rv.filter %>">
+                    <button class="tpa-link" type="submit" data-tprm-followup-remove>Remove</button>
+                  </form>
+                <% } %>
+              </div>
+            <% }) %>
+            </div>
+          <% } %>
           <% if (r.clarifications.length) { %>
           <div class="tpa-clars">
             <% r.clarifications.forEach(c => { %>
@@ -277,12 +322,12 @@
     </div>
     <% } %>
 
-    <% if (rv.canReview && rv.rows.length) { %><p class="tpa-meta tpw-keys" hidden data-tprm-keys>Keys: J and K move between answers, 1, 2 and 3 set the conclusion, C asks a clarification, F raises a finding. Changes save as you make them.</p><% } %>
+    <% if (rv.canReview && rv.rows.length) { %><p class="tpa-meta tpw-keys" hidden data-tprm-keys>Keys: J and K move between answers, 1, 2 and 3 set the conclusion, C adds a follow-up, F raises a finding. Changes save as you make them.</p><% } %>
     <% if (rv.canClose) { %>
       <form method="POST" action="<%= qBase %>/close" class="tpa-close" data-tprm-close-review-form>
         <input type="hidden" name="_csrf" value="<%= qCsrf %>">
         <input type="hidden" name="row_version" value="<%= qq.row_version %>">
-        <p class="tpa-meta"><% if (blocked) { %>To close the review, give every answer a conclusion, close every clarification<%= rv.blockers.unchecked ? ' and check every certificate or report' : '' %>.<% } else { %>Every answer has a conclusion and no clarification is open. Closing revokes an active link.<% } %></p>
+        <p class="tpa-meta"><% if (blocked) { %>To close the review, give every answer a conclusion, close every clarification<%= rv.blockers.unchecked ? ', check every certificate or report' : '' %><%= rv.blockers.unsent ? ' and send or remove the follow-ups not sent' : '' %>.<% } else { %>Every answer has a conclusion and no clarification is open. Closing revokes an active link.<% } %></p>
         <button class="tpa-btn tpa-btn--primary" type="submit" data-tprm-close-review<%= blocked ? ' disabled' : '' %>>Close the review</button>
       </form>
     <% } %>

@@ -4,7 +4,7 @@
 <div class="tprm-head" data-tprm-bank-question="<%= q ? q.id : 'new' %>">
   <div class="tprm-head-main">
     <h1 class="page-title"><%= q ? q.id + ' ' + (q.theme || '') : 'New question' %></h1>
-    <p class="tprm-status-line"><% if (q) { %><%= setLabel(q.set) %>, <%= q.set === 'Base' ? q.domain : q.pack %>.<% } else { %>It will be <b><%= nextId %></b>, placed after <%= like.id %> in <%= like.set === 'Base' ? like.domain : like.pack %>, and answered the same way as <%= like.id %>.<% } %></p>
+    <p class="tprm-status-line"><% if (q) { %><%= setLabel(q.set) %>, <%= q.set === 'Base' ? q.domain : q.pack %>.<% } else if (newSection) { %>It will start a new section of the base questions.<% } else { %>It will be <b><%= nextId %></b>, placed after <%= like.id %> in <%= like.set === 'Base' ? like.domain : like.pack %>.<% } %></p>
     <% if (!st.draft) { %><p class="fx-muted fx-sm">This is the published wording. Start a draft on the question bank page to change it.</p><% } %>
   </div>
 </div>
@@ -14,24 +14,23 @@
 <% } %>
 
 <div class="fx-card fx-mt" data-tprm-bank-facts>
-  <p class="fx-sm"><b>Answered by</b> <%= src.answered_by || 'Vendor' %> · <b>Answer</b> <%= src.answer_type === 'free_text' ? 'Written answer' : 'Yes, No or Not applicable' %><% if (src.delivery_models) { %> · <b>Asked for</b> <%= src.delivery_models %><% } %></p>
+  <p class="fx-sm"><b>Answered by</b> <%= src.answered_by || 'Vendor' %> · <b>Answer</b> <%= typeLabels[src.answer_type] || 'Yes, No or Not applicable' %><% if (q && q.options) { %> (<%= q.options.join(', ') %>)<% } %><% if (src.delivery_models) { %> · <b>Asked for</b> <%= src.delivery_models %><% } %></p>
   <% if (q && Array.isArray(q.fields) && q.fields.length) { %><p class="fx-sm fx-muted">Answer boxes: <%= q.fields.map(f => f.label).join('; ') %>.</p><% } %>
+  <% const answerWords = { yes: 'Yes', no: 'No', na: 'Not applicable' }; if (q && q.ask_when) { %><p class="fx-sm" data-tprm-bank-asked-when><b>Asked only when</b> <%= q.ask_when.question %> is answered <%= answerWords[q.ask_when.answer] %>.</p><% } %>
   <p class="fx-sm fx-muted">The question number, how it is answered and its answer boxes stay fixed, so answers already given keep their meaning. To ask it a different way, retire it and add a new one.</p>
 </div>
 
 <% if (canEdit) { %>
-<form method="POST" action="<%= q ? '/tprm/settings/question-bank/questions/' + encodeURIComponent(q.id) : '/tprm/settings/question-bank/add' %>" class="fx-card fx-mt fx-guide-form" data-tprm-bank-form>
+<form method="POST" action="<%= q ? '/tprm/settings/question-bank/questions/' + encodeURIComponent(q.id) : '/tprm/settings/question-bank/add' %>" class="fx-card fx-mt fx-guide-form" data-tprm-bank-form data-tprm-q-editor>
   <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= st.draft.row_version %>"><% if (!q) { %><input type="hidden" name="like" value="<%= like.id %>"><% } %>
-  <label class="label" for="qb-theme">Theme</label><input class="input" id="qb-theme" name="theme" maxlength="<%= limits.theme %>" value="<%= v.theme || '' %>" required>
-  <label class="label" for="qb-question">Question</label><textarea class="input" id="qb-question" name="question" rows="4" maxlength="<%= limits.question %>" required><%= v.question || '' %></textarea>
-  <% if (baseQ && baseQ.question !== (q && q.question)) { %><p class="fx-sm fx-muted" data-tprm-bank-was>Published wording: <%= baseQ.question %></p><% } %>
-  <label class="label" for="qb-guidance">Guidance <span class="meta text-xs">shown to the third party under the question</span></label><textarea class="input" id="qb-guidance" name="guidance" rows="3" maxlength="<%= limits.guidance %>"><%= v.guidance || '' %></textarea>
-  <label class="label" for="qb-evidence">Evidence asked for</label><input class="input" id="qb-evidence" name="evidence" maxlength="<%= limits.evidence %>" value="<%= v.evidence || '' %>">
-  <label class="fx-sm"><input type="checkbox" name="evidence_mandatory" value="1"<%= v.evidence_mandatory === true || v.evidence_mandatory === '1' ? ' checked' : '' %>> Evidence is required</label>
-  <label class="label" for="qb-tier">Lowest tier asked</label>
-  <select class="select" id="qb-tier" name="min_tier"><% tiers.forEach(t => { %><option value="<%= t %>"<%= v.min_tier === t ? ' selected' : '' %>><%= t %></option><% }) %></select>
-  <label class="label" for="qb-benchmark">Benchmark <span class="meta text-xs">what a good answer looks like, for your team</span></label><textarea class="input" id="qb-benchmark" name="benchmark" rows="2" maxlength="<%= limits.benchmark %>"><%= v.benchmark || '' %></textarea>
-  <label class="label" for="qb-iso">ISO 27001 reference</label><input class="input" id="qb-iso" name="iso27001" maxlength="<%= limits.iso27001 %>" value="<%= v.iso27001 || '' %>">
+  <% if (!q && newSection) { %>
+    <input type="hidden" name="new_section_shown" value="1">
+    <label class="label" for="qb-new-section">New section name</label><input class="input" id="qb-new-section" name="new_section" maxlength="<%= limits.section %>" value="<%= v.new_section || '' %>" required>
+    <label class="label" for="qb-new-prefix">Question code <span class="meta text-xs">2 to 5 capital letters; questions are numbered like BCP-01</span></label><input class="input qb-short" id="qb-new-prefix" name="new_prefix" maxlength="5" value="<%= v.new_prefix || '' %>" required>
+  <% } %>
+  <%- include('partials/tprm_question_form', { v: (!q && !(values && values.settings_shown !== undefined)) ? { ...v, answer_type: v.answer_type || (like && like.answer_type) || 'yes_no_na' } : v, posted: !!(values && values.settings_shown !== undefined), isNew: !q, kind: 'bank', ro: '',
+    limits: { ...limits, option: limits.option || 120, ai: limits.ai || 1500 }, types: newTypes, typeLabels, ops, opLabels, typeLocked: !!q, candidates,
+    isProtected, tiers, themeLabel: 'Theme', themeHint: 'shown in lists and to your team', themeRequired: true, baseQuestion: baseQ ? baseQ.question : null }) %>
   <div class="fx-actions"><button class="btn btn-primary btn-xs" type="submit"><%= q ? 'Save in the draft' : 'Add to the draft' %></button><a class="fx-sm" href="/tprm/settings/question-bank">Back to the list</a></div>
 </form>
 <% if (q) { %>
@@ -53,5 +52,23 @@
   <p class="fx-sm"><b>Evidence</b> <%= q.evidence || 'None asked for' %><%= q.evidence_mandatory ? ' (required)' : '' %> · <b>Lowest tier</b> <%= q.min_tier %><% if (q.iso27001) { %> · <b>ISO 27001</b> <%= q.iso27001 %><% } %></p>
   <% if (q.benchmark) { %><p class="fx-sm"><b>Benchmark</b> <%= q.benchmark %></p><% } %>
 </div>
+<% } %>
+<% if (q && typeof guide !== 'undefined') { const g = guide || {}; %>
+<section class="fx-card fx-mt" id="reviewers" data-tprm-question-guide="<%= q.id %>">
+  <h2 class="fx-h4">For your reviewers and Brevis <span>only your firm sees these<%= guide && guide.updated_by_name ? ' · last changed by ' + guide.updated_by_name : '' %></span></h2>
+  <p class="fx-muted fx-sm">Reviewers see these beside the supplier's answer, and Brevis judges the answer against them. They are your firm's own and take effect as soon as you save: no draft or publish needed.</p>
+  <% if (canEditGuide) { %>
+  <form method="POST" action="/tprm/settings/marking-guides/<%= encodeURIComponent(q.id) %>" class="fx-guide-form" data-tprm-guide-form="<%= q.id %>">
+    <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="question"><% if (guide) { %><input type="hidden" name="row_version" value="<%= guide.row_version %>"><% } %>
+    <% [['valid_answer', 'A valid answer', 'What counts as a usable answer at all'], ['satisfactory', 'Satisfactory when', 'What a good answer and its evidence show'],
+        ['partly', 'Partly satisfactory when', 'What makes an answer only partly satisfactory'], ['red_flags', 'Red flags', 'Signs the answer should not be accepted']].forEach(([k, l, ph]) => { %>
+    <label class="label" for="mg-<%= k %>"><%= l %></label><textarea class="input" id="mg-<%= k %>" name="<%= k %>" rows="2" maxlength="1500" placeholder="<%= ph %>"><%= g[k] || '' %></textarea>
+    <% }) %>
+    <div class="fx-actions"><button class="btn btn-primary btn-xs" type="submit">Save the marking rules</button><span class="fx-muted fx-sm">Leave all four empty and save to remove them.</span></div>
+  </form>
+  <% } else if (guide) { %>
+  <ul class="fx-guide-list"><% [['valid_answer', 'A valid answer'], ['satisfactory', 'Satisfactory when'], ['partly', 'Partly satisfactory when'], ['red_flags', 'Red flags']].forEach(([k, l]) => { if (g[k]) { %><li><b><%= l %>:</b> <%= g[k] %></li><% } }) %></ul>
+  <% } else { %><p class="fx-muted fx-sm">No marking rules yet.</p><% } %>
+</section>
 <% } %>
 <%- include('partials/footer') %>

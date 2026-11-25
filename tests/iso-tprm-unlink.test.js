@@ -167,6 +167,7 @@ test('only the TPRM area and the client service switch reach TPRM code or tables
   allowedTprmImports.add(path.join('routes', 'tprm-report.js'));
   allowedTprmImports.add(path.join('routes', 'tprm-rulebooks.js'));
   allowedTprmImports.add(path.join('routes', 'tprm-relationships.js'));
+  allowedTprmImports.add(path.join('routes', 'tprm-q-templates.js'));
   for (const file of [...sourceFiles('routes'), ...sourceFiles('lib'), ...sourceFiles('views'), 'server.js', 'db.js']) {
     if (file.startsWith(path.join('lib', 'tprm') + path.sep)) continue;
     const text = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');

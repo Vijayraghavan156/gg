@@ -1,0 +1,88 @@
+<% const publishing = mode === 'publish'; %>
+<%- include('partials/header', { title: (publishing ? 'Review and publish' : 'Version ' + toVersion) + ' · ' + t.name, user, active }) %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; const base = '/tprm/settings/questionnaires/' + t.id;
+   const day = d => { try { return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }); } catch (_) { return ''; } };
+   const shown = v => (v == null || v === '' ? 'Not set' : v);
+   const n = (k, w) => k + ' ' + w + (k === 1 ? '' : 's'); %>
+<nav class="tprm-crumbs" aria-label="Breadcrumb"><a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><a href="/tprm/settings/questionnaires">Questionnaires</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><a href="<%= base %>"><%= t.name %></a><span class="tprm-crumb-sep" aria-hidden="true">/</span><% if (!publishing) { %><a href="<%= base %>/versions">Version history</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><% } %><span aria-current="page"><%= publishing ? 'Review and publish' : 'Version ' + toVersion %></span></nav>
+<div class="tprm-head" data-tprm-q-template-changes="<%= mode %>">
+  <div class="tprm-head-main">
+    <h1 class="page-title"><%= publishing ? 'Review and publish' : 'Version ' + toVersion %></h1>
+    <p class="tprm-status-line">
+      <% if (publishing) { %><%= fromVersion ? 'What changes from version ' + fromVersion + '. Publishing makes this version ' + toVersion + ': new questionnaires use it, and ones already prepared keep the version they started with.' : 'This is the first version. Publishing lets you send it when preparing a questionnaire.' %>
+      <% } else { %>Published <%= day(version.publishedAt) %>. <%= fromVersion ? 'What changed from version ' + fromVersion + '.' : 'The first version.' %><% } %>
+    </p>
+  </div>
+</div>
+
+<% if (problems.length) { %>
+<div class="callout tprm-callout-error fx-mt" role="alert" data-tprm-q-changes-problems><p>Fix these before publishing:</p><ul><% problems.forEach(p => { %><li><%= p %></li><% }) %></ul><p><a href="<%= base %>">Back to the questionnaire</a></p></div>
+<% } %>
+
+<% if (d.first) { %>
+<h2 class="fx-section-h">Questions <span><%= d.added.length %></span></h2>
+<% } else if (!d.count) { %>
+<p class="fx-mt" data-tprm-q-changes-none><%= publishing ? 'Nothing has changed since version ' + fromVersion + '.' : 'Nothing changed from version ' + fromVersion + '.' %> <a href="<%= base %>">Back to the questionnaire</a></p>
+<% } else { %>
+<p class="fx-mt" data-tprm-q-changes-summary><%= [d.changed.length && n(d.changed.length, 'question') + ' changed', d.added.length && n(d.added.length, 'question') + ' added', d.removed.length && n(d.removed.length, 'question') + ' removed', d.sections.added.length && n(d.sections.added.length, 'section') + ' added', d.sections.removed.length && n(d.sections.removed.length, 'section') + ' removed', d.sections.renamed.length && n(d.sections.renamed.length, 'section') + ' renamed', d.reordered && 'the order changed'].filter(Boolean).join(', ').replace(/^./, c => c.toUpperCase()) %>.</p>
+<% } %>
+
+<% if (d.sections.added.length || d.sections.removed.length || d.sections.renamed.length) { %>
+<h2 class="fx-section-h">Sections</h2>
+<ul class="qb-list" data-tprm-q-changes-sections>
+  <% d.sections.added.forEach(s => { %><li>Added: <%= s %></li><% }) %>
+  <% d.sections.renamed.forEach(s => { %><li>Renamed: <%= s.from %> is now <%= s.to %></li><% }) %>
+  <% d.sections.removed.forEach(s => { %><li>Removed: <%= s %></li><% }) %>
+</ul>
+<% } %>
+
+<% if (d.order && (d.order.sections || d.order.questions.length)) { %>
+<h2 class="fx-section-h">New order</h2>
+<ul class="qb-list" data-tprm-q-changes-order>
+  <% if (d.order.sections) { %><li>Sections: <%= d.order.sections.join(', then ') %></li><% } %>
+  <% d.order.questions.forEach(o => { %><li><%= o.title %>: <%= o.ids.join(', ') %></li><% }) %>
+</ul>
+<% } %>
+
+<% if (d.changed.length) { %>
+<h2 class="fx-section-h">Changed <span><%= d.changed.length %></span></h2>
+<div class="fx-table" data-tprm-q-changes-changed>
+  <table><thead><tr><th>Number</th><th>What</th><th><%= fromVersion ? 'Version ' + fromVersion : 'Before' %></th><th><%= publishing ? 'Draft' : 'Version ' + toVersion %></th></tr></thead><tbody>
+  <% d.changed.forEach(c => { c.fields.forEach((f, i) => { %>
+    <tr><% if (i === 0) { %><td class="fx-nowrap" rowspan="<%= c.fields.length %>"><% if (publishing) { %><a href="<%= base %>/questions/<%= encodeURIComponent(c.id) %>"><b><%= c.id %></b></a><% } else { %><b><%= c.id %></b><% } %></td><% } %><td><%= f.label %></td><td class="fx-sm fx-muted"><%= shown(f.before) %></td><td class="fx-sm"><%= shown(f.after) %></td></tr>
+  <% }) }) %>
+  </tbody></table>
+</div>
+<% } %>
+
+<% if (d.added.length) { %>
+<% if (!d.first) { %><h2 class="fx-section-h">Added <span><%= d.added.length %></span></h2><% } %>
+<div class="fx-table" data-tprm-q-changes-added><table><tbody>
+  <% d.added.forEach(q => { %><tr><td class="fx-nowrap"><% if (publishing) { %><a href="<%= base %>/questions/<%= encodeURIComponent(q.id) %>"><b><%= q.id %></b></a><% } else { %><b><%= q.id %></b><% } %></td><td><%= q.question %><span class="fx-sub"><%= q.section %></span></td><td class="fx-sm fx-muted"><%= q.type %></td></tr><% }) %>
+</tbody></table></div>
+<% } %>
+
+<% if (d.removed.length) { %>
+<h2 class="fx-section-h">Removed <span><%= d.removed.length %></span></h2>
+<div class="fx-table" data-tprm-q-changes-removed><table><tbody>
+  <% d.removed.forEach(q => { %><tr><td class="fx-nowrap"><b><%= q.id %></b></td><td><%= q.question %></td></tr><% }) %>
+</tbody></table></div>
+<% } %>
+
+<% if (publishing && !problems.length && (d.first || d.count)) { %>
+<form method="POST" action="<%= base %>/publish" class="fx-card fx-mt fx-guide-form" data-tprm-q-publish-form>
+  <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= t.row_version %>">
+  <label class="label" for="qt-note">Note for the version history <span class="meta text-xs">optional</span></label><input class="input" id="qt-note" name="note" maxlength="300" placeholder="For example: recovery questions reworded after the client review">
+  <div class="fx-actions"><button class="btn btn-primary" type="submit">Publish version <%= toVersion %></button><a class="fx-sm" href="<%= base %>">Keep editing</a></div>
+</form>
+<% } %>
+
+<% if (!publishing && canEdit) { %>
+<form method="POST" action="<%= base %>/versions/<%= toVersion %>/restore" class="fx-card fx-mt" data-tprm-q-restore-form>
+  <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= t.row_version %>">
+  <p class="qb-m0">Restoring puts version <%= toVersion %> back into the draft, replacing what is there now. Nothing reaches third parties until you publish it again.</p>
+  <%- include('partials/tprm_confirm_fields', { title: 'Put version ' + toVersion + ' back into the draft?', body: 'The current draft is replaced. Question numbers used since then are not handed out again.', action: 'Restore' }) %>
+  <div class="fx-actions"><button class="btn btn-secondary btn-xs" type="submit">Restore this version into the draft</button></div>
+</form>
+<% } %>
+<%- include('partials/footer') %>

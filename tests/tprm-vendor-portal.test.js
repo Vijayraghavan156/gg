@@ -763,8 +763,8 @@ test('marking guides: a manager writes one per question; reviewers see it; the s
       if (/marking-guides|tp_marking_guides/.test(fs.readFileSync(full, 'utf8'))) offenders.push(path.join(dir, String(f)));
     }
   }
-  assert.deepEqual(offenders.sort(), ['lib/restore-check.js', 'lib/tprm/marking-guides.js', 'lib/tprm/questionnaire-review.js', 'routes/tprm-settings.js',
-    'views/tprm_assessment_answers.ejs', 'views/tprm_home.ejs', 'views/tprm_marking_guides.ejs'].sort(), 'only firm pages read the guides');
+  assert.deepEqual(offenders.sort(), ['lib/restore-check.js', 'lib/tprm/ai-review.js', 'lib/tprm/marking-guides.js', 'lib/tprm/questionnaire-review.js', 'routes/tprm-settings.js',
+    'views/tprm_marking_guides.ejs', 'views/tprm_question_bank_question.ejs'].sort(), 'only firm pages read the guides');
   const cleared = await client.post(`/tprm/settings/marking-guides/${qid}`, { satisfactory: '', partly: '', red_flags: '' });
   assert.match(toast(cleared), /removed/);
 });

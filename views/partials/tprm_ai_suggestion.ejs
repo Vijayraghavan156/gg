@@ -1,0 +1,35 @@
+<%
+  const sg = locals.sg;
+  const L = locals.labels;
+  const when = d => (locals.tpfmt ? locals.tpfmt.dayTime(d) : '') || '';
+  const isConclusion = sg.kind === 'conclusion';
+%>
+<div class="tpw-sugg" data-tprm-ai-suggestion="<%= sg.id %>" data-tprm-ai-suggestion-status="<%= sg.status %>">
+  <% if (isConclusion) { %>
+    <p class="tpw-sugg-h" data-tprm-ai-title data-tprm-ai-conclusion="<%= sg.conclusion %>">Brevis suggests: <%= L.conclusion[sg.conclusion] %></p>
+  <% } else { %>
+    <p class="tpw-sugg-h" data-tprm-ai-title>Brevis suggests a finding: <%= sg.title %> <span class="tpw-sugg-meta"><%= L.severity[sg.severity] %><%= sg.control_ref ? ', ' + sg.control_ref : '' %></span></p>
+    <% if (sg.description) { %><p class="tpw-sugg-text tpu-pre"><%= sg.description %></p><% } %>
+  <% } %>
+  <% if (sg.rationale) { %><p class="tpw-sugg-text tpw-sugg-why tpu-pre"><%= isConclusion ? '' : 'Why: ' %><%= sg.rationale %></p><% } %>
+  <% if (sg.evidence && sg.evidence.length) { %><p class="tpw-sugg-files">Files: <% sg.evidence.forEach((ev, i) => { %><%= i ? ', ' : '' %><a href="<%= locals.base %>/evidence/<%= ev.id %>/download"><%= ev.original_name %></a><% }) %></p><% } %>
+  <% if (sg.status !== 'pending') { %>
+    <p class="tpw-sugg-done" data-tprm-ai-decided><%= L.status[sg.status] %> by <%= sg.decided_by_name || 'Unknown user' %>, <%= when(sg.decided_at) %><% if (sg.reject_reason) { %>: <%= sg.reject_reason %><% } %><% if (!isConclusion && sg.finding_id) { %>. It is now a finding.<% } %><% if (isConclusion && sg.status === 'accepted') { %>, set as the answer's reviewer conclusion.<% } %></p>
+  <% } else if (locals.canDecide) { %>
+    <div class="tpw-sugg-actions">
+      <form method="POST" action="<%= locals.base %>/ai-suggestions/<%= sg.id %>/accept" data-tprm-ai-accept-form data-tprm-ai-inplace>
+        <input type="hidden" name="_csrf" value="<%= locals.csrf %>">
+        <% if (locals.answerId) { %><input type="hidden" name="answer_id" value="<%= locals.answerId %>"><input type="hidden" name="answers_filter" value="<%= locals.filter || '' %>"><% } %>
+        <button class="btn <%= isConclusion ? 'btn-primary' : 'btn-secondary' %> btn-xs" type="submit" data-tprm-ai-accept><%= isConclusion ? 'Accept' : 'Accept as finding' %></button>
+      </form>
+      <% if (!isConclusion) { %><a class="btn btn-secondary btn-xs" href="<%= locals.base %>/findings/new?suggestion=<%= sg.id %>" data-tprm-ai-edit>Edit, then accept</a><% } %>
+      <form method="POST" action="<%= locals.base %>/ai-suggestions/<%= sg.id %>/reject" class="tpw-sugg-reject" data-tprm-ai-reject-form data-tprm-ai-inplace>
+        <input type="hidden" name="_csrf" value="<%= locals.csrf %>">
+        <% if (locals.answerId) { %><input type="hidden" name="answer_id" value="<%= locals.answerId %>"><input type="hidden" name="answers_filter" value="<%= locals.filter || '' %>"><% } %>
+        <input name="reason" maxlength="<%= locals.reasonMax || 500 %>" placeholder="Reason, optional" class="input tpw-sugg-reason" aria-label="Why reject this suggestion">
+        <button class="btn btn-secondary btn-xs" type="submit" data-tprm-ai-reject>Reject</button>
+      </form>
+    </div>
+    <p class="tpw-sugg-state" data-tprm-ai-state role="status" aria-live="polite"></p>
+  <% } %>
+</div>

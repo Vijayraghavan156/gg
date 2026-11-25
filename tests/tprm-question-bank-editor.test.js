@@ -86,7 +86,12 @@ test('the page lists the published bank; only a manager can start a draft', asyn
   const mine = await m.get(QB);
   assert.match(mine.text, /data-tprm-bank-start/);
   const home = await m.get('/tprm');
-  assert.match(home.text, /data-tprm-question-bank-link/);
+  assert.match(home.text, /href="\/tprm\/settings" data-tprm-settings-button>Settings</);
+  assert.match((await m.get('/tprm/settings')).text, /data-tprm-question-bank-link/);
+  for (const tab of ['/tprm/review', '/tprm/questionnaires', '/tprm/due', '/tprm/conditions']) {
+    assert.match((await m.get(tab)).text, /href="\/tprm\/settings" data-tprm-settings-button>Settings</, `${tab} has the Settings button`);
+  }
+  assert.doesNotMatch(home.text, /data-tprm-question-bank-link/, 'the settings no longer sit at the bottom of the home page');
   const filtered = await m.get(`${QB}?q=GOV-01`);
   assert.match(filtered.text, /data-tprm-bank-row="GOV-01"/);
   assert.doesNotMatch(filtered.text, /data-tprm-bank-row="IAM-01"/);
@@ -269,8 +274,7 @@ test('the Excel file round-trips: unchanged it changes nothing; edited it fills 
   const same = await uploadSheet(m, buffer);
   assert.equal(same.status, 302, same.text.slice(0, 300));
   assert.match(decodeURIComponent(same.location || ''), /nothing in it differs/);
-  assert.ok(await draftNow(), 'the upload started a draft');
-  assert.equal(editor.diff(top.content, (await draftNow()).content).count, 0);
+  assert.equal(await draftNow(), null, 'an upload that changes nothing leaves no draft behind');
 
   const victim = pickRetirable(top.content);
   const edited = JSON.parse(JSON.stringify(top.content));
@@ -337,4 +341,146 @@ test('new questionnaires use the newest published version', async () => {
   const latest = await q.latestBankVersion(db);
   const top = await latestNow();
   assert.equal(Number(latest.id), Number(top.id));
+});
+
+test('the bank: a new section, a choice question that is optional and asked by a rule, AI instructions, and renaming and moving a section', async () => {
+  const m = await sessionFor(manager);
+  if (!(await draftNow())) assert.equal((await m.post(`${QB}/draft`, {})).status, 302);
+  let draft = await draftNow();
+  const page = await m.get(QB);
+  assert.match(page.text, /data-tprm-bank-sections[\s\S]*?data-tprm-bank-add-form[\s\S]*?data-tprm-bank-new-section/);
+  const lastBase = [...draft.content.questions].reverse().find(x => x.set === 'Base');
+  const fresh = await m.get(`${QB}/add?new=1`);
+  assert.match(fresh.text, /name="new_section"/);
+  assert.match(fresh.text, /value="multiple_choice"/);
+  const sec = await m.post(`${QB}/add`, { row_version: String(draft.row_version), like: lastBase.id, new_section_shown: '1', new_section: 'Business continuity', new_prefix: 'BCX',
+    answer_type: 'yes_no_na', theme: 'Continuity plan', question: 'Do you have a documented business continuity plan?', min_tier: 'Low' });
+  assert.equal(sec.status, 302, (sec.text || '').match(/data-tprm-bank-errors[\s\S]{0,300}/) || toast(sec));
+  draft = await draftNow();
+  const parent = draft.content.questions.find(x => x.theme === 'Continuity plan');
+  assert.deepEqual([parent.id, parent.domain, parent.set, parent.answer_type], ['BCX-01', 'Business continuity', 'Base', 'yes_no_na']);
+
+  const one = await m.post(`${QB}/add`, { row_version: String(draft.row_version), like: 'BCX-01', answer_type: 'single_choice', options: ['Only'], theme: 'x', question: 'y', min_tier: 'Low' });
+  assert.equal(one.status, 400);
+  assert.match(one.text, /needs at least two options/);
+  const other = draft.content.questions.find(x => x.set === 'Base' && x.domain !== 'Business continuity');
+  const wrong = await m.post(`${QB}/add`, { row_version: String(draft.row_version), like: 'BCX-01', answer_type: 'yes_no_na', theme: 'x', question: 'y', min_tier: 'Low',
+    show_mode: 'when', show_join: 'all', cond_question: [other.id], cond_op: ['is'], cond_value: ['yes'] });
+  assert.equal(wrong.status, 400);
+  assert.match(wrong.text, /can only use questions in the same section/);
+
+  const maybe = await m.post(`${QB}/add`, { row_version: String(draft.row_version), like: 'BCX-01', answer_type: 'yes_no_na', theme: 'x', question: 'y', min_tier: 'Low',
+    show_mode: 'when', show_join: 'all', cond_question: ['BCX-01'], cond_op: ['is'], cond_value: ['maybe'] });
+  assert.equal(maybe.status, 400);
+  assert.match(maybe.text, /for BCX-01 use &#34;is&#34; or &#34;is not&#34; with yes, no or na/);
+  await db.prepare(`INSERT INTO tp_q_templates (firm_id, name, prefix) VALUES (?, 'Firm owned', 'ZZQ')`).run(firmId);
+  const taken = await m.post(`${QB}/add`, { row_version: String(draft.row_version), like: lastBase.id, new_section_shown: '1', new_section: 'Something else', new_prefix: 'ZZQ',
+    answer_type: 'yes_no_na', theme: 'x', question: 'y', min_tier: 'Low' });
+  assert.equal(taken.status, 400);
+  assert.match(taken.text, /ZZQ is already used by a firm questionnaire/);
+  const add = await m.post(`${QB}/add`, { row_version: String(draft.row_version), like: 'BCX-01', answer_type: 'single_choice', options: ['Yearly', 'Every two years', 'Never'],
+    theme: 'Plan testing', question: 'How often is the plan tested?', min_tier: 'Low', required_shown: '1',
+    show_mode: 'when', show_join: 'all', cond_question: ['BCX-01', ''], cond_op: ['is', 'is'], cond_value: ['yes', ''],
+  });
+  assert.equal(add.status, 302, (add.text || '').match(/data-tprm-bank-errors[\s\S]{0,300}/) || toast(add));
+  draft = await draftNow();
+  const child = draft.content.questions.find(x => x.theme === 'Plan testing');
+  assert.equal(child.id, 'BCX-02');
+  assert.deepEqual(child.options, ['Yearly', 'Every two years', 'Never']);
+  assert.equal(child.required, false);
+  assert.deepEqual(child.show_when, { mode: 'all', conditions: [{ question: 'BCX-01', op: 'is', value: 'yes' }] });
+  const childPage = await m.get(`${QB}/questions/BCX-02`);
+  assert.match(childPage.text, /data-tprm-question-guide="BCX-02"[\s\S]*?name="valid_answer"[\s\S]*?name="red_flags"/);
+  assert.doesNotMatch(childPage.text, /name="ai_valid"/, 'one place for the marking rules');
+  const rules = await m.post(`/tprm/settings/marking-guides/BCX-02`, { back: 'question', valid_answer: 'One of the options.', satisfactory: 'Yearly or more often.', partly: 'Every two years.', red_flags: 'Never tested.' });
+  assert.equal(rules.status, 302);
+  assert.match(String(rules.location), /\/question-bank\/questions\/BCX-02.*#reviewers$/);
+  const g = await db.prepare('SELECT valid_answer, satisfactory, partly, red_flags FROM tp_marking_guides WHERE question_id = ?').get('BCX-02');
+  assert.deepEqual([g.valid_answer, g.satisfactory, g.partly, g.red_flags], ['One of the options.', 'Yearly or more often.', 'Every two years.', 'Never tested.']);
+  const shown = await m.get(`${QB}/questions/BCX-02`);
+  assert.match(shown.text, /Single choice \(Yearly, Every two years, Never\)/);
+  assert.match(shown.text, /<option value="BCX-01" selected>/);
+
+  const yn = draft.content.questions.find(x => x.set === 'Base' && x.answer_type === 'yes_no_na' && !editor.protectedIds(draft.content).has(x.id) && !x.fields);
+  const govSettings = await m.post(`${QB}/questions/${yn.id}`, { row_version: String(draft.row_version), theme: yn.theme, question: yn.question, min_tier: yn.min_tier,
+    settings_shown: '1', ask_file: '1', file_when: 'any', evidence: 'The approved policy', evidence_mandatory: '1', explain_on: ['yes'] });
+  assert.equal(govSettings.status, 302, (govSettings.text || '').match(/data-tprm-bank-errors[\s\S]{0,300}/) || toast(govSettings));
+  draft = await draftNow();
+  const gov = draft.content.questions.find(x => x.id === yn.id);
+  assert.deepEqual([gov.evidence_on, gov.evidence_mandatory, gov.explain_on], ['any', true, ['yes']]);
+  assert.deepEqual(require('../lib/tprm/answer-rules').questionRules(gov).evidenceOn, ['yes', 'no']);
+  const opts = await m.post(`${QB}/questions/BCX-02`, { row_version: String(draft.row_version), theme: 'Plan testing', question: 'How often is the plan tested?', min_tier: 'Low',
+    settings_shown: '1', options: ['Yearly', 'Twice a year', 'Never'] });
+  assert.equal(opts.status, 302, (opts.text || '').match(/data-tprm-bank-errors[\s\S]{0,300}/) || toast(opts));
+  draft = await draftNow();
+  assert.deepEqual(draft.content.questions.find(x => x.id === 'BCX-02').options, ['Yearly', 'Twice a year', 'Never']);
+  const renamed = await m.post(`${QB}/sections/rename`, { row_version: String(draft.row_version), section: 'Business continuity', title: 'Continuity' });
+  assert.match(toast(renamed), /Section renamed to Continuity/);
+  draft = await draftNow();
+  assert.deepEqual(draft.content.questions.filter(x => x.domain === 'Continuity').map(x => x.id), ['BCX-01', 'BCX-02']);
+  const before = editor.baseSections(draft.content);
+  const at = before.indexOf('Continuity');
+  assert.match(toast(await m.post(`${QB}/sections/move`, { row_version: String(draft.row_version), section: 'Continuity', dir: 'up' })), /Continuity moved/);
+  draft = await draftNow();
+  assert.equal(editor.baseSections(draft.content).indexOf('Continuity'), at - 1);
+
+  const pub = await m.post(`${QB}/publish`, { row_version: String(draft.row_version) });
+  assert.equal(pub.status, 302, toast(pub));
+  const overview = await m.get('/tprm/settings/marking-guides?q=BCX-02');
+  assert.match(overview.text, /data-tprm-guide-row="BCX-02"[\s\S]*?A valid answer:<\/b> One of the options\.[\s\S]*?data-tprm-guide-edit="BCX-02"/);
+  assert.doesNotMatch(overview.text, /data-tprm-guide-form/, 'the overview has no forms');
+  const latest = await latestNow();
+  const content = typeof latest.content === 'string' ? JSON.parse(latest.content) : latest.content;
+  const built = assembly.DELIVERY_MODELS.map(dm => assembly.assemble(content, { tier: 'critical', deliveryModel: dm, modules: [] }))
+    .flatMap(r => r.sections).find(s => s.title === 'Continuity');
+  assert.ok(built, 'the new section is asked');
+  assert.deepEqual(built.ids, ['BCX-01']);
+  assert.deepEqual(built.followups, [{ id: 'BCX-02', parent: 'BCX-01', rule: { mode: 'all', conditions: [{ question: 'BCX-01', op: 'is', value: 'yes' }] } }]);
+});
+
+test('the bank Excel file carries answer settings and marking rules; rules alone are saved without starting a draft', async () => {
+  const m = await sessionFor(manager);
+  await m.post(`${QB}/draft/discard`, {});
+  const guides = require('../lib/tprm/marking-guides');
+  const qsheet = require('../lib/tprm/question-sheet');
+  const top = await latestNow();
+  const keep = editor.protectedIds(top.content);
+  const yn = top.content.questions.find(x => x.set === 'Base' && x.answer_type === 'yes_no_na' && !keep.has(x.id) && !x.fields && !x.show_when && !x.ask_when && x.required !== false);
+  const labels = sheet.COLUMNS.map(c => c.label);
+  for (const c of [...qsheet.SETTINGS_COLUMNS.filter(x => !['evidence', 'evidence_mandatory'].includes(x.key)), ...qsheet.RULE_COLUMNS]) assert.ok(labels.includes(c.label), c.label);
+
+  const rulesOnly = await sheet.buildWorkbook(top.content, 'Rules', new Map([...(await guides.forFirm(db, firmId)), [yn.id, { satisfactory: 'A policy approved in the last year.' }]]));
+  const r1 = await uploadSheet(m, rulesOnly);
+  assert.equal(r1.status, 302, r1.text.slice(0, 300));
+  assert.match(toast(r1), /marking rules saved for 1 question\./);
+  assert.equal(await draftNow(), null, 'rules alone do not start a draft');
+  assert.equal((await guides.forFirm(db, firmId, [yn.id])).get(yn.id).satisfactory, 'A policy approved in the last year.');
+
+  const edited = JSON.parse(JSON.stringify(top.content));
+  const e = edited.questions.find(x => x.id === yn.id);
+  e.required = false;
+  e.explain_on = JSON.stringify(e.explain_on) === '["yes"]' ? ['no'] : ['yes'];
+  const both = await sheet.buildWorkbook(edited, 'Edited', new Map([...(await guides.forFirm(db, firmId)), [yn.id, { satisfactory: 'A policy approved in the last year.', red_flags: 'No owner.' }]]));
+  const r2 = await uploadSheet(m, both);
+  assert.equal(r2.status, 302, r2.text.slice(0, 300));
+  assert.match(toast(r2), /1 question changed and 0 retired in the draft, and marking rules saved for 1 question/);
+  const d = (await draftNow()).content.questions.find(x => x.id === yn.id);
+  assert.equal(d.required, false);
+  assert.deepEqual(d.explain_on, e.explain_on);
+  assert.deepEqual(editor.diff(top.content, (await draftNow()).content).changed, [{ id: yn.id, fields: ['required', 'explain_on'] }], JSON.stringify(editor.diff(top.content, (await draftNow()).content).changed));
+  assert.equal((await guides.forFirm(db, firmId, [yn.id])).get(yn.id).red_flags, 'No owner.');
+  const review = await m.get(`${QB}/publish`);
+  assert.match(review.text, new RegExp(`${yn.id}[\\s\\S]*?Answer required</td><td class="fx-sm fx-muted">Yes</td><td class="fx-sm">No</td>`));
+  assert.doesNotMatch(review.text, /\[object Object\]/);
+
+  const rows = await sheet.parseUpload(await sheet.buildWorkbook(top.content, 'x', await guides.forFirm(db, firmId)));
+  const row = rows.find(x => x.id === yn.id);
+  row.cells.answer_type = 'Written answer';
+  await assert.rejects(() => editor.importRows(db, manager, [row]), new RegExp(`${yn.id}: how it is answered cannot change in the file`));
+  const ruleRow = rows.find(x => x.id === yn.id);
+  ruleRow.cells.answer_type = null;
+  ruleRow.cells.show_when = 'GOV-01 is maybe';
+  await assert.rejects(() => editor.importRows(db, manager, [ruleRow]), /use "is" or "is not" with yes, no or na|its rule|has no fixed answers/);
+  await m.post(`${QB}/draft/discard`, {});
+  await guides.save(db, manager, yn.id, {});
 });

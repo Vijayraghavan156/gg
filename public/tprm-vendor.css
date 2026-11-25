@@ -362,3 +362,9 @@ input.vq-file-input[type="file"]::file-selector-button { font: inherit; font-wei
 .vq-clause { border: 0; min-width: 0; margin: 0; }
 .vq-clause legend { padding: 0; float: left; width: 100%; }
 .vq-clause legend + * { clear: both; }
+.vq-firm-entry { padding: 10px 20px; border-bottom: 1px solid var(--vq-rule2); background: #fff; color: var(--vq-ink, #1b1f24); font-size: 13.5px; }
+.vq-firm-entry a { margin-left: 8px; }
+.vq-q[hidden] { display: none; }
+.vq-followup { margin-left: 40px; }
+.vq-q-why { margin: 0 0 4px; font-size: 12.5px; color: var(--vq-grey); }
+@media (max-width: 700px) { .vq-followup { margin-left: 16px; } }

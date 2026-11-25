@@ -515,7 +515,7 @@ test('every state change writes an event in the assessment chain, and the vendor
   assert.equal(due.status, 302);
 
   const chain = await db.prepare(`SELECT action, actor_user_id, third_party_id, after_state FROM tp_events
-    WHERE workspace_id=? AND chain_type='assessment' AND chain_id=? ORDER BY chain_seq`).all(ws, a);
+    WHERE workspace_id=? AND chain_type='assessment' AND chain_id=? AND action NOT LIKE 'message.%' ORDER BY chain_seq`).all(ws, a);
   assert.deepEqual(chain.map(e => e.action), ['assessment.started', 'assessment.scope_saved', 'assessment.tier_proposed',
     'assessment.tier_returned', 'assessment.tier_proposed', 'assessment.tier_confirmed', 'assessment.details_updated']);
   assert.ok(chain.every(e => Number(e.third_party_id) === tp));

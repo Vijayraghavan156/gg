@@ -54,6 +54,49 @@ function registerRoutes(app, deps) {
     } catch (err) { return next(err); }
   });
 
+  const tracker = require('../lib/tprm/questionnaire-tracker');
+  const OUT = '/tprm/questionnaires';
+  const outBack = req => {
+    const keep = new URLSearchParams();
+    for (const k of ['show', 'q']) if (typeof req.body[k] === 'string' && req.body[k]) keep.set(k, req.body[k].slice(0, 100));
+    return `${OUT}${keep.toString() ? `?${keep}` : ''}`;
+  };
+
+  app.get(OUT, requireAuth, async (req, res, next) => {
+    try {
+      if (!access.isFirmUser(req.user) || !access.firmCan(req.user, 'tp.view')) return firmOnly(req, res);
+      const out = await tracker.list(lookup, req.user, { query: req.query });
+      return res.render('tprm_questionnaires_out', { user: req.user, active: 'tprm-portfolio', out, T: tracker, tp: placement });
+    } catch (err) { return next(err); }
+  });
+
+  const outAction = fn => handler(async (req, res, actor) => {
+    try {
+      return await fn(req, res, actor);
+    } catch (err) {
+      if (err instanceof TprmError && [400, 404, 409].includes(err.status)) return res.redirect(withToast(outBack(req), err.message, 'error'));
+      throw err;
+    }
+  }, { permission: 'tp.manage' });
+
+  app.post('/tprm/clients/:wsId/questionnaires-out/:aid/remind', requireAuth, outAction(async (req, res, actor) => {
+    const r = await require('../lib/tprm/messages').manualReminder(db, { workspaceId: actor.ws.id, assessmentId: Number(req.params.aid) || 0 });
+    return res.redirect(withToast(outBack(req), r.sent ? `Reminder sent to ${r.recipient || 'the third party'}` : `No reminder sent: ${r.reason}`, r.sent ? undefined : 'error'));
+  }));
+
+  app.post('/tprm/clients/:wsId/questionnaires-out/:aid/reopen', requireAuth, outAction(async (req, res, actor) => {
+    const r = await tracker.reopen(db, actor, req.params.aid);
+    const until = tpFormat.forZone(tpFormat.zoneOf(actor.ws)).day(r.expiresAt);
+    return res.redirect(withToast(outBack(req), r.emailed && r.emailed.ok
+      ? `A new link was emailed to ${r.recipient}. It works until ${until}`
+      : `A new link was made for ${r.recipient}, working until ${until}, but the email was not sent: ${(r.emailed && r.emailed.error) || 'unknown error'}. Copy the link from the assessment`, r.emailed && r.emailed.ok ? undefined : 'warn'));
+  }));
+
+  app.post('/tprm/clients/:wsId/questionnaires-out/:aid/cancel', requireAuth, outAction(async (req, res, actor) => {
+    const r = await tracker.cancel(db, actor, req.params.aid, req.body);
+    return res.redirect(withToast(outBack(req), `Questionnaire closed as not returned${r.revoked.length ? ': the link no longer works' : ''}. The review carries on without the answers`));
+  }));
+
   async function renderTriggers(req, res, actor, { values = {}, errors = [], status = 200 } = {}) {
     const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
     const triggers = await reassessment.listTriggers(db, actor, thirdParty.id);

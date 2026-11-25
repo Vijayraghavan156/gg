@@ -5,12 +5,17 @@
   <div class="tprm-head-main">
     <h1 class="page-title">Emails</h1>
     <p class="tprm-status-line">Change the subject and heading of each email, and add your own opening and closing words. The standard middle stays, so dates, links and details are never lost.</p>
-    <p class="fx-muted fx-sm">Placeholders: {client}, {supplier}, {firm}, {name} (the person it goes to) and {due} (the due date, where the email has one).</p>
+    <p class="fx-muted fx-sm">Open an email to the third party or the client to edit it with formatting, see it as you type and send yourself a test. Emails to your team keep the simple form below, with {client}, {supplier}, {firm} and {name}.</p>
   </div>
 </div>
 <% groups.forEach(g => { const items = list.filter(x => x.audience === g); if (!items.length) return; %>
   <h2 class="fx-section-h">To <%= g %> <span><%= items.length %></span></h2>
-  <% items.forEach(x => { const s = x.saved || {}; const isOpen = open === x.kind; %>
+  <% items.forEach(x => { const s = x.saved || {}; const isOpen = open === x.kind; if (x.editable) { %>
+    <div class="fx-card fx-mt fx-email-sum" id="email-<%= x.kind %>" data-tprm-email-row="<%= x.kind %>">
+      <span><a href="/tprm/settings/emails/<%= x.kind %>/edit" data-tprm-email-edit="<%= x.kind %>"><b><%= x.label.charAt(0).toUpperCase() + x.label.slice(1) %></b></a><span class="fx-muted fx-sm fx-block">Subject: <%= x.saved && x.saved.subject ? x.saved.subject : x.subject %></span></span>
+      <span class="fx-tag<%= x.saved ? ' fx-t-new' : '' %>"><%= x.saved ? 'Changed by ' + (x.saved.updated_by_name || 'your firm') : 'Standard wording' %></span>
+    </div>
+  <% return; } %>
     <details class="fx-card fx-mt" id="email-<%= x.kind %>" data-tprm-email-row="<%= x.kind %>"<%= isOpen ? ' open' : '' %>>
       <summary class="fx-email-sum"><span><b><%= x.label.charAt(0).toUpperCase() + x.label.slice(1) %></b><span class="fx-muted fx-sm fx-block">Subject: <%= x.saved && x.saved.subject ? x.saved.subject : x.subject %></span></span>
         <span class="fx-tag<%= x.saved ? ' fx-t-new' : '' %>"><%= x.saved ? 'Changed by ' + (x.saved.updated_by_name || 'your firm') : 'Standard wording' %></span></summary>

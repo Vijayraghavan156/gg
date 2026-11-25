@@ -803,10 +803,12 @@ require('./routes/registers').register(app, { db, requireAuth, requireWorkspace,
   logAction });
 require('./routes/third-party-risk').register(app, { db, requireAuth, requireWorkspace, getWorkspace, permissionsFor,
   listWorkspaces, logAction, resolveUploadPath });
+require('./routes/tprm-vendor').registerFirm(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces });
 require('./routes/tprm-rulebooks').register(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces, logAction });
 require('./routes/tprm-relationships').register(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces });
 require('./routes/tprm-register').register(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces, logAction, csvUpload });
 require('./routes/tprm-settings').register(app, { db, requireAuth, logAction, xlsxUpload });
+require('./routes/tprm-q-templates').register(app, { db, requireAuth, logAction, xlsxUpload });
 require('./routes/tprm-conditions').register(app, { db, requireAuth, requireWorkspace, getWorkspace, permissionsFor, listWorkspaces, upload, resolveUploadPath, logAction });
 for (const r of ['tprm-reassessment', 'tprm-contract-review']) require(`./routes/${r}`).register(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces, logAction });
 require('./routes/tprm-assessments').register(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces });

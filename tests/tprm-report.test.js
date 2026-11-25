@@ -426,7 +426,7 @@ test('letterhead: managers only; CSRF; the logo is a PNG or JPEG by its bytes, 1
   const page = await client.get('/tprm/settings/letterhead');
   assert.equal(page.status, 200);
   assert.match(page.text, /data-tprm-letterhead-form/);
-  assert.match((await client.get('/tprm')).text, /data-tprm-letterhead-link/);
+  assert.match((await client.get('/tprm/settings')).text, /data-tprm-letterhead-link/);
 
   const noCsrf = await postLetterhead(client, { display_name: 'No token' }, null, { csrf: false });
   assert.equal(noCsrf.status, 403);

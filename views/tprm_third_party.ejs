@@ -11,6 +11,7 @@
     'third_party.client_decision': 'Client decision recorded',
     'service.material_changed': 'Material flag changed', 'exit_plan.saved': 'Exit plan saved',
     'subprocessor.added': 'Subprocessor added', 'subprocessor.updated': 'Subprocessor updated', 'subprocessor.removed': 'Subprocessor removed',
+    'third_party.team_changed': 'Team changed',
   };
   const openAssessment = assessmentList.find(a => at.isOpen(a));
   const startType = at.TYPE_FOR_STATUS[t.status];
@@ -123,9 +124,30 @@
     <section class="fx-card fx-mt"><h3 class="fx-h4">At the client</h3>
       <div class="fx-ppl"><span class="fx-av"><%= initials(typeof clientOwner !== 'undefined' && clientOwner ? clientOwner.name : '?') %></span><div><b><%= typeof clientOwner !== 'undefined' && clientOwner ? clientOwner.name : 'No owner named' %></b><span>Owner</span></div></div>
       <% if (pf.decisionOwner) { %><div class="fx-ppl"><span class="fx-av"><%= initials(pf.decisionOwner) %></span><div><b><%= pf.decisionOwner %></b><span>Decision owner</span></div></div><% } %></section>
-    <section class="fx-card fx-mt"><h3 class="fx-h4">Your team</h3>
-      <div class="fx-ppl"><span class="fx-av"><%= initials(pf.lead || '?') %></span><div><b><%= pf.lead || 'Not set' %></b><span>Lead consultant</span></div></div>
-      <% if (pf.reviewer) { %><div class="fx-ppl"><span class="fx-av"><%= initials(pf.reviewer) %></span><div><b><%= pf.reviewer %></b><span>Second person</span></div></div><% } %></section>
+    <% const tm = teamPanel.team || {}; const tmName = p => (p ? p.name + (p.active ? '' : ' (no longer active)') : null); %>
+    <section class="fx-card fx-mt" id="team" data-tprm-team><h3 class="fx-h4">Your team</h3>
+      <div class="fx-ppl" data-tprm-team-owner><span class="fx-av"><%= initials(tm.owner ? tm.owner.name : '?') %></span><div><b><%= tmName(tm.owner) || 'No owner named' %></b><span>Owner: leads each review of this third party</span></div></div>
+      <div class="fx-ppl" data-tprm-team-reviewer><span class="fx-av"><%= initials(tm.reviewer ? tm.reviewer.name : '?') %></span><div><b><%= tmName(tm.reviewer) || 'No reviewer named' %></b><span>Reviewer: confirms the tier and checks the recommendation</span></div></div>
+      <% if (pf.open && pf.lead && (!tm.owner || pf.lead !== tm.owner.name)) { %><p class="fx-muted fx-sm" data-tprm-team-lead>Lead on the current review: <%= pf.lead %></p><% } %>
+      <% if (canManage) { const te = teamPanel.errors || []; %>
+        <details class="tprm-mt" <%= te.length ? 'open' : '' %> data-tprm-team-edit>
+          <summary class="btn btn-ghost btn-xs">Change</summary>
+          <form method="POST" action="<%= tpHref %>/team" class="tprm-form-grid tprm-mt">
+            <input type="hidden" name="_csrf" value="<%= csrf %>">
+            <% if (te.length) { %><div class="callout tprm-callout-error tprm-full" role="alert" data-tprm-form-errors><ul class="tprm-list"><% te.forEach(e => { %><li><%= e %></li><% }) %></ul></div><% } %>
+            <% [['team_owner_id', 'Owner', tm.owner, teamPanel.people], ['team_reviewer_id', 'Reviewer', tm.reviewer, teamPanel.reviewers]].forEach(([name, label, cur, list]) => { %>
+              <div><label class="label" for="<%= name %>"><%= label %></label>
+                <select class="select" id="<%= name %>" name="<%= name %>">
+                  <option value="">No one named</option>
+                  <% if (cur && !list.some(u => Number(u.id) === cur.id)) { %><option value="<%= cur.id %>" selected><%= tmName(cur) %></option><% } %>
+                  <% list.forEach(u => { %><option value="<%= u.id %>" <%= cur && cur.id === Number(u.id) ? 'selected' : '' %>><%= u.name %></option><% }) %>
+                </select></div>
+            <% }) %>
+            <p class="fx-muted fx-sm tprm-full">New reviews start with the owner as lead. The reviewer is emailed when a tier or a recommendation is waiting for them.</p>
+            <div class="tprm-full tprm-actions"><button class="btn btn-secondary btn-xs" type="submit">Save the team</button></div>
+          </form>
+        </details>
+      <% } %></section>
   </div>
   <div>
   <% } %>

@@ -1,0 +1,56 @@
+<%- include('partials/header', { title: 'Questionnaires · Third-party risk', user, active }) %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; const day = d => { try { return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }); } catch (_) { return ''; } }; %>
+<nav class="tprm-crumbs" aria-label="Breadcrumb"><a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><a href="/tprm/settings">Settings</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><span aria-current="page">Questionnaires</span></nav>
+<div class="tprm-head" data-tprm-q-templates>
+  <div class="tprm-head-main">
+    <h1 class="page-title">Questionnaires</h1>
+    <p class="tprm-status-line">The automatic questionnaire is put together for each third party from its tier and services. Your own questionnaires are sent as you built them: instead of the automatic one, or as well.</p>
+  </div>
+</div>
+
+<h2 class="fx-section-h">Automatic, by tier and service</h2>
+<div class="fx-table" data-tprm-q-bank-row><table>
+  <thead><tr><th>Name</th><th>What it holds</th><th>Version</th><th><span class="sr-only">Actions</span></th></tr></thead>
+  <tbody><tr>
+    <td>Question bank</td>
+    <td><% if (bankSummary) { %><%= bankSummary.questions %> questions: base questions in <%= bankSummary.sections %> sections, <%= bankSummary.modules %> modules and the regulator rulebooks.<% } else { %>Not published yet.<% } %></td>
+    <td><%= bankSummary ? bankSummary.version + ', published ' + day(bankSummary.publishedAt) : '-' %></td>
+    <td class="qb-right"><a class="btn btn-secondary btn-xs" href="/tprm/settings/question-bank">Open</a></td>
+  </tr></tbody>
+</table></div>
+
+<h2 class="fx-section-h">Your questionnaires <span><%= list.length %></span></h2>
+<% if (!list.length) { %><p class="fx-muted fx-sm" data-tprm-q-templates-empty>None yet. Build one for a topic the automatic questionnaire does not cover, such as business continuity or API security.</p><% } else { %>
+<div class="fx-table" data-tprm-q-template-list><table>
+  <thead><tr><th>Name</th><th>Description</th><th>Questions</th><th>Version</th><th><span class="sr-only">Actions</span></th></tr></thead>
+  <tbody>
+  <% list.forEach(t => { %>
+    <tr data-tprm-q-template="<%= t.id %>">
+      <td><a href="/tprm/settings/questionnaires/<%= t.id %>"><%= t.name %></a><% if (t.status === 'archived') { %> <span class="fx-muted">(archived)</span><% } %></td>
+      <td><%= t.description || '' %></td>
+      <td><%= t.draftQuestions %> in <%= t.draftSections %> section<%= t.draftSections === 1 ? '' : 's' %></td>
+      <td><%= t.version ? t.version + ', published ' + day(t.publishedAt) : 'Not published yet' %><%= t.version && t.draftChanged ? '; changes not published' : '' %></td>
+      <td class="qb-right"><a class="btn btn-secondary btn-xs" href="/tprm/settings/questionnaires/<%= t.id %>">Open</a></td>
+    </tr>
+  <% }) %>
+  </tbody>
+</table></div>
+<% } %>
+
+<% if (canEdit) { %>
+<details class="fx-card fx-mt" data-tprm-q-template-new<%= !list.length ? ' open' : '' %>>
+  <summary class="qb-summary">New questionnaire</summary>
+  <form method="POST" action="/tprm/settings/questionnaires" class="fx-guide-form qb-narrow">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <label class="label" for="qt-name">Name</label>
+    <input class="input" id="qt-name" name="name" maxlength="<%= limits.name %>" required placeholder="For example: BCP and DR">
+    <label class="label" for="qt-desc">Description <span class="meta text-xs">optional, for your team</span></label>
+    <input class="input" id="qt-desc" name="description" maxlength="<%= limits.description %>">
+    <label class="label" for="qt-prefix">Question code <span class="meta text-xs">optional, 2 to 5 capital letters; questions are numbered like BCP-01</span></label>
+    <input class="input qb-short" id="qt-prefix" name="prefix" maxlength="5" pattern="[A-Za-z]{2,5}">
+    <div class="fx-actions"><button class="btn btn-primary btn-xs" type="submit">Create</button></div>
+  </form>
+</details>
+<% } %>
+<p class="fx-muted fx-sm fx-mt">When you prepare a questionnaire for a third party you choose: the automatic one, one of yours, or both. Changes reach new questionnaires only after you publish; questionnaires already prepared keep their version.</p>
+<%- include('partials/footer') %>

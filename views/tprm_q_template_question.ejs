@@ -1,0 +1,38 @@
+<%- include('partials/header', { title: (q ? q.id : 'New question') + ' · ' + t.name, user, active }) %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; const base = '/tprm/settings/questionnaires/' + t.id;
+   const sectionTitle = (t.draft.sections.find(s => s.key === sectionKey) || {}).title || '';
+   const ro = canEdit ? '' : ' disabled'; %>
+<nav class="tprm-crumbs" aria-label="Breadcrumb"><a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><a href="/tprm/settings/questionnaires">Questionnaires</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><a href="<%= base %>?s=<%= encodeURIComponent(sectionKey) %>"><%= t.name %></a><span class="tprm-crumb-sep" aria-hidden="true">/</span><span aria-current="page"><%= q ? q.id : 'New question' %></span></nav>
+<form method="POST" action="<%= q ? base + '/questions/' + encodeURIComponent(q.id) : base + '/questions' %>" data-tprm-q-editor data-tp-unsaved>
+  <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= t.row_version %>">
+  <div class="tprm-head">
+    <div class="tprm-head-main">
+      <h1 class="page-title"><%= q ? q.id : 'New question' %></h1>
+      <p class="tprm-status-line"><%= sectionTitle %>, in <%= t.name %> (draft).</p>
+    </div>
+    <% if (canEdit) { %>
+    <div class="tprm-head-actions">
+      <button class="btn btn-primary" type="submit" name="intent" value="save" data-tprm-q-save>Save</button>
+    </div>
+    <% } %>
+  </div>
+  <% if (errors && errors.length) { %><div class="callout tprm-callout-error fx-mt" role="alert" data-tprm-q-errors><ul class="qb-list"><% errors.forEach(e => { %><li><%= e %></li><% }) %></ul></div><% } %>
+
+  <div class="qb-form">
+    <label class="label" for="qe-section">Section</label>
+    <select class="select qb-mid" id="qe-section" name="section"<%= ro %>><% t.draft.sections.forEach(s => { %><option value="<%= s.key %>"<%= s.key === sectionKey ? ' selected' : '' %>><%= s.title %></option><% }) %></select>
+
+    <%- include('partials/tprm_question_form', { v: values || q || {}, posted: !!values, isNew: !q, kind: 'template', ro, limits, types, typeLabels, ops, opLabels,
+      typeLocked: !!(q && publishedIds && publishedIds.includes(q.id)), candidates: earlier, themeValue: !values && q && q.theme_auto ? '' : undefined,
+      themeHint: 'shown in lists; made from the question if left blank' }) %>
+    <% if (canEdit) { %><div class="fx-actions"><button class="btn btn-primary" type="submit" name="intent" value="save">Save</button><a class="btn btn-secondary" href="<%= base %>?s=<%= encodeURIComponent(sectionKey) %>">Back to the questionnaire</a></div><% } %>
+  </div>
+</form>
+<% if (canEdit && q) { %>
+<form method="POST" action="<%= base + '/questions/' + encodeURIComponent(q.id) %>" class="fx-actions fx-mt" data-tprm-q-remove-form>
+  <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= t.row_version %>"><input type="hidden" name="section" value="<%= q.section %>"><input type="hidden" name="intent" value="remove">
+  <%- include('partials/tprm_confirm_fields', { title: 'Remove ' + q.id + '?', body: 'It leaves the draft. Questionnaires already prepared keep it; new ones will not ask it once you publish. Its number is not used again.', action: 'Remove', tone: 'problem' }) %>
+  <button class="btn btn-ghost btn-xs" type="submit" data-tprm-q-remove>Remove this question</button>
+</form>
+<% } %>
+<%- include('partials/footer') %>

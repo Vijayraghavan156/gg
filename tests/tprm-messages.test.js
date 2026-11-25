@@ -257,7 +257,7 @@ test('3. the questionnaire: reminders once each, the receipt and the consultant\
   assert.equal(await messages.reminders(db, { now: new Date(exp - 12 * 3600 * 1000) }), 1);
   [m] = await mails(c.id, 'tprm:vendor_reminder_1');
   assert.match(m.subject, /^Due tomorrow: security questionnaire for /);
-  const events = await sent(c.id, ctx.a);
+  const events = (await sent(c.id, ctx.a)).filter(e => e.after_state.to === 'third_party');
   assert.deepEqual(events.map(e => e.after_state.kind), ['vendor_reminder_7', 'vendor_reminder_1']);
   assert.deepEqual([events[0].after_state.to, events[0].after_state.recipient_email], ['third_party', VENDOR]);
 
@@ -305,29 +305,39 @@ test('3. the questionnaire: reminders once each, the receipt and the consultant\
   assert.equal(await messages.reminders(db, { now: new Date(lexp + 2 * DAY) }), 0, 'once');
 });
 
-test('4. clarifications: the new link\'s email asks the question; a further one is emailed without a link; the answer goes to the consultant', async () => {
+test('4. follow-ups: saved while reviewing, sent together in one email with a new link; a later one goes with the same link; the answer goes to the consultant', async () => {
   const c = await tprmClient('Msg Clarification Client');
   const ctx = await linked(c, 'Clarified Hosting');
   await answerAndSubmit(ctx);
   let res = await consultant.session.post(`${qBase(ctx)}/clarifications`, { question_id: 'GOV-01', body: 'Please send the approval minutes.' });
-  assert.match(toast(res), /issue a new link/);
-  assert.equal((await mails(c.id, 'tprm:vendor_clarification')).length, 0, 'no link to answer on yet: the link email carries it');
-  const { token } = await createLink(ctx, { send_email: '1' });
-  let [m] = (await mails(c.id, 'tp_vendor_request')).slice(-1);
-  assert.match(m.subject, /^A question about your answers for Msg Clarification Client$/);
-  assert.match(m.body_text, /has a question about GOV-01:\s+Please send the approval minutes\./);
-  assert.match(m.body_text, /\[link removed\]/);
-  await tokenNowhere(c.id, token);
-
+  assert.match(toast(res), /saved, not sent yet\. 1 waiting/);
   res = await consultant.session.post(`${qBase(ctx)}/clarifications`, { question_id: 'GOV-02', body: 'Who reviews it?' });
-  assert.match(toast(res), /sees it on its link/);
+  assert.match(toast(res), /2 waiting/);
+  assert.equal((await db.prepare('SELECT COUNT(*)::int AS n FROM tp_clarifications WHERE assessment_id=?').get(ctx.a)).n, 0, 'the third party sees nothing yet');
+  const before = (await mails(c.id, 'tp_vendor_request')).length;
+  res = await consultant.session.post(`${qBase(ctx)}/clarifications/send`, {});
+  assert.match(toast(res), /2 follow-ups sent to Priya Vendor in one email, with a new link/);
+  const links = (await mails(c.id, 'tp_vendor_request')).slice(before);
+  assert.equal(links.length, 1, 'one email');
+  let m = links[0];
+  assert.match(m.subject, /^2 questions about your answers for Msg Clarification Client$/);
+  assert.match(m.body_text, /GOV-01: Please send the approval minutes\.[\s\S]*GOV-02: Who reviews it\?/);
+  assert.match(m.body_text, /\[link removed\]/);
+  const token = [...fs.readFileSync(process.env.EMAIL_DEV_OUTBOX, 'utf8').matchAll(/\/vendor\/q\/([A-Za-z0-9_-]{20,})/g)].at(-1)[1];
+  await tokenNowhere(c.id, token);
+  assert.equal((await mails(c.id, 'tprm:vendor_clarification')).length, 0);
+
+  res = await consultant.session.post(`${qBase(ctx)}/clarifications`, { question_id: 'AIS-01', body: 'Is the register reviewed monthly?' });
+  assert.match(toast(res), /saved, not sent yet/, toast(res));
+  res = await consultant.session.post(`${qBase(ctx)}/clarifications/send`, {});
+  assert.match(toast(res), /1 follow-up sent to the third party in one email/);
   [m] = await mails(c.id, 'tprm:vendor_clarification');
   assert.equal(m.to_email, VENDOR);
-  assert.match(m.body_text, /about GOV-02:\s+Who reviews it\?/);
+  assert.match(m.subject, /^A question about your answers for /);
+  assert.match(m.body_text, /about AIS-01:\s+Is the register reviewed monthly\?/);
   assert.match(m.body_text, /Answer it with the button below/);
-  assert.match(m.body_text, /\[link removed\]/, 'the same link, kept out of the stored copy');
-  assert.ok(fs.readFileSync(process.env.EMAIL_DEV_OUTBOX, 'utf8').includes(`/vendor/q/${token}`), 'the delivered email carries the link');
-  await tokenNowhere(c.id, token);
+  assert.ok(fs.readFileSync(process.env.EMAIL_DEV_OUTBOX, 'utf8').includes(`/vendor/q/${token}`), 'the same link');
+  assert.match(toast(await consultant.session.post(`${qBase(ctx)}/clarifications/send`, {})), /no follow-ups waiting/);
 
   const cl = await db.prepare("SELECT id FROM tp_clarifications WHERE assessment_id=? AND question_id='GOV-01'").get(ctx.a);
   const answered = await vpost('/vendor/q/', token, `/clarifications/${cl.id}`, [['response', 'Minutes attached.']]);
@@ -337,6 +347,20 @@ test('4. clarifications: the new link\'s email asks the question; a further one 
   assert.match(m.subject, /Clarified Hosting answered a clarification$/);
   assert.match(m.body_text, /answered your question on GOV-01:\s+Minutes attached\./);
   assert.match(m.body_html, /step=review&amp;answers=all#answer-\d+/);
+});
+
+test('4b. a follow-up not sent yet can be removed, and unsent follow-ups stop the review closing', async () => {
+  const c = await tprmClient('Msg Draft Follow-up Client');
+  const ctx = await linked(c, 'Drafty Hosting');
+  await answerAndSubmit(ctx);
+  await consultant.session.post(`${qBase(ctx)}/clarifications`, { question_id: 'GOV-01', body: 'Draft only.' });
+  const page = await consultant.session.get(`${aBase(ctx.ws, ctx.tp, ctx.a)}?step=review&answers=all`);
+  assert.match(page.text, /data-tprm-followups-waiting="1"/);
+  assert.match(page.text, /Follow-up, not sent yet/);
+  const did = Number((page.text.match(/data-tprm-followup-draft="(\d+)"/) || [])[1]);
+  assert.match(toast(await consultant.session.post(`${qBase(ctx)}/close`, { row_version: String((await qRow(ctx.a)).row_version) })), /written but not sent/);
+  assert.match(toast(await consultant.session.post(`${qBase(ctx)}/clarifications/drafts/${did}/remove`, {})), /removed/);
+  assert.doesNotMatch((await consultant.session.get(`${aBase(ctx.ws, ctx.tp, ctx.a)}?step=review&answers=all`)).text, /data-tprm-followups-waiting/);
 });
 
 async function issued(c, name) {
@@ -484,4 +508,97 @@ test('8. a firm\'s own words keep their paragraphs', () => {
   const text = email.stripHtml(m.html);
   assert.match(m.html, /First paragraph for Acme\.<\/p>[\s\S]*?<p[^>]*>Second paragraph\.<\/p>/);
   assert.ok(text.includes('Second paragraph.'));
+});
+
+test('9. each step of a review is emailed to the named reviewer or the lead, never to the person who took it', async () => {
+  const c = await tprmClient('Stage Mail Client');
+  const tp = await addThirdParty(c.id, 'Stage Mail Supplier', 'proposed');
+  assert.equal((await client.post(`/tprm/clients/${c.id}/third-parties/${tp}/team`, { team_owner_id: String(consultant.id), team_reviewer_id: String(senior.id) })).status, 302);
+  const started = await consultant.session.post(`/tprm/clients/${c.id}/third-parties/${tp}/assessments`, {});
+  const a = idIn(started.location, /assessments\/(\d+)/);
+  const svc = (await db.prepare('SELECT id FROM tp_services WHERE workspace_id=? AND third_party_id=?').all(c.id, tp)).map(r => String(r.id));
+  const propose = async () => {
+    const body = { services: svc, intent: 'propose', row_version: String((await assessmentRow(a)).row_version) };
+    for (const [q, x] of Object.entries(LOW)) body[`answers[${q}]`] = x;
+    assert.equal((await consultant.session.post(`${aBase(c.id, tp, a)}/scope`, body)).status, 302);
+  };
+  const to = async kind => (await mails(c.id, `tprm:${kind}`)).map(m => m.to_email);
+
+  await propose();
+  assert.deepEqual(await to('consultant_tier_to_confirm'), [senior.email]);
+  assert.match((await mails(c.id, 'tprm:consultant_tier_to_confirm'))[0].subject, /Tier to confirm: Stage Mail Supplier/);
+  assert.equal((await senior.session.post(`${aBase(c.id, tp, a)}/return`, { comment: 'Recheck the data the service handles.', row_version: String((await assessmentRow(a)).row_version) })).status, 302);
+  assert.deepEqual(await to('consultant_tier_returned'), [consultant.email]);
+  await propose();
+  assert.deepEqual(await to('consultant_tier_to_confirm'), [senior.email, senior.email], 'a second proposal is a second email');
+  assert.equal((await senior.session.post(`${aBase(c.id, tp, a)}/confirm`, { row_version: String((await assessmentRow(a)).row_version) })).status, 302);
+  assert.deepEqual(await to('consultant_tier_confirmed'), [consultant.email]);
+
+  assert.equal((await consultant.session.post(`${aBase(c.id, tp, a)}/details`, {
+    client_decision_owner_id: String(c.owner.id), due_date: '', row_version: String((await assessmentRow(a)).row_version) })).status, 302);
+  assert.equal((await consultant.session.post(rBase(c.id, tp, a), { row_version: String((await assessmentRow(a)).row_version) })).status, 302);
+  const rid = Number((await db.prepare('SELECT id FROM tp_recommendations WHERE assessment_id=? ORDER BY version DESC').get(a)).id);
+  const submit = async () => assert.equal((await consultant.session.post(`${rBase(c.id, tp, a)}/${rid}`, {
+    outcome: 'approve', residual_rating: 'low', rationale: 'Adequate.', valid_until: '2099-12-31', intent: 'submit',
+    row_version: String((await recRow(rid)).row_version) })).status, 302);
+  await submit();
+  assert.deepEqual(await to('consultant_recommendation_to_review'), [senior.email]);
+  assert.equal((await senior.session.post(`${rBase(c.id, tp, a)}/${rid}/request-changes`, { comment: 'Name the contract clause.', row_version: String((await recRow(rid)).row_version) })).status, 302);
+  assert.deepEqual(await to('consultant_recommendation_returned'), [consultant.email]);
+  assert.match((await mails(c.id, 'tprm:consultant_recommendation_returned'))[0].body_html || '', /Name the contract clause\./);
+  await submit();
+  assert.equal((await to('consultant_recommendation_to_review')).length, 2);
+  assert.equal((await senior.session.post(`${rBase(c.id, tp, a)}/${rid}/issue`, { row_version: String((await recRow(rid)).row_version) })).status, 302);
+  assert.deepEqual(await to('consultant_recommendation_issued'), [consultant.email], 'the author, who is also the lead, gets one email');
+  for (const kind of Object.values(messages.STAGE_EVENTS).map(s => s.kind)) {
+    for (const m of await mails(c.id, `tprm:${kind}`)) assert.notEqual(m.to_email, null);
+  }
+});
+
+test('10. no reviewer named: nobody is told a tier waits for them', async () => {
+  const c = await tprmClient('Stage Mail Quiet Client');
+  const tp = await addThirdParty(c.id, 'Quiet Supplier', 'proposed');
+  await startAssessment(c.id, tp);
+  assert.equal((await mails(c.id, 'tprm:consultant_tier_to_confirm')).length, 0);
+  assert.equal((await mails(c.id, 'tprm:consultant_tier_confirmed')).length, 1, 'the lead hears the tier is confirmed');
+});
+
+test('11. questionnaires out: listed until submitted; remind, reopen with a new link, and cancel as not returned', async () => {
+  const tracker = require('../lib/tprm/questionnaire-tracker');
+  const c = await tprmClient('Out List Client');
+  const ctx = await linked(c, 'Out List Supplier');
+  const page = await consultant.session.get('/tprm/questionnaires');
+  assert.equal(page.status, 200);
+  assert.match(page.text, new RegExp(`data-tprm-out-row="${ctx.a}" data-tprm-out-state="not_opened"`));
+  assert.match(page.text, /data-tprm-out-link/);
+
+  const act = `/tprm/clients/${c.id}/questionnaires-out/${ctx.a}`;
+  const reminded = await consultant.session.post(`${act}/remind`, { show: 'all' });
+  assert.equal(reminded.status, 302);
+  assert.match(toast(reminded), /Reminder sent to Priya Vendor/);
+
+  const before = (await vlinks(ctx.a)).length;
+  const reopened = await consultant.session.post(`${act}/reopen`, {});
+  assert.equal(reopened.status, 302);
+  assert.match(toast(reopened), /new link was emailed to Priya Vendor/);
+  const links = await vlinks(ctx.a);
+  assert.equal(links.length, before + 1);
+  assert.deepEqual(links.slice(0, -1).map(l => l.status), links.slice(0, -1).map(() => 'revoked'), 'the old link stops working');
+  assert.equal(links[links.length - 1].recipient_email, VENDOR);
+
+  const noReason = await consultant.session.post(`${act}/cancel`, { reason: '' });
+  assert.match(toast(noReason), /Say why/);
+  const cancelled = await consultant.session.post(`${act}/cancel`, { reason: 'The supplier stopped replying.' });
+  assert.match(toast(cancelled), /closed as not returned/);
+  const q = await qRow(ctx.a);
+  assert.deepEqual([q.status, q.not_returned], ['closed', true]);
+  assert.doesNotMatch((await consultant.session.get('/tprm/questionnaires')).text, new RegExp(`data-tprm-out-row="${ctx.a}"`));
+
+  const now = new Date('2027-01-10T12:00:00Z');
+  const row = (over) => ({ link_status: 'active', expires_at: '2027-02-28T00:00:00Z', last_opened_at: '2027-01-05T00:00:00Z', ...over });
+  assert.equal(tracker.stateOf(row({}), now), 'in_progress');
+  assert.equal(tracker.stateOf(row({ last_opened_at: null }), now), 'not_opened');
+  assert.equal(tracker.stateOf(row({ expires_at: '2027-01-15T00:00:00Z' }), now), 'due_soon');
+  assert.equal(tracker.stateOf(row({ expires_at: '2027-01-09T00:00:00Z' }), now), 'overdue');
+  assert.equal(tracker.stateOf(row({ link_status: 'revoked' }), now), 'overdue');
 });
