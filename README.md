@@ -489,7 +489,7 @@ AWS deployment notes:
 | [data/glossary.js](data/glossary.js) | 168 GRC / ISO terms with cross-references |
 | [data/risk-library.js](data/risk-library.js) | 59 starter risks (ISO 27001 + AI/ML + supply chain + cloud + regulatory change) |
 | [data/policy-templates*.js](data/) | Document templates |
-| [data/content-meta.js](data/content-meta.js) | Review cadence + provenance per source. `npm run content-staleness` walks this and fails CI on overdue content. |
+| [data/content-meta.js](data/content-meta.js) | Review cadence + provenance per source. `npm run content-staleness` walks this and lists overdue content; run it by hand, it is not part of CI. |
 
 Edits go in the file. Restart the server - the content sync runs at boot.
 
@@ -652,7 +652,7 @@ Node 22 · Express · EJS · PostgreSQL 16 through node-postgres (`pg`), with `p
 │   ├── restore-check.js            # Restore drill into a scratch database
 │   ├── restore.js                  # Materialize a verified generation; optionally load it into an empty database
 │   ├── sqlite-to-postgres.js       # Import a database from the SQLite version
-│   ├── content-staleness.js        # Walk data/content-meta.js; CI gate for overdue content
+│   ├── content-staleness.js        # Walk data/content-meta.js; lists overdue content
 │   └── seed-realistic-engagements.js  # Demo seed - 5 users + 2 engagements (100% / 60%)
 ├── tests/
 │   ├── smoke.test.js               # Smoke suite (45 bare-node assertions)

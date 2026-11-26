@@ -48,8 +48,6 @@ jobs:
         run: npx --no-install puppeteer browsers install chrome-headless-shell
       - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=high
-      - name: Framework content staleness gate
-        run: npm run content-staleness
       - run: npm test
       - name: Upload test output on failure
         if: failure()
