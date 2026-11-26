@@ -349,6 +349,7 @@ function register(app, deps) {
     await runPlanAction(req, res, async () => {
       const plan = await delivery.ensurePlan(db, req.workspace, req.user.id);
       await requireContractedRow(req, 'phase', req.params.phaseId);
+      if (!(await planUser(req.workspace, req.body.owner_id))) throw new Error('The owner must belong to this engagement.');
       const result = await db.prepare(`UPDATE engagement_delivery_phases SET owner_id=?,planned_start_date=?,planned_end_date=?,forecast_end_date=?,updated_at=utc_now_text()
         WHERE id=? AND plan_id=?`).run(req.body.owner_id || null, req.body.planned_start_date || null,
           req.body.planned_end_date || null, req.body.forecast_end_date || null, req.params.phaseId, plan.id);
@@ -371,6 +372,7 @@ function register(app, deps) {
       const plan = await delivery.ensurePlan(db, req.workspace, req.user.id);
       const phase = (await requireContractedRow(req, 'phase', req.body.phase_id)).row;
       if (!phase || !String(req.body.title || '').trim()) throw new Error('A valid phase and milestone title are required.');
+      if (!(await planUser(req.workspace, req.body.owner_id))) throw new Error('The owner must belong to this engagement.');
       const minimumDurationMonths = Number(req.body.minimum_duration_months || 0);
       if (!Number.isInteger(minimumDurationMonths) || minimumDurationMonths < 0 || minimumDurationMonths > 36) {
         throw new Error('Minimum duration must be a whole number from 0 to 36 months.');
@@ -394,6 +396,7 @@ function register(app, deps) {
       const plan = await delivery.ensurePlan(db, req.workspace, req.user.id);
       const scoped = (await requireContractedRow(req, 'milestone', req.params.milestoneId)).row;
       if (scoped.governed) throw new Error('Governed gap-assessment milestones are updated from their source records, not edited here.');
+      if (!(await planUser(req.workspace, req.body.owner_id))) throw new Error('The owner must belong to this engagement.');
       const minimumDurationMonths = Number(req.body.minimum_duration_months || 0);
       if (!Number.isInteger(minimumDurationMonths) || minimumDurationMonths < 0 || minimumDurationMonths > 36) {
         throw new Error('Minimum duration must be a whole number from 0 to 36 months.');

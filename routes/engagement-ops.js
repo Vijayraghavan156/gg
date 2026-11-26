@@ -20,6 +20,7 @@ const auditChecklists = require('../lib/audit-checklists');
 const reports = require('../lib/reports');
 const handoverExport = require('../lib/handover-export');
 const reportTemplateAccess = require('../lib/report-template-access');
+const { isWorkspacePerson, notOnClient } = require('../lib/workspace-people');
 const assessmentPassQuality = require('../lib/assessment-pass-quality');
 const gapAssessmentReport = require('../lib/gap-assessment-report');
 const auditPack = require('../lib/audit-pack');
@@ -866,6 +867,7 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/tasks/from-template/:tplId', requireAuth, requireWorkspace, requirePermission('task.manage'), async (req, res) => {
     const tpl = await db.prepare('SELECT * FROM task_templates WHERE id=? AND (is_system=1 OR firm_id=? OR workspace_id=?)').get(req.params.tplId, req.workspace.firm_id, req.workspace.id);
     if (!tpl) return redirectBack(req, res);
+    if (req.body.assignee_id && !(await isWorkspacePerson(db, req.workspace, req.body.assignee_id))) return notOnClient(req, res);
     const steps = JSON.parse(tpl.steps || '[]');
     const baseDate = req.body.base_date ? new Date(req.body.base_date) : new Date();
     for (const s of steps) {
@@ -959,6 +961,7 @@ function register(app, deps) {
   });
 
   app.get('/workspaces/:wsId/members/:userId/stats', requireAuth, requireWorkspace, requirePermission('members.view'), async (req, res) => {
+    if (!(await isWorkspacePerson(db, req.workspace, req.params.userId))) return res.status(404).send('Not found');
     const u = await db.prepare('SELECT id, name, email, last_active_at FROM users WHERE id=?').get(req.params.userId);
     if (!u) return res.status(404).send('Not found');
     const stats = {
@@ -1003,10 +1006,13 @@ function register(app, deps) {
   });
 
   app.post('/workspaces/:wsId/access-reviews/:id/items/:itemId', requireAuth, requireWorkspace, requirePermission('members.assign_role'), async (req, res) => {
-    await db.prepare(`UPDATE access_review_items SET decision=?, decision_reason=?, reviewer=?, decided_at=utc_now_text() WHERE id=? AND review_id=?`)
-      .run(req.body.decision || null, req.body.decision_reason || null, req.user.name, req.params.itemId, req.params.id);
+    const review = await db.prepare('SELECT id FROM access_reviews WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+    if (!review) return res.status(404).send('Not found');
+    const changed = await db.prepare(`UPDATE access_review_items SET decision=?, decision_reason=?, reviewer=?, decided_at=utc_now_text() WHERE id=? AND review_id=?`)
+      .run(req.body.decision || null, req.body.decision_reason || null, req.user.name, req.params.itemId, review.id);
+    if (!changed.changes) return res.status(404).send('Not found');
     if (req.body.decision === 'remove') {
-      const item = await db.prepare('SELECT user_id FROM access_review_items WHERE id=?').get(req.params.itemId);
+      const item = await db.prepare('SELECT user_id FROM access_review_items WHERE id=? AND review_id=?').get(req.params.itemId, review.id);
       if (item) {
         await db.prepare('DELETE FROM workspace_members WHERE workspace_id=? AND user_id=?').run(req.workspace.id, item.user_id);
         await logAction(req.user.id, req.workspace.id, 'access_review_remove', 'user', item.user_id, null, auditCtx(req));
@@ -1042,6 +1048,7 @@ function register(app, deps) {
     if (!tpl) return redirectBack(req, res);
     const userId = parseInt(req.body.user_id, 10);
     if (!userId) return redirectBack(req, res);
+    if (!(await isWorkspacePerson(db, req.workspace, userId))) return notOnClient(req, res);
     const expires = req.body.expires_at || null;
     const perms = JSON.parse(tpl.permissions);
     const ins = db.prepare(`INSERT INTO workspace_role_overrides (workspace_id, user_id, permission, granted, granted_by, reason, expires_at)
@@ -1398,6 +1405,7 @@ function register(app, deps) {
       const tx = db.transaction(async () => { for (const id of ids) await stmt.run(id, req.workspace.id); });
       await tx();
     } else if (op === 'reassign' && req.body.assignee) {
+      if (req.params.type === 'tasks' && !(await isWorkspacePerson(db, req.workspace, req.body.assignee))) return notOnClient(req, res);
       const cols = { risks: 'owner_name', assets: 'owner_name', tasks: 'assignee_id', ncs: 'responsible', incidents: 'reported_by' };
       const col = cols[req.params.type];
       const stmt = db.prepare(`UPDATE ${table} SET ${col}=? WHERE id=? AND workspace_id=?`);

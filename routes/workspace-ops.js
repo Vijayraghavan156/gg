@@ -9,6 +9,7 @@ const outcomeScope = require('../lib/engagement-outcome-scope');
 const { paginate, pageHref } = require('../lib/paginate');
 const { withToast, redirectBack, auditCtx, escapeHtml, extractMentions } = require('../lib/http-helpers');
 const delivery = require('../lib/engagement-delivery');
+const { isWorkspacePerson, notOnClient } = require('../lib/workspace-people');
 const generateDocxBuffer = require('../lib/workers').generateDocx;
 const htmlToDocxPooled = require('../lib/workers').htmlToDocxPooled;
 
@@ -710,6 +711,7 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/tasks', requireAuth, requireWorkspace, requirePermission('task.manage'), async (req, res) => {
     const { title, description, iso_item_id, assignee_id, due_date, engagement_milestone_id } = req.body;
     if (!title) return redirectBack(req, res);
+    if (assignee_id && !(await isWorkspacePerson(db, req.workspace, assignee_id))) return notOnClient(req, res);
     const milestone = engagement_milestone_id ? await contractedTaskMilestone(req.workspace, engagement_milestone_id) : null;
     if (engagement_milestone_id && !milestone) {
       return res.status(409).render('error', {
@@ -729,6 +731,7 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/tasks/:id', requireAuth, requireWorkspace, requirePermission('task.manage'), async (req, res) => {
     if (!(await contractedExistingTask(req.workspace, req.params.id))) return taskOutsideContract(req, res);
     const { status, assignee_id, due_date, title, description, engagement_milestone_id } = req.body;
+    if (assignee_id && !(await isWorkspacePerson(db, req.workspace, assignee_id))) return notOnClient(req, res);
     const sets = []; const vals = [];
     if (status !== undefined) { sets.push('status = ?'); vals.push(status); }
     if (assignee_id !== undefined) { sets.push('assignee_id = ?'); vals.push(assignee_id || null); }
