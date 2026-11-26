@@ -329,9 +329,12 @@ function register(app, deps) {
       if (!r.ok) sendError = r.error || 'Email delivery failed';
     } catch (e) { sendError = e && e.message; }
 
-    if (sendError) {
+    if (sendError && userType === 'firm') {
       req.session.manualShareLink = `/invite/${raw}`;
       return res.redirect('/admin/users?error=' + encodeURIComponent(`Invitation created but email failed (${sendError}). Copy the link below and share it with them directly.`));
+    }
+    if (sendError) {
+      return res.redirect('/admin/users?error=' + encodeURIComponent(`The invitation email did not send (${sendError}). Check the email settings under Admin, then invite them again.`));
     }
     const replacedNote = pendingCount > 0 ? ' (replaced an earlier pending invitation)' : '';
     res.redirect('/admin/users?notice=' + encodeURIComponent(`Invitation sent to ${email}. Link expires in 7 days.${replacedNote}`));
@@ -415,9 +418,12 @@ function register(app, deps) {
         { email: target.email, email_sent: !sendError, expires_at: expiresAt }, auditCtx(req));
     }
 
-    if (sendError) {
+    if (sendError && target.user_type === 'firm') {
       req.session.manualShareLink = `/reset/${raw}`;
       return res.redirect('/admin/users?error=' + encodeURIComponent(`Reset token created but email failed (${sendError}). Copy the link below and share it with them directly.`));
+    }
+    if (sendError) {
+      return res.redirect('/admin/users?error=' + encodeURIComponent(`The reset email did not send (${sendError}). Check the email settings under Admin and try again, or ask them to use Forgot password on the sign-in page.`));
     }
     res.redirect('/admin/users?notice=' + encodeURIComponent(`Password-reset link sent to ${email}. Expires in 1 hour.`));
   });

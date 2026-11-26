@@ -678,7 +678,7 @@ function register(app, deps) {
 
     if (sendError) {
       return res.redirect('/workspaces/' + req.workspace.id + '/team?error=' +
-        encodeURIComponent(`Invitation created but email failed (${sendError}). Share the link manually: /invite/${raw}`));
+        encodeURIComponent(`The invitation email did not send (${sendError}). Check the email settings under Admin, then invite them again.`));
     }
     res.redirect('/workspaces/' + req.workspace.id + '/team?notice=' +
       encodeURIComponent(`Invitation sent to ${email}. Link expires in 7 days.`));
