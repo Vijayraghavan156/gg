@@ -583,6 +583,10 @@ async function requireWorkspace(req, res, next) {
   res.locals.tpPortalEnabled = isScopedClient
     && rbac.hasPermission(res.locals.userPerms, 'tp.client_view')
     && await require('./lib/tprm/settings').isEnabled(db, ws.id);
+  res.locals.tpOnlyClient = res.locals.tpPortalEnabled && !(await require('./lib/tprm/settings').hasIsoProgramme(db, ws.id));
+  if (res.locals.tpOnlyClient && req.method === 'GET' && (req.path === portalPrefix || req.path === `${portalPrefix}/updates`)) {
+    return res.redirect(`${portalPrefix}/third-party-risk`);
+  }
   res.locals.experienceEnabled = await require('./lib/experience-flags').enabledFor(db,{actor:req.user,workspace:ws});
   try {
     res.locals.unreadNotifications = await require('./lib/notification-delivery').countUnread(db,{workspaceId:ws.id,actor:req.user});

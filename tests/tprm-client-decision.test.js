@@ -1143,3 +1143,31 @@ test('document checks: old evidence, the wrong kind of file and the same file gi
   assert.deepEqual(keys(img.id), ['kind', 'old']);
   assert.deepEqual(keys(doc.id), ['expired', 'old', 'reused']);
 });
+
+test('a client account with third-party risk and no ISO programme opens on Third-party risk, with no Home, actions, progress or Updates', async () => {
+  const only = await tprmClient('Portal Only Tprm');
+  await db.prepare(`UPDATE workspaces SET frameworks='[]' WHERE id=?`).run(only.id);
+  const both = await tprmClient('Portal Both Services');
+  const portal = ws => `/workspaces/${ws}/client-portal`;
+  const onlySession = await sessionFor(only.owner);
+  const landing = await onlySession.get('/dashboard');
+  assert.equal(landing.status, 302);
+  assert.equal(landing.location, portal(only.id));
+  for (const route of [portal(only.id), `${portal(only.id)}?view=actions`, `${portal(only.id)}/updates`]) {
+    const res = await onlySession.get(route);
+    assert.equal(res.status, 302, `${route} redirects`);
+    assert.equal(res.location, `${portal(only.id)}/third-party-risk`);
+  }
+  const page = await onlySession.get(`${portal(only.id)}/third-party-risk`);
+  assert.equal(page.status, 200);
+  assert.match(page.text, new RegExp(`href="${portal(only.id)}/third-party-risk"`));
+  assert.doesNotMatch(page.text, new RegExp(`href="${portal(only.id)}\\?view=|href="${portal(only.id)}/updates"`));
+  assert.doesNotMatch(page.text, /data-tprm-cv-nav="portal"/, 'no Portal item that would only lead back here');
+  const bothSession = await sessionFor(both.owner);
+  const home = await bothSession.get(portal(both.id));
+  assert.equal(home.status, 200);
+  assert.match(home.text, new RegExp(`href="${portal(both.id)}/updates"`));
+  assert.match(home.text, new RegExp(`href="${portal(both.id)}/third-party-risk"`));
+  const bothTprm = await bothSession.get(`${portal(both.id)}/third-party-risk`);
+  assert.match(bothTprm.text, /data-tprm-cv-nav="portal"/, 'a client with both services keeps the way back to the portal');
+});

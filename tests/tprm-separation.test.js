@@ -245,8 +245,8 @@ test('the client portal shows a TPRM entry only for clients with TPRM switched o
   const onlyTprm = await signIn(contributor.email, contributor.password);
   try {
     const portal = await onlyTprm.get(`/workspaces/${tprmOnly}/client-portal`);
-    assert.equal(portal.status, 200, 'a TPRM-only client\'s portal opens');
-    assert.match(portal.text, entry(tprmOnly));
+    assert.equal(portal.status, 302, 'a TPRM-only client\'s portal opens on Third-party risk');
+    assert.equal(portal.location, `/workspaces/${tprmOnly}/client-portal/third-party-risk`);
     assert.equal((await onlyTprm.get(`/workspaces/${tprmOnly}/client-portal/third-party-risk`)).status, 200);
   } finally {
     await onlyTprm.close();

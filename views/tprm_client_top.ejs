@@ -37,7 +37,7 @@
     <%- cvItem('renewals', 'Renewals', cvBase + '?tab=renewals') %>
     <%- cvItem('reports', 'Reports', cvBase + '/concentration') %>
     <span class="cv-gap"></span>
-    <%- cvItem('portal', 'Portal', '/workspaces/' + ws.id + '/client-portal') %>
+    <% if (!(typeof tpOnlyClient !== 'undefined' && tpOnlyClient === true)) { %><%- cvItem('portal', 'Portal', '/workspaces/' + ws.id + '/client-portal') %><% } %>
     <form method="POST" action="/logout" class="cv-signout">
       <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
       <button type="submit" class="cv-nav" title="Sign out"><svg viewBox="0 0 24 24" aria-hidden="true"><%- cvIcons.signout %></svg><span>Sign out</span></button>
