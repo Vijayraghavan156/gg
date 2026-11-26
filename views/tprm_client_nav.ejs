@@ -24,4 +24,5 @@
   <a href="/tprm/clients/<%= tpClient.id %>?view=due" class="subtab <%= section === 'due' ? 'is-active' : '' %>">Due for reassessment<% if (typeof dueCount === 'number') { %> (<%= dueCount %>)<% } %></a>
   <% if (canManage) { %><a href="/tprm/clients/<%= tpClient.id %>/import" class="subtab <%= section === 'import' ? 'is-active' : '' %>">Import CSV</a><% } %>
   <% if (canSettings) { %><a href="/tprm/clients/<%= tpClient.id %>/settings" class="subtab <%= section === 'settings' ? 'is-active' : '' %>">Settings</a><% } %>
+  <% if (typeof tpClientNoIso !== 'undefined' && tpClientNoIso) { %><a href="/workspaces/<%= tpClient.id %>" class="subtab" data-tprm-client-setup>Client setup</a><% } %>
 </div>

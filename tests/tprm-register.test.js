@@ -712,3 +712,21 @@ test('CSV import commit is atomic: a failure on any row leaves nothing behind', 
   assert.equal(retry.status, 302, 'the same preview commits once the fault is gone');
   assert.equal(await count('SELECT COUNT(*) c FROM tp_third_parties WHERE workspace_id=?', ws), 3);
 });
+
+test('a client with third-party risk and no ISO programme: the client menus open its third-party risk page, with Client setup one tab away', async () => {
+  const ws = await tprmClient('Only Third Party Risk Client');
+  const iso = Number((await db.prepare(`INSERT INTO workspaces (firm_id,client_name,frameworks,engagement_outcome)
+    VALUES (?,?,'["iso27001"]','certification_support')`).run(firmId, 'ISO And Third Party Risk Client')).lastInsertRowid);
+  await db.prepare('INSERT INTO tp_client_settings (workspace_id, enabled) VALUES (?, true)').run(iso);
+
+  const page = (await client.get('/tprm')).text;
+  assert.match(page, new RegExp(`href="/tprm/clients/${ws}"[^>]*>\\s*<span[^>]*></span>\\s*<span[^>]*>Only Third Party Risk Client`), 'Jump to a client opens the third-party risk page');
+  assert.doesNotMatch(page, new RegExp(`href="/workspaces/${ws}"`));
+  assert.match(page, new RegExp(`href="/workspaces/${iso}"`), 'a client with ISO still opens on its client overview');
+
+  const register = await client.get(`/tprm/clients/${ws}`);
+  assert.equal(register.status, 200);
+  assert.match(register.text, new RegExp(`href="/workspaces/${ws}"[^>]*data-tprm-client-setup`));
+  assert.equal((await client.get(`/workspaces/${ws}`)).status, 200, 'Client setup opens the services page, where ISO can be switched on');
+  assert.doesNotMatch((await client.get(`/tprm/clients/${iso}`)).text, /data-tprm-client-setup/);
+});

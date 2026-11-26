@@ -118,7 +118,7 @@
             <% otherWorkspaces.forEach(w => {
                  const dot = (w.brand_primary_color && /^#[0-9a-fA-F]{6}$/.test(w.brand_primary_color)) ? w.brand_primary_color : 'rgba(26,26,26,0.2)';
             %>
-              <a href="/workspaces/<%= w.id %>" style="display:flex;align-items:center;gap:8px;padding:8px 12px;text-decoration:none;color:var(--text);font-size:13px;border-bottom:1px solid var(--border);">
+              <a href="<%= w.homeUrl || ('/workspaces/' + w.id) %>" style="display:flex;align-items:center;gap:8px;padding:8px 12px;text-decoration:none;color:var(--text);font-size:13px;border-bottom:1px solid var(--border);">
                 <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:<%= dot %>;flex-shrink:0;"></span>
                 <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= w.brand_display_name || w.client_name %></span>
                 <% if (w.sector) { %><span style="font-size:10px;color:var(--text-tertiary);flex-shrink:0;"><%= w.sector %></span><% } %>
@@ -170,7 +170,7 @@
                    const dot = (w.brand_primary_color && /^#[0-9a-fA-F]{6}$/.test(w.brand_primary_color)) ? w.brand_primary_color : 'var(--text-tertiary)';
                    const isLast = (typeof lastWs !== 'undefined' && lastWs && lastWs.id === w.id);
               %>
-                <a href="/workspaces/<%= w.id %>" style="display:flex;align-items:center;gap:8px;padding:8px 12px;text-decoration:none;color:var(--text);font-size:13px;border-bottom:1px solid var(--border);<%= isLast ? 'background:var(--nav-hover);' : '' %>">
+                <a href="<%= w.homeUrl || ('/workspaces/' + w.id) %>" style="display:flex;align-items:center;gap:8px;padding:8px 12px;text-decoration:none;color:var(--text);font-size:13px;border-bottom:1px solid var(--border);<%= isLast ? 'background:var(--nav-hover);' : '' %>">
                   <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:<%= dot %>;flex-shrink:0;"></span>
                   <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= w.brand_display_name || w.client_name %><% if (isLast) { %> <span style="font-size:10px;color:var(--text-tertiary);font-weight:400;">· last viewed</span><% } %></span>
                   <% if (w.sector) { %><span style="font-size:10px;color:var(--text-tertiary);flex-shrink:0;"><%= w.sector %></span><% } %>

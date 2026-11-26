@@ -733,6 +733,13 @@ app.use(async (req, res, next) => {
       if (firmId) {
         res.locals.firmWorkspaces = await listWorkspaces(u);
         res.locals.tprmMenuVisible = await require('./lib/tprm/access').menuVisible(db, u, res.locals.firmWorkspaces);
+        if (u.user_type === 'firm') {
+          const tprmOn = await require('./lib/tprm/settings').enabledAmong(db, res.locals.firmWorkspaces.map(w => w.id));
+          res.locals.firmWorkspaces = res.locals.firmWorkspaces.map(w => {
+            const frameworks = parseWorkspaceFrameworks(w.frameworks);
+            return { ...w, homeUrl: !frameworks.length && tprmOn.has(Number(w.id)) ? `/tprm/clients/${w.id}` : `/workspaces/${w.id}` };
+          });
+        }
       }
       const lastId = req.session && req.session.last_ws_id;
       if (lastId) {
@@ -829,6 +836,11 @@ require('./routes/readiness').register(app, { db, requireAuth, requireWorkspace 
 
 require('./routes/registers').register(app, { db, requireAuth, requireWorkspace, requirePermission,
   logAction });
+app.use('/tprm/clients/:wsId', async (req, res, next) => {
+  const id = Number(req.params.wsId);
+  try { res.locals.tpClientNoIso = Number.isSafeInteger(id) && id > 0 && !(await require('./lib/tprm/settings').hasIsoProgramme(db, id)); } catch (_) {}
+  next();
+});
 require('./routes/third-party-risk').register(app, { db, requireAuth, requireWorkspace, getWorkspace, permissionsFor,
   listWorkspaces, logAction, resolveUploadPath });
 require('./routes/tprm-vendor').registerFirm(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces });
