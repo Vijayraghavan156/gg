@@ -222,6 +222,25 @@ test('if the bucket cannot take the file, nothing is recorded and nothing is lef
   assert.deepEqual(left, []);
 });
 
+test('a refused upload whose file is removed straight away raises no stray error', async () => {
+  const file = path.join(store.ROOT, `firm_${firmId}`, `${Date.now()}-refused.txt`);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, 'refused');
+  const stray = [];
+  const catchStray = err => stray.push(err);
+  process.on('uncaughtException', catchStray);
+  s3.failPuts(true);
+  try {
+    await assert.rejects(store.put(file));
+    fs.unlinkSync(file);
+    await new Promise(resolve => setTimeout(resolve, 50));
+  } finally {
+    s3.failPuts(false);
+    process.off('uncaughtException', catchStray);
+  }
+  assert.deepEqual(stray.map(e => e.message), []);
+});
+
 test('a staged file the page throws away is removed from the bucket when the request ends', async () => {
   const staged = path.join(store.ROOT, `firm_${firmId}`, `${Date.now()}-staged.txt`);
   fs.mkdirSync(path.dirname(staged), { recursive: true });
