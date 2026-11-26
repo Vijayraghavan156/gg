@@ -86,13 +86,15 @@ async function previewCsv(ws, content, { session = client, filename = 'third-par
   return await session.post(`/tprm/clients/${ws}/import/preview`, form.body, { headers: form.headers, csrf: false });
 }
 
-const unescape = s => s.replace(/&#34;|&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
+const encoded = text => Buffer.from(text, 'utf8').toString('base64url');
+const decoded = value => Buffer.from(value, 'base64url').toString('utf8');
 
 function commitFields(html) {
   const batch = (html.match(/name="batch_id" value="(\d+)"/) || [])[1];
-  const csv = (html.match(/<textarea name="csv"[^>]*>\n([\s\S]*?)<\/textarea>/) || [])[1];
+  const csv = (html.match(/name="csv_b64" value="([A-Za-z0-9_-]*)"/) || [])[1];
   assert.ok(batch && csv != null, 'the preview offers the commit form');
-  return { batch_id: batch, csv: unescape(csv) };
+  return { batch_id: batch, csv_b64: csv };
 }
 
 test('add, view and edit a third party; every change writes an event in its chain', async () => {
@@ -619,19 +621,35 @@ test('CSV import: a second preview of the same file cannot import it twice', asy
   assert.equal(await count('SELECT COUNT(*) c FROM tp_third_parties WHERE workspace_id=?', ws), 1);
 });
 
+test('CSV import: text the pages display differently, such as an em dash, is imported exactly as in the file', async () => {
+  const ws = await tprmClient('Import Em Dash Client');
+  const csv = '\ufeff\ufeffname,status,category\r\nDash \u2014 Co,in_use,Cloud \u2014 hosting\r\nCaf\u00e9 \u201cQuotes\u201d \u2026,proposed,\r\n';
+  const preview = await previewCsv(ws, csv);
+  assert.equal(preview.status, 200);
+  assert.doesNotMatch(preview.text, /<textarea name="csv"/);
+  const commit = await client.post(`/tprm/clients/${ws}/import/commit`, commitFields(preview.text));
+  assert.equal(commit.status, 302);
+  assert.match(decodeURIComponent(commit.location), /Imported 2 third parties/);
+  const rows = await db.prepare('SELECT name, category FROM tp_third_parties WHERE workspace_id=? ORDER BY id').all(ws);
+  assert.deepEqual(rows.map(r => [r.name, r.category]), [['Dash \u2014 Co', 'Cloud \u2014 hosting'], ['Caf\u00e9 \u201cQuotes\u201d \u2026', null]]);
+});
+
 test('CSV import: a file changed after preview is rejected and nothing is imported', async () => {
   const ws = await tprmClient('Import Changed File Client');
   const preview = await previewCsv(ws, 'name,status\nOriginal Co,in_use\nSecond Co,proposed\n');
   const fields = commitFields(preview.text);
-  const changed = await client.post(`/tprm/clients/${ws}/import/commit`, { ...fields, csv: fields.csv.replace('Original Co', 'Swapped Co') });
+  const text = decoded(fields.csv_b64);
+  const changed = await client.post(`/tprm/clients/${ws}/import/commit`, { ...fields, csv_b64: encoded(text.replace('Original Co', 'Swapped Co')) });
   assert.equal(changed.status, 409);
   assert.match(changed.text, /The file changed after it was previewed, so nothing was imported/);
-  const appended = await client.post(`/tprm/clients/${ws}/import/commit`, { ...fields, csv: fields.csv + '\nExtra Co,in_use' });
+  const appended = await client.post(`/tprm/clients/${ws}/import/commit`, { ...fields, csv_b64: encoded(text + '\nExtra Co,in_use') });
   assert.equal(appended.status, 409);
+  const garbled = await client.post(`/tprm/clients/${ws}/import/commit`, { ...fields, csv_b64: '%%not-the-file%%' });
+  assert.equal(garbled.status, 409);
   assert.equal(await count('SELECT COUNT(*) c FROM tp_third_parties WHERE workspace_id=?', ws), 0);
   assert.equal((await db.prepare('SELECT status FROM tp_import_batches WHERE id=?').get(Number(fields.batch_id))).status, 'previewed');
-  const crlf = await client.post(`/tprm/clients/${ws}/import/commit`, { ...fields, csv: fields.csv.replace(/\n/g, '\r\n') });
-  assert.equal(crlf.status, 302, 'line endings rewritten by a browser are not a change');
+  const crlf = await client.post(`/tprm/clients/${ws}/import/commit`, { batch_id: fields.batch_id, csv: text.replace(/\n/g, '\r\n') });
+  assert.equal(crlf.status, 302, 'a preview page opened before the encoded field still imports, and line endings rewritten by a browser are not a change');
   assert.equal(await count('SELECT COUNT(*) c FROM tp_third_parties WHERE workspace_id=?', ws), 2);
 
   const other = await tprmClient('Import Other Batch Client');

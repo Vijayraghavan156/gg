@@ -78,8 +78,7 @@
         <form method="POST" action="/tprm/clients/<%= tpClient.id %>/import/commit" class="tpu-m-0" data-tprm-import-commit>
           <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
           <input type="hidden" name="batch_id" value="<%= batch.id %>">
-          <textarea name="csv" hidden aria-hidden="true">
-<%= a.text %></textarea>
+          <input type="hidden" name="csv_b64" value="<%= csvField %>">
           <button class="btn btn-primary" type="submit">Import <%= a.rows.length %> third part<%= a.rows.length === 1 ? 'y' : 'ies' %></button>
         </form>
       <% } %>

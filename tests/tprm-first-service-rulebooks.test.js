@@ -274,7 +274,6 @@ async function previewCsv(ws, content) {
   return await client.post(`/tprm/clients/${ws}/import/preview`, form.body, { headers: form.headers, csrf: false });
 }
 
-const unescape = s => s.replace(/&#34;|&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
 test('CSV import: an optional service_description column creates each row\'s first service in the same commit', async () => {
   const ws = await tprmClient('Import Services Client');
@@ -298,8 +297,8 @@ test('CSV import: an optional service_description column creates each row\'s fir
   assert.equal(await count('SELECT COUNT(*)::integer c FROM tp_services WHERE workspace_id=?', ws), 0, 'nothing saved at preview');
 
   const batch = (preview.text.match(/name="batch_id" value="(\d+)"/) || [])[1];
-  const text = unescape((preview.text.match(/<textarea name="csv"[^>]*>\n([\s\S]*?)<\/textarea>/) || [])[1]);
-  const commit = await client.post(`/tprm/clients/${ws}/import/commit`, { batch_id: batch, csv: text });
+  const encodedCsv = (preview.text.match(/name="csv_b64" value="([A-Za-z0-9_-]*)"/) || [])[1];
+  const commit = await client.post(`/tprm/clients/${ws}/import/commit`, { batch_id: batch, csv_b64: encodedCsv });
   assert.equal(commit.status, 302);
   assert.match(toast(commit), /Imported 2 third parties, 1 with a first service/);
   const rows = await db.prepare('SELECT id, name FROM tp_third_parties WHERE workspace_id=? ORDER BY id').all(ws);

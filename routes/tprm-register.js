@@ -399,7 +399,8 @@ function registerRoutes(app, deps) {
   }, { permission: 'tp.manage' }));
 
   app.post('/tprm/clients/:wsId/import/commit', requireAuth, handler(async (req, res, actor) => {
-    const result = await tpImport.commit(db, actor, req.body.batch_id, req.body.csv);
+    const csv = req.body.csv_b64 != null ? tpImport.decodeText(req.body.csv_b64) : req.body.csv;
+    const result = await tpImport.commit(db, actor, req.body.batch_id, csv);
     if (result.alreadyImported) {
       return res.redirect(withToast(base(actor), 'This file was already imported; nothing more was added', 'warn'));
     }

@@ -86,8 +86,8 @@ test('due dates follow the active model\'s intervals, with the client override o
   const preview = await client.post(`/tprm/clients/${ws}/import/preview`, form.body, { headers: form.headers, csrf: false });
   assert.equal(preview.status, 200);
   const batch = preview.text.match(/name="batch_id" value="(\d+)"/)[1];
-  const csv = preview.text.match(/<textarea name="csv"[^>]*>\n([\s\S]*?)<\/textarea>/)[1];
-  const commit = await client.post(`/tprm/clients/${ws}/import/commit`, { batch_id: batch, csv });
+  const csv = preview.text.match(/name="csv_b64" value="([A-Za-z0-9_-]*)"/)[1];
+  const commit = await client.post(`/tprm/clients/${ws}/import/commit`, { batch_id: batch, csv_b64: csv });
   assert.equal(commit.status, 302);
   const imported = await db.prepare(`SELECT next_due_date::text AS due FROM tp_third_parties WHERE workspace_id=? AND name='Imported High'`).get(ws);
   assert.equal(imported.due, due(last, 5, now), 'the import uses the model intervals too');
