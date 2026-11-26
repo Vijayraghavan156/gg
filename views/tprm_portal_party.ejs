@@ -116,7 +116,7 @@
   </div>
 </div>
 <% } else if (tab === 'scoping') { const sc = p.scoping; %>
-<% if (!sc) { %><div class="cv-card cv-table"><div class="cv-empty"><strong>Not shown yet</strong><p>How the tier was set appears here once your consultants issue a recommendation.</p></div></div><% } else { %>
+<% if (!sc) { %><div class="cv-card cv-table"><div class="cv-empty"><strong>Not shown yet</strong><p>How the tier was set appears here once your consultants confirm the tier.</p></div></div><% } else { %>
 <div class="cv-two" data-tprm-cv-scoping="<%= sc.assessmentId %>">
   <div>
     <section class="cv-card"><h3 class="cv-h4">How the tier was set <span><%= sc.type === 'reassessment' ? 'Reassessment' : 'Onboarding review' %></span></h3>
@@ -129,10 +129,12 @@
     </section>
     <% if (sc.context.length) { %><section class="cv-card cv-mt"><h3 class="cv-h4">Other scoping answers <span>used to choose the questions</span></h3>
       <dl class="cv-kv"><% sc.context.forEach(r => { %><div><dt><%= r.text %></dt><dd><%= r.answer %></dd></div><% }) %></dl></section><% } %>
-    <section class="cv-card cv-mt cv-table"><h3 class="cv-h4 cv-pad">Questions sent <span><%= sc.questionCount %> questions in <%= sc.sections.length %> sections</span></h3>
+    <% if (!sc.questionsSent) { %><section class="cv-card cv-mt" data-tprm-cv-not-sent><h3 class="cv-h4">Questions sent</h3>
+      <p class="cv-muted cv-small">The questionnaire has not been sent to the third party yet.</p></section>
+    <% } else { %><section class="cv-card cv-mt cv-table"><h3 class="cv-h4 cv-pad">Questions sent <span><%= sc.questionCount %> questions in <%= sc.sections.length %> sections</span></h3>
       <div class="cv-scroll"><table><thead><tr><th>Section</th><th class="cv-num">Questions</th></tr></thead><tbody>
         <% sc.sections.forEach(x => { %><tr><td><%= x.title %></td><td class="cv-num"><%= x.count %></td></tr><% }) %>
-      </tbody></table></div></section>
+      </tbody></table></div></section><% } %>
   </div>
   <div>
     <section class="cv-card"><h3 class="cv-h4">Scope decisions</h3><dl class="cv-kv1">
@@ -140,11 +142,11 @@
       <div><dt>Proposed by</dt><dd><%= sc.proposedBy || p.firmName %><%= sc.proposedAt ? ', ' + tpf.day(new Date(sc.proposedAt).toISOString().slice(0, 10)) : '' %></dd></div>
       <div><dt>Confirmed by</dt><dd><%= sc.confirmedBy || p.firmName %><%= sc.confirmedAt ? ', ' + tpf.day(new Date(sc.confirmedAt).toISOString().slice(0, 10)) : '' %></dd></div>
     </dl></section>
-    <section class="cv-card cv-mt"><h3 class="cv-h4">Extra question packs</h3>
+    <% if (sc.questionsSent) { %><section class="cv-card cv-mt"><h3 class="cv-h4">Extra question packs</h3>
       <% if (!sc.included.length && !sc.excluded.length) { %><p class="cv-muted cv-small">Only the core questions were sent.</p><% } %>
       <dl class="cv-kv1"><% sc.included.forEach(m => { %><div><dt>Included</dt><dd><%= m.module %><span class="cv-muted cv-small cv-block"><%= m.because || (m.source === 'auto' ? '' : 'Added by your consultants') %></span></dd></div><% }) %>
       <% sc.excluded.forEach(m => { %><div><dt>Left out</dt><dd><%= m.module %><span class="cv-muted cv-small cv-block"><%= m.reason || m.because || '' %></span></dd></div><% }) %>
-      <% sc.whenAnswered.forEach(m => { %><div><dt>Added only if needed</dt><dd><%= m.module %><span class="cv-muted cv-small cv-block"><%= m.when %></span></dd></div><% }) %></dl></section>
+      <% sc.whenAnswered.forEach(m => { %><div><dt>Added only if needed</dt><dd><%= m.module %><span class="cv-muted cv-small cv-block"><%= m.when %></span></dd></div><% }) %></dl></section><% } %>
   </div>
 </div>
 <% } %>

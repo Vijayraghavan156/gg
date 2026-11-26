@@ -915,18 +915,36 @@ test('client details: an owner at the client, business unit and volume, set by t
   assert.equal(Number((await row()).client_owner_user_id), c.owner.id);
 });
 
-test('client view: the Scoping tab shows how the tier was set only once a recommendation is issued', async () => {
+test('client view: the Scoping tab shows how the tier was set once the tier is confirmed, as the header does', async () => {
   const c = await tprmClient('Client View Scoping');
-  const ctx = await confirmed(c, 'Scoping Party Co');
+  const ws = c.id;
+  const tp = await addThirdParty(ws, 'Scoping Party Co', 'in_use');
+  const a = idIn((await consultant.session.post(`/tprm/clients/${ws}/third-parties/${tp}/assessments`, {})).location, /assessments\/(\d+)/);
+  const svc = (await db.prepare('SELECT id FROM tp_services WHERE workspace_id=? AND third_party_id=?').all(ws, tp)).map(r => String(r.id));
+  const body = { services: svc, intent: 'propose', row_version: String((await assessmentRow(a)).row_version) };
+  for (const [q, x] of Object.entries(LOW)) body[`answers[${q}]`] = x;
+  assert.equal((await consultant.session.post(`${aBase(ws, tp, a)}/scope`, body)).status, 302);
+  const ctx = { ws, tp, a, c };
+  await nameOwner(ctx, c.owner.id);
   const owner = await sessionFor(c.owner);
-  const before = await owner.get(`${portal(c.id)}/third-parties/${ctx.tp}?tab=scoping`);
-  assert.equal(before.status, 200);
-  assert.match(before.text, /once your consultants issue a recommendation/);
-  assert.doesNotMatch(before.text, /data-tprm-cv-scoping=/);
+  const scopingTab = () => owner.get(`${portal(ws)}/third-parties/${tp}?tab=scoping`);
+
+  const proposed = await scopingTab();
+  assert.equal(proposed.status, 200);
+  assert.match(proposed.text, /once your consultants confirm the tier/);
+  assert.doesNotMatch(proposed.text, /data-tprm-cv-scoping=/, 'a proposed tier is not shown');
+
+  assert.equal((await senior.session.post(`${aBase(ws, tp, a)}/confirm`, { row_version: String((await assessmentRow(a)).row_version) })).status, 302);
+  const confirmedTier = await scopingTab();
+  assert.match(confirmedTier.text, new RegExp(`data-tprm-cv-scoping="${a}"`));
+  assert.match(confirmedTier.text, /data-tprm-cv-deciding/);
+  assert.match(confirmedTier.text, /Low tier/);
+  assert.match(confirmedTier.text, /data-tprm-cv-not-sent/, 'before the questionnaire goes out, the page says so instead of showing no questions');
+  assert.doesNotMatch(confirmedTier.text, /Extra question packs/);
+
   await issued(ctx, 'approve');
-  const after = await owner.get(`${portal(c.id)}/third-parties/${ctx.tp}?tab=scoping`);
-  assert.match(after.text, new RegExp(`data-tprm-cv-scoping="${ctx.a}"`));
-  assert.match(after.text, /data-tprm-cv-deciding/);
+  const after = await scopingTab();
+  assert.match(after.text, new RegExp(`data-tprm-cv-scoping="${a}"`));
   assert.match(after.text, /Low tier/);
 });
 
