@@ -310,7 +310,7 @@ test('the client portal writes the date an issue closed in the client\'s own zon
   assert.equal((await findingRow(ctx.findingId)).status, 'closed');
   const at = await db.prepare("SELECT to_char(closed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS') AS t FROM tp_findings WHERE id = ?").get(ctx.findingId);
   const utcHour = Number(at.t.slice(11, 13));
-  const zone = utcHour < 12 ? 'Pacific/Honolulu' : 'Pacific/Kiritimati';
+  const zone = utcHour < 10 ? 'Pacific/Honolulu' : 'Pacific/Kiritimati';
   await db.prepare('UPDATE workspaces SET timezone = ? WHERE id = ?').run(zone, ctx.ws);
   try {
     const expected = require('../lib/tprm/format').forZone(zone).day(new Date(`${at.t}Z`));
