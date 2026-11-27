@@ -2,7 +2,7 @@
 <%
   const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
   const day = v => (v ? tpf.day(new Date(v).toISOString().slice(0, 10)) : '-');
-  const showLabels = { all: 'All', overdue: 'Overdue', due_soon: 'Due within ' + T.SOON_DAYS + ' days', not_opened: 'Not opened', mine: 'Mine' };
+  const showLabels = { all: 'All', overdue: 'Overdue', link_closed: 'Link no longer opens', due_soon: 'Due within ' + T.SOON_DAYS + ' days', not_opened: 'Not opened', mine: 'Mine' };
   const keep = '<input type="hidden" name="show" value="' + out.filter + '"><input type="hidden" name="q" value="' + String(out.q).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])) + '">';
 %>
 <div class="page-head" data-tprm-questionnaires-out>
@@ -38,14 +38,14 @@
   <div class="panel">
     <div class="table-scroll">
     <table class="t" data-tprm-out-table>
-      <thead><tr><th>Third party</th><th>Sent to</th><th class="fx-nowrap">Sent</th><th class="fx-nowrap">Link works until</th><th class="fx-nowrap">Answered</th><th class="fx-nowrap">Last opened</th><th>State</th><th></th></tr></thead>
+      <thead><tr><th>Third party</th><th>Sent to</th><th class="fx-nowrap">Sent</th><th class="fx-nowrap">Open until</th><th class="fx-nowrap">Answered</th><th class="fx-nowrap">Last opened</th><th>State</th><th></th></tr></thead>
       <tbody>
       <% out.rows.forEach(r => { const aHref = '/tprm/clients/' + r.workspaceId + '/third-parties/' + r.thirdPartyId + '/assessments/' + r.assessmentId + '?step=questionnaire#questionnaire'; const act = '/tprm/clients/' + r.workspaceId + '/questionnaires-out/' + r.assessmentId; %>
         <tr data-tprm-out-row="<%= r.assessmentId %>" data-tprm-out-state="<%= r.state %>">
           <td><a href="<%= aHref %>"><strong><%= r.thirdPartyName %></strong></a><div class="meta text-xs"><%= r.clientName %><%= r.leadName ? ' · lead ' + r.leadName : '' %></div></td>
-          <td><%= r.recipientName || '-' %><% if (r.recipientEmail) { %><div class="meta text-xs"><%= r.recipientEmail %></div><% } %></td>
+          <td><%= r.recipientName || '-' %><% if (r.recipientEmail) { %><div class="meta text-xs"><%= r.recipientEmail %></div><% } %><% if (r.closedNote) { %><div class="meta text-xs" data-tprm-out-closed><%= r.closedNote %></div><% } %><% if (r.remindTo) { %><div class="meta text-xs" data-tprm-out-remind-to>Reminders go to <%= r.remindTo.name %>, the main contact, with a sign-in button.</div><% } %></td>
           <td class="fx-nowrap"><%= day(r.sentAt) %></td>
-          <td class="fx-nowrap"><%= day(r.expiresAt) %><% if (r.daysLeft != null && r.daysLeft > 0) { %><div class="meta text-xs"><%= r.daysLeft %> day<%= r.daysLeft === 1 ? '' : 's' %> left</div><% } %></td>
+          <td class="fx-nowrap"><%= day(r.expiresAt) %><% if (r.state === 'link_closed') { %><div class="meta text-xs" data-tprm-out-sign-in-only><%= r.remindTo ? 'By sign-in only' : 'No one can open it' %></div><% } else if (r.daysLeft != null && r.daysLeft > 0) { %><div class="meta text-xs"><%= r.daysLeft %> day<%= r.daysLeft === 1 ? '' : 's' %> left</div><% } %></td>
           <td class="fx-nowrap"><%= r.answered %> of <%= r.total %></td>
           <td class="fx-nowrap"><%= r.lastOpenedAt ? day(r.lastOpenedAt) : 'Never' %></td>
           <td><%- include('partials/tprm_status', { text: r.stateLabel, tone: r.stateTone, as: 'div' }) %>

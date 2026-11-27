@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <% const tpPage = (typeof active !== 'undefined' && active === 'tprm-portfolio') || (typeof portalView !== 'undefined' && portalView === 'third-party-risk'); %>
-<html lang="en"<%- tpPage ? ' data-loader-delay="400"' : '' %>>
+<% const pageZone = typeof tpf !== 'undefined' && tpf && tpf.zone ? tpf.zone : (typeof ws !== 'undefined' && ws && (ws.timezone || ws.firm_timezone)) || (typeof clientHomeZone !== 'undefined' && clientHomeZone) || (typeof firmZone !== 'undefined' && firmZone) || ''; %>
+<html lang="en"<%- tpPage ? ' data-loader-delay="400"' : '' %><% if (pageZone) { %> data-time-zone="<%= pageZone %>"<% } %>>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -148,9 +149,17 @@
           <%- include('client_navigation', {
             user, ws, rbac,
             active: typeof active !== 'undefined' ? active : '',
-            openReviewCount: typeof openReviewCount !== 'undefined' ? openReviewCount : 0
+            openReviewCount: typeof openReviewCount !== 'undefined' ? openReviewCount : 0,
+            thirdPartyOnly: typeof tpOnlyWorkspace !== 'undefined' && tpOnlyWorkspace === true,
+            thirdPartyHome: '/tprm/clients/' + ws.id
           }) %>
         <% } %>
+      <% } else if (shellClientMode) { %>
+        <div class="nav-group-label">Your engagement</div>
+        <a href="/dashboard" class="nav-item" data-client-portal-home>
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
+          <span class="nav-item-text">Your portal</span>
+        </a>
       <% } else { %>
         <% const allWs = (typeof firmWorkspaces !== 'undefined' ? firmWorkspaces : []); %>
         <%
@@ -251,7 +260,8 @@
     </nav>
 
     <div class="sidebar-foot">
-      <div class="avatar text-xs" title="<%= shellDisplayUser.name %>" style="width:28px;height:28px;border:1px solid var(--border-strong);border-radius:50%;background:var(--bg-muted);display:flex;align-items:center;justify-content:center;color:var(--text);font-weight:600;flex-shrink:0;"><%= shellDisplayUser.name.charAt(0).toUpperCase() %></div>
+      <% if (user.user_type === 'client' && typeof ws !== 'undefined' && ws && !shellPreviewMode) { %><a class="avatar text-xs" href="/workspaces/<%= ws.id %>/client-portal/account" title="Account: <%= shellDisplayUser.name %>" aria-label="Account" data-client-account-link style="width:28px;height:28px;border:1px solid var(--border-strong);border-radius:50%;background:var(--bg-muted);display:flex;align-items:center;justify-content:center;color:var(--text);font-weight:600;flex-shrink:0;text-decoration:none;"><%= shellDisplayUser.name.charAt(0).toUpperCase() %></a><% } else { %>
+<div class="avatar text-xs" title="<%= shellDisplayUser.name %>" style="width:28px;height:28px;border:1px solid var(--border-strong);border-radius:50%;background:var(--bg-muted);display:flex;align-items:center;justify-content:center;color:var(--text);font-weight:600;flex-shrink:0;"><%= shellDisplayUser.name.charAt(0).toUpperCase() %></div><% } %>
       <div style="min-width:0;flex:1;">
         <div class="text-lg" style="font-weight:500;line-height:1.2;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><%= shellDisplayUser.name %></div>
         <div class="text-eyebrow" style="color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><%= shellPreviewMode ? 'Read-only client preview' : shellDisplayUser.email %></div>

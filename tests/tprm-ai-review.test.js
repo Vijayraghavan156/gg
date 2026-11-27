@@ -291,7 +291,7 @@ async function submitted(name, opts) {
   assert.equal(res.status, 303, `saved (${res.status}: ${res.text.slice(0, 200)})`);
   if (opts && opts.beforeSubmit) await opts.beforeSubmit(ctx);
   const done = await submitLink(ctx.token);
-  assert.equal(done.status, 200, done.text.slice(0, 200));
+  assert.equal(done.status, 303, done.text.slice(0, 200));
   assert.equal((await qRow(ctx.a)).status, 'submitted');
   const file = await db.prepare(`SELECT id FROM tp_evidence WHERE assessment_id=? AND original_name='security-policy.txt'`).get(ctx.a);
   return { ...ctx, fileId: Number(file.id) };
@@ -403,7 +403,8 @@ test('a consultant runs the review by hand (tp.manage); one run at a time; "Run 
   const ctx = await confirmed('Manual Review Co');
   let page = await firmPage(ctx);
   assert.match(page.text, /data-tprm-ai-run>Run Brevis</);
-  assert.match(page.text, /data-tprm-ai-suggestions-empty>Brevis has not finished a review/);
+  assert.match(page.text, /<b>Brevis<\/b>\s*<span data-tprm-ai-suggestions-empty>has not reviewed this assessment yet/, 'the name is not repeated');
+  assert.doesNotMatch(page.text, /Brevis<\/b>\s*<span[^>]*>Brevis/);
   const res = await consultant.session.post(`${base(ctx)}/ai-review`, {});
   assert.equal(res.status, 302);
   assert.match(toast(res), /Brevis is reviewing/);
@@ -450,7 +451,7 @@ test('no AI provider: the run is recorded as not set up, the page says so, nothi
   assert.equal(reviews[0].input_sha256, null);
   let page = await firmPage(ctx);
   assert.equal(page.status, 200);
-  assert.match(page.text, /data-tprm-ai-not-configured>[\s\S]*?Brevis is not set up for this firm\./);
+  assert.match(page.text, /<b>Brevis<\/b>\s*<span data-tprm-ai-not-configured>is not set up for this firm\./, 'reads "Brevis is not set up", not "Brevis Brevis"');
   const res = await consultant.session.post(`${base(ctx)}/ai-review`, {});
   assert.equal(res.status, 302);
   assert.match(toast(res), /Brevis is not set up for this firm/);

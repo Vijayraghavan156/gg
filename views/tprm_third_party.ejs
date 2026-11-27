@@ -7,15 +7,24 @@
     'third_party.created': 'Added', 'third_party.updated': 'Updated', 'third_party.imported': 'Imported from CSV',
     'service.added': 'Service added', 'service.updated': 'Service updated', 'service.removed': 'Service removed',
     'third_party.placement_recalculated': 'Tier or due date recalculated after a client settings change',
+    'third_party.due_date_corrected': 'Next review date corrected to the last assessment date plus the review interval',
     'third_party.tier_assessed': 'Assessed tier confirmed',
     'third_party.client_decision': 'Client decision recorded',
     'service.material_changed': 'Material flag changed', 'exit_plan.saved': 'Exit plan saved',
     'subprocessor.added': 'Subprocessor added', 'subprocessor.updated': 'Subprocessor updated', 'subprocessor.removed': 'Subprocessor removed',
     'third_party.team_changed': 'Team changed',
+    'party_document.added': 'Document filed', 'party_document.shared': 'Document shared with the client',
+    'party_document.unshared': 'Document no longer shared with the client', 'party_document.deleted': 'Document deleted',
+    'client_request.accepted': 'Client request accepted', 'client_request.reassessment_requested': 'Reassessment asked for by the client',
+    'third_party.client_details_changed': 'Owner, business unit or volume changed from the client portal',
+    'third_party.reassessment_triggered': 'Early reassessment triggered', 'third_party.conditions_met': 'All conditions met',
+    'vendor_person.added': 'Person at the third party added', 'vendor_person.joined': 'Person at the third party joined from their link',
+    'vendor_person.changed': 'Person at the third party updated', 'vendor_person.removed': 'Person at the third party removed',
+    'vendor_person.made_main': 'Main contact changed',
   };
   const openAssessment = assessmentList.find(a => at.isOpen(a));
   const startType = at.TYPE_FOR_STATUS[t.status];
-  const money = n => n == null ? '-' : Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  const money = (n, cur) => (n == null ? '-' : cur ? tpLabels.money(n, cur) : Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 }));
   const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
   const tpHref = '/tprm/clients/' + tpClient.id + '/third-parties/' + t.id;
   const hasApproval = typeof approval !== 'undefined' && approval;
@@ -34,7 +43,7 @@
     { key: 'assessments', label: 'Assessments', count: assessmentList.length },
     { key: 'issues', label: 'Issues', count: pf ? pf.findings.length : 0 },
     { key: 'conditions', label: 'Conditions', count: pf ? pf.conditions.length : 0 },
-    { key: 'documents', label: 'Documents', count: pf ? pf.documents.length : 0 },
+    { key: 'documents', label: 'Documents', count: pf ? pf.documents.length + (pf.library ? pf.library.documents.length : 0) : 0 },
     { key: 'contracts', label: 'Contracts' },
     { key: 'services', label: 'Services', count: services.length },
   ];
@@ -60,8 +69,8 @@
   <div class="tprm-head-main">
     <h1 class="page-title"><%= t.name %></h1>
     <% const stg = typeof stage !== 'undefined' ? stage : null;
-       const position = [tp.STATUS_LABELS[t.status] + '.', t.current_tier ? 'Rated ' + tp.TIER_LABELS[t.current_tier] + '.' : 'No tier yet.',
-         stg && openAssessment ? at.TYPE_LABELS[openAssessment.type] + ' in progress: ' + stg.step.charAt(0).toLowerCase() + stg.step.slice(1) + ', waiting on ' + (stg.waitingName || stg.waitingLabel.toLowerCase()) + '.'
+       const position = [t.status === 'exited' && t.exit_date ? 'Exited on ' + tpf.day(t.exit_date) + (t.exit_reason ? ': ' + t.exit_reason.replace(/[.\s]+$/, '') : '') + '.' : tp.STATUS_LABELS[t.status] + '.', t.current_tier ? 'Rated ' + tp.TIER_LABELS[t.current_tier] + '.' : 'No tier yet.',
+         stg && openAssessment ? (openAssessment.type_label || at.TYPE_LABELS[openAssessment.type]) + ' in progress: ' + stg.step.charAt(0).toLowerCase() + stg.step.slice(1) + ', waiting on ' + (stg.waitingName || stg.waitingLabel.toLowerCase()) + '.'
            : (t.last_assessment_date ? 'Last assessed ' + tpf.day(t.last_assessment_date) + '.' : 'Not assessed yet.')].join(' '); %>
     <p class="tprm-status-line" data-tprm-position><%= position %></p>
     <div class="tprm-head-sub"><%= [t.category, t.country].filter(Boolean).join(' · ') %></div>
@@ -79,7 +88,7 @@
   <div class="tprm-head-actions">
     <% if (canManage) { %><a class="btn btn-secondary" href="<%= tpHref %>/edit">Edit</a><% } %>
     <% if (openAssessment) { %>
-      <a class="btn btn-primary" href="<%= tpHref %>/assessments/<%= openAssessment.id %>" data-tprm-open-assessment>Continue <%= at.TYPE_LABELS[openAssessment.type].toLowerCase() %></a>
+      <a class="btn btn-primary" href="<%= tpHref %>/assessments/<%= openAssessment.id %>" data-tprm-open-assessment>Continue <%= (openAssessment.type_label || at.TYPE_LABELS[openAssessment.type]).toLowerCase() %></a>
     <% } else if (canManage && startType) { %>
       <form method="POST" action="<%= tpHref %>/assessments" data-tprm-start-assessment>
         <input type="hidden" name="_csrf" value="<%= csrf %>">
@@ -107,13 +116,13 @@
 <section <%- tabAttrs('overview') %> id="overview">
   <% if (pf) { const lr = pf.latestRec; %>
   <div class="fx-cards4" data-tprm-party-cards>
-    <section class="fx-card"><h3 class="fx-h4">Last review <span><%= lr ? (pf.assessments.find(a => Number(a.id) === Number(lr.assessment_id)) || {}).type === 'reassessment' ? 'Reassessment' : 'Onboarding' : '' %></span></h3>
+    <section class="fx-card"><h3 class="fx-h4">Last review <span><%= lr ? (() => { const la = pf.assessments.find(a => Number(a.id) === Number(lr.assessment_id)) || {}; return la.type_label || (la.type === 'reassessment' ? 'Reassessment' : 'Onboarding'); })() : '' %></span></h3>
       <% if (lr) { %><div class="fx-big fx-big-s"><%= OUT[lr.outcome] || lr.outcome %></div><div class="fx-muted fx-sm">Issued <%= tpf.day(new Date(lr.issued_at).toISOString().slice(0, 10)) %><%= lr.author_name ? ' by ' + lr.author_name : '' %><%= lr.reviewer_name ? ', checked by ' + lr.reviewer_name : '' %></div>
       <% } else { %><div class="fx-big fx-big-s">None issued</div><div class="fx-muted fx-sm"><%= pf.open ? 'A review is in progress' : 'No review yet' %></div><% } %></section>
     <section class="fx-card"><h3 class="fx-h4">Conditions</h3><div class="fx-big"><%= pf.conditionsDone %> <span class="fx-of">of <%= pf.liveConditions.length %> met</span></div>
       <div class="fx-prog"><b style="width:<%= pf.liveConditions.length ? Math.round(pf.conditionsDone / pf.liveConditions.length * 100) : 0 %>%"></b></div></section>
-    <section class="fx-card"><h3 class="fx-h4">Documents <span><%= pf.documents.length %> held, <%= pf.released %> released</span></h3><div class="fx-big"><%= pf.expiring.length %> <span class="fx-of">expire in 12 months</span></div>
-      <div class="fx-muted fx-sm"><%= pf.expiring.map(e => e.label + ' ' + tpf.day(e.date)).join(', ') || 'Nothing expiring' %></div></section>
+    <section class="fx-card" data-tprm-party-docs-card><h3 class="fx-h4">Documents <span><%= pf.held %> held, <%= pf.shared %> shared with the client</span></h3><div class="fx-big"><%= pf.expiring.length %> <span class="fx-of">expire in 12 months</span></div>
+      <div class="fx-muted fx-sm"><%= [pf.expiring.map(e => e.label + ' ' + tpf.day(e.date)).join(', '), pf.expired ? pf.expired + ' already expired' : ''].filter(Boolean).join('. ') || 'Nothing expiring' %></div></section>
     <section class="fx-card"><h3 class="fx-h4">Open findings</h3><div class="fx-big<%= pf.openFindings ? ' fx-warn' : '' %>"><%= pf.openFindings %></div><div class="fx-muted fx-sm">of <%= pf.findings.length %> raised</div></section>
   </div>
   <div class="fx-ov">
@@ -178,11 +187,14 @@
       <div class="fx-table fx-flat"><table><thead><tr><th>Question</th><th>Answer</th><th>Points to</th></tr></thead><tbody>
       <% sc.criticality.forEach(r => { %><tr<%- r.deciding ? ' class="is-late"' : '' %>><td><%= r.text %></td><td><%= r.answer %></td><td><%- r.tier ? fxTag(String(r.tier).toLowerCase(), r.tier) : '-' %><%= r.deciding ? ' sets the tier' : '' %></td></tr><% }) %>
       </tbody></table></div></section><% } %>
-    <section class="fx-card fx-mt" data-tprm-party-assurance><h3 class="fx-h4">Assurance <span>from the supplier's answers</span></h3>
-      <% const iso = pf.reports.find(r => r.kind === 'iso27001'); const soc = pf.reports.find(r => r.kind === 'soc2_type2'); const ins = pf.insurance; const insF = ins && ins.fields ? ins.fields : {}; %>
-      <dl class="fx-kv"><div><dt>ISO 27001</dt><dd><%= iso ? (iso.expires_on ? 'Valid to ' + tpf.day(iso.expires_on) : 'Provided') + (iso.check_status === 'accepted' ? ', checked' : ', not checked yet') : 'Not provided' %></dd></div>
-        <div><dt>SOC 2 Type II</dt><dd><%= soc ? (soc.period_end ? 'Period to ' + tpf.day(soc.period_end) : 'Provided') + (soc.check_status === 'accepted' ? ', checked' : ', not checked yet') : 'Not provided' %></dd></div>
-        <div><dt>Cyber insurance</dt><dd><%= !ins ? 'Not asked at this tier' : ins.response === 'yes' ? ([insF.sum_insured, insF.insurer, insF.policy_period].filter(Boolean).join(', ') || 'Held') : 'Not held' %></dd></div></dl></section>
+    <section class="fx-card fx-mt" data-tprm-party-assurance><h3 class="fx-h4">Assurance <span>from the supplier's answers and uploaded certificates</span></h3>
+      <% const asr = pf.assurance || pf.reports; const iso = asr.find(r => r.kind === 'iso27001'); const soc = asr.find(r => r.kind === 'soc2_type2'); const ins = pf.insurance; const insF = ins && ins.fields ? ins.fields : {};
+         const checkNote = r => (r.source === 'document' ? ', filed on the supplier' : r.source === 'evidence' ? ', uploaded as evidence' : r.check_status === 'accepted' ? ', checked' : ', not checked yet'); %>
+      <dl class="fx-kv"><div data-tprm-assurance-iso><dt>ISO 27001</dt><dd><%= iso ? (iso.expires_on ? 'Valid to ' + tpf.day(iso.expires_on) : 'Provided') + checkNote(iso) : 'Not provided' %></dd></div>
+        <div data-tprm-assurance-soc2><dt>SOC 2 Type II</dt><dd><%= soc ? (soc.period_end ? 'Period to ' + tpf.day(soc.period_end) : 'Provided') + checkNote(soc) : 'Not provided' %></dd></div>
+        <div data-tprm-assurance-insurance="<%= pf.insuranceState || (ins ? 'answered' : 'not_answered') %>"><dt>Cyber insurance</dt><dd><%= ins ? (ins.response === 'yes' ? ([insF.sum_insured, insF.insurer, insF.policy_period].filter(Boolean).join(', ') || 'Held') : 'Not held') : pf.insuranceState === 'not_asked' ? 'Not asked at this tier' : 'Not answered yet' %></dd></div></dl></section>
+    <% const lapsing = pf.library ? [...pf.library.expired, ...pf.library.expiring] : []; if (lapsing.length) { %><section class="fx-card fx-mt" data-tprm-party-doc-expiry><h3 class="fx-h4">Supplier documents to renew <span>expired or expiring in the next <%= pf.library.soonDays %> days</span></h3>
+      <dl class="fx-kv"><% lapsing.forEach(d => { %><div data-tprm-party-doc-expiry-item="<%= d.id %>" data-tprm-party-doc-expiry-state="<%= d.expiry.key %>"><dt><%= d.title %></dt><dd class="<%= d.expiry.key === 'expired' ? 'fx-bad' : '' %>"><%= d.expiry.key === 'expired' ? 'Expired ' : 'Expires ' %><%= tpf.day(d.expires_on) %></dd></div><% }) %></dl></section><% } %>
   </div>
   <div>
     <section class="fx-card" data-tprm-party-next><h3 class="fx-h4">Next steps</h3>
@@ -215,6 +227,8 @@
   </tbody></table></div><% } %></div>
 </section>
 <section <%- tabAttrs('documents') %> id="documents">
+  <%- include('tprm_third_party_library', { lib: pf.library, tpHref, csrf, canManage }) %>
+  <h3 class="fx-h4 fx-mt">Files from reviews</h3>
   <div class="fx-table" data-tprm-party-documents>
   <% if (!pf.documents.length) { %><div class="fx-empty">No documents yet.</div><% } else { %>
   <div class="table-scroll"><table><thead><tr><th>Document</th><th>From</th><th>Note</th><th>Added</th><th>Client sees it</th><th></th></tr></thead><tbody>
@@ -267,6 +281,7 @@
                 <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= p.row_version %>">
                 <% if (ee) { %><div class="callout tprm-callout-error tprm-full" role="alert" data-tprm-form-errors><ul class="tprm-list"><% ee.errors.forEach(e => { %><li><%= e %></li><% }) %></ul></div><% } %>
                 <%- include('tprm_person_fields', { v: ev, idp: 'p' + p.id }) %>
+                <% if (pp.openLinks && pp.openLinks.has(p.email)) { %><p class="meta text-xs tprm-full" data-tprm-person-open-link="<%= p.id %>">A link sent to <%= p.email %> is open. If you change the email, that link stops opening. Reminders then go to the main contact at their current address, with a sign-in button, or you can send a new link.</p><% } %>
                 <div class="tprm-full tprm-actions"><button class="btn btn-secondary btn-xs" type="submit">Save</button></div>
               </form>
             </details>
@@ -310,7 +325,7 @@
       <tbody>
       <% assessmentList.forEach(a => { %>
         <tr data-tprm-assessment-row="<%= a.id %>">
-          <td><a href="<%= tpHref %>/assessments/<%= a.id %>"><%= at.TYPE_LABELS[a.type] %></a></td>
+          <td><a href="<%= tpHref %>/assessments/<%= a.id %>"><%= a.type_label || at.TYPE_LABELS[a.type] %></a></td>
           <td><%- include('partials/tprm_status', { text: a.status === 'tier_confirmed' ? 'Tier confirmed, assessment in progress' : at.STATUS_LABELS[a.status], tone: ['tier_proposed', 'recommendation_issued', 'information_requested'].includes(a.status) ? 'attention' : 'quiet' }) %></td>
           <td><%= a.final_tier && a.status !== 'scoping' ? tp.TIER_LABELS[a.final_tier] : '-' %></td>
           <td class="meta"><%= tpf.day(a.created_at) %></td>
@@ -337,7 +352,7 @@
           <td><%= dash(s.hosting_countries) %></td>
           <td><%= s.contract_start || s.contract_end ? dash(tpf.day(s.contract_start)) + ' to ' + dash(tpf.day(s.contract_end)) : '-' %></td>
           <td class="tprm-nowrap"><%= s.notice_period_days == null ? '-' : s.notice_period_days + ' days' %></td>
-          <td class="num tprm-right"><%= money(s.annual_spend) %></td>
+          <td class="num tprm-right"><%= money(s.annual_spend, s.spend_currency) %></td>
           <td><%= s.sole_source ? 'Yes' : 'No' %></td>
           <% if (canManage) { %><td class="tprm-nowrap">
             <a class="btn btn-ghost btn-xs" href="<%= tpHref %>/services/<%= s.id %>/edit">Edit</a>
@@ -390,7 +405,7 @@
       <span><strong class="tprm-strong"><%= actionLabels[e.action] || e.action %></strong>
         <% const changed = e.after_state ? Object.keys(e.after_state).filter(k => !['service_id', 'import_batch_id', 'file_line'].includes(k)) : []; %>
         <% if (e.action === 'third_party.client_decision' && e.after_state) { %><span class="meta"> · <%= e.after_state.outcome_label %></span><% } %>
-        <% if ((e.action.endsWith('.updated') || e.action === 'third_party.placement_recalculated') && changed.length) { %><span class="meta"> · <%= changed.map(k => k.replace(/_/g, ' ')).join(', ') %></span><% } %></span>
+        <% if ((e.action.endsWith('.updated') || e.action === 'third_party.placement_recalculated' || e.action === 'third_party.due_date_corrected') && changed.length) { %><span class="meta"> · <%= changed.map(k => k.replace(/_/g, ' ')).join(', ') %></span><% } %></span>
       <span class="meta"><%= e.actor_name || 'Unknown user' %> · <%= tpf.dayTime(e.created_at) %></span>
     </div>
   <% }) %>

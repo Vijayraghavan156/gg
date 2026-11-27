@@ -143,8 +143,21 @@ function register(app, deps) {
       : 'Client created - assign a programme to begin'));
   });
 
+  function renderThirdPartyOnlySetup(req, res) {
+    const perms = res.locals.userPerms || [];
+    return res.render('tprm_workspace_setup', {
+      user: req.user,
+      ws: req.workspace,
+      active: 'setup',
+      canUpdateWorkspace: rbac.hasPermission(perms, 'workspace.update'),
+      canSettings: rbac.hasPermission(perms, 'tp.settings'),
+      outcomeOptions: isoLifecycle.OUTCOME_OPTIONS,
+    });
+  }
+
   app.get('/workspaces/:wsId/setup', requireAuth, requireWorkspace, async (req, res) => {
     const ws = req.workspace;
+    if (req.tpOnlyWorkspace) return renderThirdPartyOnlySetup(req, res);
     res.render('client_setup', {
       user: req.user,
       ws,
@@ -158,6 +171,7 @@ function register(app, deps) {
   app.get('/workspaces/:wsId', requireAuth, requireWorkspace, async (req, res) => {
     const ws = req.workspace;
     const frameworkCodes = Array.isArray(ws.frameworks) ? ws.frameworks : [];
+    if (req.tpOnlyWorkspace) return renderThirdPartyOnlySetup(req, res);
     if (!req.query.skipSetupRedirect && (await needsSetup(db, ws))) {
       return res.redirect(`/workspaces/${ws.id}/setup`);
     }
@@ -670,7 +684,7 @@ function register(app, deps) {
       const r = await emailLib.sendInviteEmail({
         toEmail: email, toName: name, inviterName: req.user.name,
         firmName: firmRow && firmRow.name,
-        role: `Client-side - ${rbac.ROLE_LABELS[role] || role}`,
+        role: rbac.ROLE_LABELS[role] || role,
         token: raw, expiresAt, firmId: req.user.firm_id
       });
       if (!r.ok) sendError = r.error || 'Email delivery failed';

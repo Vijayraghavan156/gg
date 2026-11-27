@@ -8,6 +8,7 @@
   const hasIso27001 = navFrameworks.includes('iso27001');
   const gapAssessmentOnly = hasIso27001 && ws.engagement_outcome === 'gap_assessment_only';
   const showIso27001Intake = hasIso27001;
+  const tpOnly = !hasIso27001 && typeof thirdPartyOnly !== 'undefined' && thirdPartyOnly === true;
 
   let navDomains = [
     {
@@ -121,7 +122,18 @@
       ]
     }
   ];
-  const newExperience = typeof experienceEnabled !== 'undefined' && experienceEnabled;
+  if (tpOnly) {
+    const tpOnlyKeep = { work: ['inbox'], settings: ['setup', 'team', 'system', 'activity'] };
+    navDomains = navDomains
+      .filter(domain => tpOnlyKeep[domain.id])
+      .map(domain => ({ ...domain, items: domain.items.filter(item => item.active.some(a => tpOnlyKeep[domain.id].includes(a))) }));
+    navDomains[0].label = 'Work';
+    navDomains[0].active = ['inbox'];
+    if (typeof thirdPartyHome === 'string' && thirdPartyHome) {
+      navDomains[0].items.unshift({ label: 'Third-party risk', href: thirdPartyHome, active: ['tprm-portfolio'] });
+    }
+  }
+  const newExperience = !tpOnly && typeof experienceEnabled !== 'undefined' && experienceEnabled;
   if (newExperience) {
     const original = navDomains;
     const collect = ids => original.filter(d=>ids.includes(d.id)).flatMap(d=>d.items);
@@ -189,9 +201,9 @@
 
 %>
 
-<a href="/workspaces/<%= ws.id %>" data-shortcut="g o" class="nav-item <%= navActive === 'overview' ? 'active' : '' %>" <% if (navActive === 'overview') { %>aria-current="page"<% } %>>
+<a href="/workspaces/<%= ws.id %>" data-shortcut="g o" class="nav-item <%= navActive === 'overview' || (tpOnly && navActive === 'setup') ? 'active' : '' %>" <% if (navActive === 'overview' || (tpOnly && navActive === 'setup')) { %>aria-current="page"<% } %>>
   <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-  <span class="nav-item-text">Overview</span>
+  <span class="nav-item-text"><%= tpOnly ? 'Client overview' : 'Overview' %></span>
 </a>
 
 <% navDomains.forEach(domain => {

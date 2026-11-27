@@ -196,7 +196,7 @@ async function answerAndSubmit(ctx) {
   const saved = await vpost('/vendor/q/', ctx.token, '/save', [...answerFormFields(answers, BANK_BY_ID), ['intent', 'save']]);
   assert.equal(saved.status, 303);
   const res = await vpost('/vendor/q/', ctx.token, '/submit', []);
-  assert.equal(res.status, 200, res.text.slice(0, 200));
+  assert.equal(res.status, 303, res.text.slice(0, 200));
   assert.equal((await qRow(ctx.a)).status, 'submitted');
 }
 
@@ -527,6 +527,8 @@ test('9. each step of a review is emailed to the named reviewer or the lead, nev
   await propose();
   assert.deepEqual(await to('consultant_tier_to_confirm'), [senior.email]);
   assert.match((await mails(c.id, 'tprm:consultant_tier_to_confirm'))[0].subject, /Tier to confirm: Stage Mail Supplier/);
+  assert.doesNotMatch((await mails(c.id, 'tprm:consultant_tier_to_confirm'))[0].body_html, /No reviewer is named/);
+  assert.match((await mails(c.id, 'tprm:consultant_tier_to_confirm'))[0].body_html, /You are the reviewer named for this third party/);
   assert.equal((await senior.session.post(`${aBase(c.id, tp, a)}/return`, { comment: 'Recheck the data the service handles.', row_version: String((await assessmentRow(a)).row_version) })).status, 302);
   assert.deepEqual(await to('consultant_tier_returned'), [consultant.email]);
   await propose();
@@ -555,12 +557,34 @@ test('9. each step of a review is emailed to the named reviewer or the lead, nev
   }
 });
 
-test('10. no reviewer named: nobody is told a tier waits for them', async () => {
+test('10. no reviewer named: everyone who can confirm the tier is told it waits, never the proposer', async () => {
   const c = await tprmClient('Stage Mail Quiet Client');
   const tp = await addThirdParty(c.id, 'Quiet Supplier', 'proposed');
   await startAssessment(c.id, tp);
-  assert.equal((await mails(c.id, 'tprm:consultant_tier_to_confirm')).length, 0);
+  const told = (await mails(c.id, 'tprm:consultant_tier_to_confirm')).map(m => m.to_email);
+  assert.ok(told.includes(senior.email), 'the senior on the client is told');
+  assert.ok(!told.includes(consultant.email), 'not the proposer');
+  const ws = await db.prepare('SELECT * FROM workspaces WHERE id=?').get(c.id);
+  const expected = (await require('../lib/tprm/team').reviewerCandidates(db, ws)).filter(u => Number(u.id) !== consultant.id).map(u => u.email);
+  assert.deepEqual([...told].sort(), [...expected].sort(), 'exactly the people who may confirm it');
   assert.equal((await mails(c.id, 'tprm:consultant_tier_confirmed')).length, 1, 'the lead hears the tier is confirmed');
+  for (const m of await mails(c.id, 'tprm:consultant_tier_to_confirm')) {
+    assert.doesNotMatch(m.body_html, /You are the reviewer named/, 'nobody is told they are the named reviewer when none is named');
+    assert.match(m.body_text || m.body_html, /confirm it or send it back/);
+    assert.match(m.body_html, /No reviewer is named for this third party, so everyone who can confirm tiers for this client was told/);
+  }
+});
+
+test('10b. the tier-to-confirm email gives the real reason it came to this person', () => {
+  const base = { toName: 'Meera', clientName: 'Acme', thirdPartyName: 'Varma', byName: 'Kavya', tierLabel: 'High', url: 'https://app.example/a' };
+  const named = email.renderTprmEmail('consultant_tier_to_confirm', { ...base, reviewerNamed: true }).text;
+  const none = email.renderTprmEmail('consultant_tier_to_confirm', { ...base, reviewerNamed: false }).text;
+  const unknown = email.renderTprmEmail('consultant_tier_to_confirm', base).text;
+  assert.match(named, /You are the reviewer named for this third party/);
+  assert.match(none, /No reviewer is named for this third party, so everyone who can confirm tiers for this client was told/);
+  assert.doesNotMatch(none, /You are the reviewer named/);
+  assert.doesNotMatch(unknown, /reviewer named|No reviewer/);
+  assert.match(unknown, /You can confirm tiers for this client/);
 });
 
 test('11. questionnaires out: listed until submitted; remind, reopen with a new link, and cancel as not returned', async () => {
@@ -601,4 +625,84 @@ test('11. questionnaires out: listed until submitted; remind, reopen with a new 
   assert.equal(tracker.stateOf(row({ expires_at: '2027-01-15T00:00:00Z' }), now), 'due_soon');
   assert.equal(tracker.stateOf(row({ expires_at: '2027-01-09T00:00:00Z' }), now), 'overdue');
   assert.equal(tracker.stateOf(row({ link_status: 'revoked' }), now), 'overdue');
+});
+
+test('12. a reminder that goes is confirmed and recorded with who sent it; one that fails says so and can be tried again the same day', async () => {
+  const c = await tprmClient('Remind Trace Client');
+  const ctx = await linked(c, 'Remind Trace Supplier');
+  const act = `/tprm/clients/${c.id}/questionnaires-out/${ctx.a}`;
+  const email = require('../lib/email');
+  const real = email.sendEmail;
+  email.sendEmail = async () => ({ ok: false, error: 'mailbox unavailable' });
+  let failed;
+  try {
+    failed = await consultant.session.post(`${act}/remind`, {});
+  } finally { email.sendEmail = real; }
+  assert.match(toast(failed), /No reminder sent: the email to priya@thirdparty\.example\.net could not be sent \(mailbox unavailable\)/);
+  const retried = await consultant.session.post(`${act}/remind`, {});
+  assert.match(toast(retried), /Reminder sent to Priya Vendor at priya@thirdparty\.example\.net, and recorded in the assessment history/,
+    'a failed send does not count as the reminder for today');
+  const again = await consultant.session.post(`${act}/remind`, {});
+  assert.match(toast(again), /No reminder sent: a reminder already went today/);
+  const history = await consultant.session.get(`${aBase(c.id, ctx.tp, ctx.a)}?step=history`);
+  assert.match(history.text, new RegExp(`${consultant.name || 'Consultant'}[^<]* sent a reminder to the third party \\(Priya Vendor\\) by email|sent a reminder to the third party \\(Priya Vendor\\) by email`));
+  assert.match(history.text, /Email to the third party \(Priya Vendor\) not sent/);
+  assert.match(history.text, /tried to send a reminder to the third party \(Priya Vendor\) by email/, 'the failed try is not shown as sent');
+
+  const a = await db.prepare('SELECT a.*, t.name AS third_party_name FROM tp_assessments a JOIN tp_third_parties t ON t.id = a.third_party_id WHERE a.id = ?').get(ctx.a);
+  const b = { a, ws: await db.prepare('SELECT * FROM workspaces WHERE id=?').get(c.id), firmName: '', clientName: 'Remind Trace Client', f: require('../lib/tprm/format').forZone('UTC') };
+  const send = () => messages.deliver(db, b, { kind: 'vendor_reminder_7', key: `scheduled-check:${ctx.a}`, role: 'third_party',
+    to: { name: 'Priya Vendor', email: VENDOR }, data: { url: null, sentDay: '', until: '', total: 1, answered: 0, contact: null } });
+  email.sendEmail = async () => ({ ok: false, error: 'mailbox unavailable' });
+  try {
+    assert.equal((await send()).ok, false);
+    assert.deepEqual(await send(), { skipped: 'already_sent' }, 'a scheduled email that failed is not sent again on the next run');
+  } finally { email.sendEmail = real; }
+});
+
+test('12b. nothing is emailed to an exited third party, and the reminder button says why', async () => {
+  const c = await tprmClient('Exited Mail Client');
+  const ctx = await linked(c, 'Exited Mail Supplier');
+  await db.prepare("UPDATE tp_third_parties SET status = 'exited' WHERE id = ?").run(ctx.tp);
+  const before = (await db.prepare('SELECT COUNT(*)::int AS n FROM email_outbox WHERE workspace_id=?').get(c.id)).n;
+  const act = `/tprm/clients/${c.id}/questionnaires-out/${ctx.a}`;
+  const reminded = await consultant.session.post(`${act}/remind`, {});
+  assert.match(toast(reminded), /No reminder sent: the third party has exited, so its links no longer open and nothing is emailed to it/);
+  const r = await messages.manualReminder(db, { workspaceId: c.id, assessmentId: ctx.a });
+  assert.deepEqual(r, { sent: false, reason: 'the third party has exited, so its links no longer open and nothing is emailed to it' });
+  const a = await db.prepare('SELECT a.*, t.name AS third_party_name FROM tp_assessments a JOIN tp_third_parties t ON t.id = a.third_party_id WHERE a.id = ?').get(ctx.a);
+  const b = { a, ws: await db.prepare('SELECT * FROM workspaces WHERE id=?').get(c.id), firmName: '', clientName: 'Exited Mail Client', f: require('../lib/tprm/format').forZone('UTC') };
+  assert.deepEqual(await messages.deliver(db, b, { kind: 'vendor_clarification', key: `exited-check:${ctx.a}`, role: 'third_party',
+    to: { name: 'Priya Vendor', email: VENDOR }, data: { url: null, sentDay: '', until: '', contact: null } }), { skipped: 'exited' });
+  const link = (await vlinks(ctx.a))[0];
+  await messages.reminders(db, { now: new Date(new Date(link.expires_at).getTime() - 12 * 3600 * 1000) });
+  assert.equal((await db.prepare('SELECT COUNT(*)::int AS n FROM email_outbox WHERE workspace_id=?').get(c.id)).n, before, 'no reminder, clarification or issue email went');
+});
+
+test('12c. when the complete-enough count cannot be worked out, the reminder still goes and the error is logged', async () => {
+  const c = await tprmClient('Count Error Client');
+  const ctx = await linked(c, 'Count Error Supplier');
+  const vendorAnswers = require('../lib/tprm/vendor-answers');
+  const real = vendorAnswers.progressCounts;
+  const realError = console.error;
+  const logged = [];
+  vendorAnswers.progressCounts = async () => { throw new Error('bank unreadable'); };
+  console.error = (...args) => { logged.push(args.join(' ')); };
+  let r;
+  try {
+    r = await messages.manualReminder(db, { workspaceId: c.id, assessmentId: ctx.a });
+  } finally {
+    vendorAnswers.progressCounts = real;
+    console.error = realError;
+  }
+  assert.equal(r.sent, true);
+  assert.ok(logged.some(l => /answeredCount/.test(l) && /bank unreadable/.test(l)), logged.join('\n'));
+});
+
+test('5b. a client who turns off third-party risk emails is not emailed about a decision, and other emails stay on', async () => {
+  const c = await tprmClient('Tprm Muted Client');
+  await db.prepare("UPDATE users SET tprm_email_notify='off' WHERE id=?").run(c.owner.id);
+  await issued(c, 'Quiet Owner Print');
+  assert.equal((await mails(c.id, 'tprm:client_decision_needed')).length, 0);
+  assert.notEqual((await db.prepare('SELECT email_notify FROM users WHERE id=?').get(c.owner.id)).email_notify, 'off');
 });

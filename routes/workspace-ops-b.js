@@ -20,6 +20,7 @@ function register(app, deps) {
           getActiveFirmId, isFirmUser, isFirmOwner, getOrCreateState,
           getActiveMethodology, defaultMethodology, methodologyBand, ensureWorkspaceMethodology,
           activeEntityFilter, computeNeedsAttention, getWorkspace, listWorkspaces, permissionsFor } = deps;
+  const tprmShell = deps.tprmShell || null;
 
   app.post('/workspaces/:wsId/bulk-controls', requireAuth, requireWorkspace, requirePermission('control.bulk_update'), async (req, res) => {
     const { ids, status, applicability, owner_id } = req.body;
@@ -123,12 +124,19 @@ function register(app, deps) {
     }
 
     const wsList = (await listWorkspaces(req.user)).filter(w => w.client_name.toLowerCase().includes(q) || (w.industry && w.industry.toLowerCase().includes(q)));
-    wsList.slice(0, 5).forEach(w => results.push({
-      type: 'Client', label: w.client_name, sublabel: w.industry || w.stage,
-      href: '/workspaces/' + w.id, badge: w.stage.replace(/_/g, ' ')
-    }));
+    const homeUrls = new Map((res.locals.firmWorkspaces || []).map(w => [Number(w.id), w.homeUrl]));
+    wsList.slice(0, 5).forEach(w => {
+      const href = homeUrls.get(Number(w.id)) || '/workspaces/' + w.id;
+      const tprmHome = href !== '/workspaces/' + w.id;
+      results.push({
+        type: 'Client', label: w.client_name, sublabel: w.industry || (tprmHome ? 'Third-party risk' : w.stage),
+        href, badge: tprmHome ? 'third-party risk' : w.stage.replace(/_/g, ' ')
+      });
+    });
+    if (tprmShell) results.push(...await tprmShell.searchThirdParties(req.user, q));
+    const wsThirdPartyOnly = !!wsId && (homeUrls.get(wsId) || `/workspaces/${wsId}`) !== `/workspaces/${wsId}`;
 
-    if (wsId) {
+    if (wsId && !wsThirdPartyOnly) {
       const ws = await getWorkspace(wsId, req.user);
       if (ws) {
         const items = await db.prepare(`SELECT rq.ref AS id, rq.title, rq.req_type AS type, f.code AS framework
@@ -409,7 +417,14 @@ function register(app, deps) {
       INNER JOIN users u ON u.id=a.user_id WHERE a.workspace_id=? ORDER BY u.name`).all(req.workspace.id);
     const actions = (await db.prepare(`SELECT DISTINCT action FROM audit_log WHERE workspace_id=? ORDER BY action`).all(req.workspace.id)).map(r => r.action);
     const types = (await db.prepare(`SELECT DISTINCT entity_type FROM audit_log WHERE workspace_id=? AND entity_type IS NOT NULL ORDER BY entity_type`).all(req.workspace.id)).map(r => r.entity_type);
-    res.render('activity_log', { user: req.user, ws: req.workspace, log: pg.rows, pg, pagerHref: p => pageHref(req, p), filters, users, actions, types });
+    const tprmActivity = tprmShell && !filters.action && !filters.entity_type && pg.page === 1
+      ? await tprmShell.workspaceActivity(req.user, req.workspace.id, filters)
+      : { available: false, list: [], total: 0 };
+    for (const e of tprmActivity.list) {
+      if (e.actorId && e.who && !users.some(u => Number(u.id) === e.actorId)) users.push({ id: e.actorId, name: e.who });
+    }
+    users.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    res.render('activity_log', { user: req.user, ws: req.workspace, log: pg.rows, pg, pagerHref: p => pageHref(req, p), filters, users, actions, types, tprmActivity });
   });
 
   app.get('/workspaces/:wsId/risks/:id/treatments', requireAuth, requireWorkspace, requirePermission('risk.view'), async (req, res) => {
@@ -586,6 +601,10 @@ function register(app, deps) {
   app.get('/workspaces/:wsId/inbox', requireAuth, requireWorkspace, async (req, res) => {
     const wsId = req.workspace.id;
     const computed = await computeNeedsAttention(wsId);
+    if (req.tpOnlyWorkspace && tprmShell) {
+      computed.unshift(...await tprmShell.attention(req.user, wsId));
+      computed.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'high' ? -1 : 1));
+    }
     const filter = req.query.filter === 'all' ? 'all' : 'unread';
     const notifications = (await require('../lib/notification-delivery').list(db,{workspaceId:wsId,actor:req.user,unreadOnly:filter==='unread',limit:200}))
       .map(row=>({...row,read_at:row.actor_read_at,dismissed_at:row.actor_dismissed_at}));

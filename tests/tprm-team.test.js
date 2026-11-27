@@ -157,3 +157,110 @@ test('"waiting for me": a tier waits for the named reviewer only while that pers
     await db.prepare('UPDATE users SET active = 1 WHERE id = ?').run(reviewer.id);
   }
 });
+
+const selectOf = (html, id) => (html.match(new RegExp(`<select[^>]*id="${id}"[\\s\\S]*?</select>`)) || [''])[0];
+function submittedValue(select) {
+  const options = [...select.matchAll(/<option value="([^"]*)"([^>]*)>([^<]*)</g)];
+  const chosen = options.find(o => /\bselected\b/.test(o[2])) || options[0];
+  return chosen ? chosen[1] : '';
+}
+
+test('lead pickers offer everyone who can open the client, keep the current lead, and history says what changed', async () => {
+  const senior = await makeUser(`team-crossview-${Date.now()}@test.local`, 'senior_consultant', 'Vera Crossview');
+  const clientUser = Number((await db.prepare(`INSERT INTO users (email,password_hash,name,user_type,firm_id,active)
+    VALUES (?,?,?,'client',?,1)`).run(`team-client-${Date.now()}@test.local`, bcrypt.hashSync(PASSWORD, 4), 'Cleo Client', firmId)).lastInsertRowid);
+  const c = await clientWithThirdParty('Meadow Freight');
+  await db.prepare('INSERT INTO workspace_members (workspace_id,user_id,role) VALUES (?,?,?)').run(c.ws, clientUser, 'client_owner');
+  const m = await sessionFor(manager);
+
+  const register = await m.get(`/tprm/clients/${c.ws}`);
+  const bulk = selectOf(register.text, 'bulk-lead');
+  assert.match(bulk, /Vera Crossview/, 'a senior who reaches the client by cross-view is offered');
+  assert.doesNotMatch(bulk, /Cleo Client/, 'a client user is never offered as lead');
+  assert.doesNotMatch(bulk, /Oscar Outsider/, 'a consultant who cannot open the client is not offered');
+  const party = await m.get(c.base);
+  assert.match(selectOf(party.text, 'team_owner_id'), /Vera Crossview/);
+  assert.match(selectOf(party.text, 'team_reviewer_id'), /Vera Crossview/);
+
+  assert.equal((await m.post(`${c.base}/assessments`, {})).status, 302);
+  const open = await openOf(c.ws, c.tp);
+  assert.equal((await m.post(`/tprm/clients/${c.ws}/third-parties/bulk-lead`, { ids: String(c.tp), lead: String(senior.id) })).status, 302);
+  assert.equal(Number((await openOf(c.ws, c.tp)).lead_consultant_id), senior.id, 'setLead accepts the senior');
+  const refused = await m.post(`/tprm/clients/${c.ws}/third-parties/bulk-lead`, { ids: String(c.tp), lead: String(outsider.id) });
+  assert.match(decodeURIComponent(String(refused.location)), /people at your firm who work on this client/);
+  assert.equal(Number((await openOf(c.ws, c.tp)).lead_consultant_id), senior.id);
+
+  await db.prepare('DELETE FROM workspace_members WHERE workspace_id = ? AND user_id = ?').run(c.ws, owner.id);
+  await db.prepare('UPDATE tp_assessments SET lead_consultant_id = ? WHERE id = ?').run(owner.id, open.id);
+  const aUrl = `${c.base}/assessments/${open.id}`;
+  const details = await m.get(`${aUrl}?step=details`);
+  const leadSelect = selectOf(details.text, 'lead-consultant');
+  assert.equal(submittedValue(leadSelect), String(owner.id), 'the current lead is offered and selected even when no longer on the list');
+  const rv = (await db.prepare('SELECT row_version FROM tp_assessments WHERE id = ?').get(open.id)).row_version;
+  const saved = await m.post(`${aUrl}/details`, { row_version: String(rv), due_date: '2027-01-15',
+    client_decision_owner_id: submittedValue(selectOf(details.text, 'decision-owner')), lead_consultant_id: submittedValue(leadSelect) });
+  assert.equal(saved.status, 302);
+  const after = await db.prepare('SELECT lead_consultant_id, due_date::text AS due_date FROM tp_assessments WHERE id = ?').get(open.id);
+  assert.deepEqual([Number(after.lead_consultant_id), after.due_date], [owner.id, '2027-01-15'], 'saving the due date keeps the lead');
+
+  const rv2 = (await db.prepare('SELECT row_version FROM tp_assessments WHERE id = ?').get(open.id)).row_version;
+  assert.equal((await m.post(`${aUrl}/details`, { row_version: String(rv2), due_date: '2027-01-15', lead_consultant_id: String(senior.id) })).status, 302);
+  const history = await m.get(`${aUrl}?step=history`);
+  assert.match(history.text, /set the due date to 15 Jan 2027/);
+  assert.match(history.text, /changed the lead from Omar Owner to Vera Crossview/);
+  assert.doesNotMatch(history.text, /updated the assessment details/);
+});
+
+test('a proposed tier says who can confirm it, and a solo senior is told plainly that a manager or another senior must', async () => {
+  const c = await clientWithThirdParty('Solo Check Couriers');
+  const m = await sessionFor(manager);
+  assert.equal((await m.post(`${c.base}/services`, { description: 'Courier runs' })).status, 302);
+  const LOW = { data_handled: 'none', service_stops: 'minor', system_access: 'none', regulated: 'no', replaceability: 'easily', delivery_model: 'vendor_hosted', payments_records: 'no', sites_data: 'no' };
+  const proposeAs = async (session, ctx) => {
+    const started = await session.post(`${ctx.base}/assessments`, {});
+    const a = Number((String(started.location).match(/assessments\/(\d+)/) || [])[1]);
+    const svc = (await db.prepare('SELECT id FROM tp_services WHERE workspace_id=? AND third_party_id=?').all(ctx.ws, ctx.tp)).map(r => String(r.id));
+    const body = { services: svc, intent: 'propose', row_version: String((await db.prepare('SELECT row_version FROM tp_assessments WHERE id=?').get(a)).row_version) };
+    for (const [q, x] of Object.entries(LOW)) body[`answers[${q}]`] = x;
+    assert.equal((await session.post(`${ctx.base}/assessments/${a}/scope`, body)).status, 302);
+    return a;
+  };
+  const a = await proposeAs(await sessionFor(owner), c);
+  const page = await (await sessionFor(owner)).get(`${c.base}/assessments/${a}?step=scope`);
+  assert.match(page.text, /data-tprm-waiting>You proposed this tier\. [^<]*Rhea Reviewer[^<]* can confirm it from the review queue\./);
+  assert.match(page.text, /waiting for [^<]*Rhea Reviewer[^<]* to confirm it from the review queue\./);
+
+  const soloFirm = Number((await db.prepare("INSERT INTO firms(name) VALUES ('Solo Senior Firm')").run()).lastInsertRowid);
+  const solo = Number((await db.prepare(`INSERT INTO users (email,password_hash,name,user_type,firm_id,firm_role,active)
+    VALUES (?,?,?,'firm',?,'senior_consultant',1)`).run(`solo-${Date.now()}@test.local`, bcrypt.hashSync(PASSWORD, 4), 'Sole Senior', soloFirm)).lastInsertRowid);
+  const soloUser = { id: solo, email: (await db.prepare('SELECT email FROM users WHERE id=?').get(solo)).email };
+  const ws = Number((await db.prepare(`INSERT INTO workspaces (firm_id,client_name,frameworks,engagement_outcome)
+    VALUES (?,?,'[]','certification_support')`).run(soloFirm, 'Solo Client')).lastInsertRowid);
+  await db.prepare('INSERT INTO tp_client_settings (workspace_id, enabled) VALUES (?, true)').run(ws);
+  const s = await sessionFor(soloUser);
+  const made = await s.post(`/tprm/clients/${ws}/third-parties`, { name: 'Harbour Line', status: 'in_use' });
+  const tp = Number((String(made.location).match(/third-parties\/(\d+)/) || [])[1]);
+  const ctx = { ws, tp, base: `/tprm/clients/${ws}/third-parties/${tp}` };
+  assert.equal((await s.post(`${ctx.base}/services`, { description: 'Freight' })).status, 302);
+  const b = await proposeAs(s, ctx);
+  const soloPage = await s.get(`${ctx.base}/assessments/${b}?step=scope`);
+  assert.match(soloPage.text, /data-tprm-no-confirmer>You proposed this tier, and no one else on this client can confirm it yet\. A manager, or another senior consultant added to this client, must confirm it/);
+});
+
+test('team setup and the activity log show times in the client\'s zone, named, in the same format as third-party risk pages', async () => {
+  const c = await clientWithThirdParty('Zone Couriers');
+  await db.prepare("UPDATE workspaces SET timezone = 'Asia/Kolkata' WHERE id = ?").run(c.ws);
+  await db.prepare(`INSERT INTO audit_log (workspace_id, user_id, action, entity_type, created_at) VALUES (?, ?, 'zone_check', 'workspace', '2026-11-26 17:55:30')`)
+    .run(c.ws, manager.id);
+  const m = await sessionFor(manager);
+  const log = await m.get(`/workspaces/${c.ws}/activity-log`);
+  assert.equal(log.status, 200);
+  assert.match(log.text, /data-activity-when><time datetime="2026-11-26T17:55:30.000Z">26 Nov 2026, 11:25 pm IST<\/time>/);
+  assert.doesNotMatch(log.text, />2026-11-26 17:55:30</, 'the stored text is not shown raw');
+  await db.prepare('UPDATE users SET last_active_at = ? WHERE id = ?').run('2026-11-26T17:55:30.000Z', owner.id).catch(() => {});
+  const team = await m.get(`/workspaces/${c.ws}/team`);
+  assert.equal(team.status, 200);
+  assert.doesNotMatch(team.text, /\d{1,2}\/\d{1,2}\/\d{4}/, 'no US-style dates');
+  const party = await m.get(c.base);
+  assert.match(party.text, /<html lang="en"[^>]*data-time-zone="Asia\/Kolkata"/, 'the page clock uses the same zone');
+});

@@ -2,7 +2,11 @@
 <div class="tpu-span-all"><label class="label" for="svc-desc">Service description</label><textarea class="textarea input" id="svc-desc" name="description" rows="2" required maxlength="2000"><%= sv('description') %></textarea></div>
 <div class="tpu-span-all"><label class="label" for="svc-data">Data access</label><input class="input" id="svc-data" name="data_access" maxlength="2000" value="<%= sv('data_access') %>" placeholder="What client data it handles or can reach"></div>
 <div><label class="label" for="svc-host">Hosting countries</label><input class="input" id="svc-host" name="hosting_countries" maxlength="500" value="<%= sv('hosting_countries') %>"></div>
-<div><label class="label" for="svc-spend">Annual spend</label><input class="input" id="svc-spend" name="annual_spend" inputmode="decimal" value="<%= sv('annual_spend') %>"></div>
+<% const curList = typeof tpLabels !== 'undefined' && tpLabels.CURRENCIES ? tpLabels.CURRENCIES : ['INR']; const curNow = v.spend_currency || (typeof tpCurrency !== 'undefined' && tpCurrency) || curList[0]; %>
+<div><label class="label" for="svc-spend">Annual spend</label>
+  <div class="tprm-spend-row"><label class="sr-only" for="svc-currency">Currency</label><select class="select" id="svc-currency" name="spend_currency" data-tprm-spend-currency>
+    <% curList.forEach(c => { %><option value="<%= c %>" <%= c === curNow ? 'selected' : '' %>><%= c %></option><% }) %></select>
+  <input class="input" id="svc-spend" name="annual_spend" inputmode="decimal" value="<%= sv('annual_spend') %>"></div></div>
 <div><label class="label" for="svc-start">Contract start</label><input class="input" id="svc-start" type="date" name="contract_start" value="<%= sv('contract_start') %>"></div>
 <div><label class="label" for="svc-end">Contract end</label><input class="input" id="svc-end" type="date" name="contract_end" value="<%= sv('contract_end') %>"></div>
 <div><label class="label" for="svc-notice">Notice period (days)</label><input class="input" id="svc-notice" name="notice_period_days" inputmode="numeric" value="<%= sv('notice_period_days') %>"></div>

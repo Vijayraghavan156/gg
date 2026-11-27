@@ -1,7 +1,18 @@
-<%- include('partials/header', { title: 'Error', user: user || null }) %>
-<div class="panel panel-pad" style="margin-top:60px;text-align:center;">
-  <div style="font-size:16px;font-weight: 500;margin-bottom:8px;">Something went wrong</div>
+<% const clientAccount = !!(user && user.user_type === 'client'); const cvShell = clientAccount && !!locals.ws && locals.tpPortalEnabled === true; %>
+<% if (cvShell) { %>
+<%- include('tprm_client_top', { title: 'Not available', cvNav: '' }) %>
+<section class="cv-card cv-error" data-tprm-cv-error>
+  <h1 class="cv-h">This page is not available</h1>
+  <p><%= message %></p>
+  <p><a class="cv-btn cv-btn-p" href="/workspaces/<%= ws.id %>/client-portal/third-party-risk">Back to your third parties</a></p>
+</section>
+<%- include('tprm_client_bottom') %>
+<% } else { %>
+<%- include('partials/header', { title: clientAccount ? 'Not available' : 'Error', user: user || null }) %>
+<div class="panel panel-pad" style="margin-top:60px;text-align:center;" data-error-page="<%= clientAccount ? 'client' : 'firm' %>">
+  <div style="font-size:16px;font-weight: 500;margin-bottom:8px;"><%= clientAccount ? 'This page is not available' : 'Something went wrong' %></div>
   <div class="text-lg text-secondary" style="margin-bottom:16px;"><%= message %></div>
-  <a href="/dashboard" class="btn btn-secondary">Back to dashboard</a>
+  <a href="<%= clientAccount && locals.ws ? '/workspaces/' + ws.id + '/client-portal' : '/dashboard' %>" class="btn btn-secondary"><%= clientAccount ? 'Back to your portal' : 'Back to dashboard' %></a>
 </div>
 <%- include('partials/footer') %>
+<% } %>

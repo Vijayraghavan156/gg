@@ -6,7 +6,7 @@
 %>
 <%- include('tprm_client_nav', { tpClient, section: 'register', canManage: true, canSettings }) %>
 
-<div class="tpu-mb-10"><a class="text-xs tpu-back" href="<%= back %>?step=evidence#findings">← <%= at.TYPE_LABELS[assessment.type] %> · <%= thirdParty.name %></a></div>
+<div class="tpu-mb-10"><a class="text-xs tpu-back" href="<%= back %>?step=evidence#findings">← <%= assessment.type_label || at.TYPE_LABELS[assessment.type] %> · <%= thirdParty.name %></a></div>
 
 <div class="panel tpu-narrow tpu-mb-14" data-tprm-issue-share-form>
   <div class="panel-head"><h2>Share with the third party</h2></div>

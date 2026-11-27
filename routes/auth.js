@@ -316,7 +316,7 @@ function register(app, deps) {
     const firmRow = await db.prepare(`SELECT name FROM firms WHERE id = ?`).get(req.user.firm_id);
     const roleLabel = userType === 'firm'
       ? (rbac.ROLE_LABELS[firmRole] || 'Consultant')
-      : `Client-side - ${rbac.ROLE_LABELS[workspaceRole] || workspaceRole}`;
+      : (rbac.ROLE_LABELS[workspaceRole] || workspaceRole);
 
     let sendError = null;
     try {

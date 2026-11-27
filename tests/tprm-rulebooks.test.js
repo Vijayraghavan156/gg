@@ -727,7 +727,7 @@ test('preparing pins the ticked rulebooks; later ticks and edits change nothing 
   answers['RBI-02'] = { r: 'no', d: 'Backups are kept in Singapore.' };
   assert.equal((await save(token, answers)).status, 303);
   const sub = await submitLink(token);
-  assert.equal(sub.status, 200, sub.text.slice(0, 300));
+  assert.equal(sub.status, 303, sub.text.slice(0, 300));
   const flagged = await allSteps(consultant.session, aBase(ctx));
   assert.match(flagged.text, /data-tprm-data-location-answer="RBI-02"/);
   assert.match(flagged.text, /Pinned when the questionnaire was prepared|Rulebooks pinned when the questionnaire was prepared/);

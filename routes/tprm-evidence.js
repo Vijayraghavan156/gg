@@ -8,6 +8,7 @@ const access = require('../lib/tprm/access');
 const register = require('../lib/tprm/register');
 const assessments = require('../lib/tprm/assessments');
 const evidence = require('../lib/tprm/evidence');
+const partyDocuments = require('../lib/tprm/party-documents');
 const findings = require('../lib/tprm/findings');
 const aiReview = require('../lib/tprm/ai-review');
 const { TprmError } = require('../lib/tprm/errors');
@@ -319,10 +320,104 @@ function registerRoutes(app, deps) {
     }, { permission: 'tp.manage' }));
   }
 
+  app.post(`${BASE}/findings/:fid/close`, requireAuth, handler(async (req, res, actor) => {
+    const back = `${aUrl(actor, req.params.tpId, req.params.aid)}?step=evidence#findings`;
+    try {
+      const result = await findings.closeFinding(db, actor, req.params.tpId, req.params.aid, req.params.fid, req.body);
+      return res.redirect(withToast(back, `Finding closed: ${result.finding.title}`));
+    } catch (err) {
+      if (err instanceof TprmError && (err.status === 400 || err.status === 409)) return res.redirect(withToast(back, err.message, 'error'));
+      throw err;
+    }
+  }, { permission: 'tp.manage' }));
+
   app.post(`${BASE}/findings/:fid/remove`, requireAuth, handler(async (req, res, actor) => {
     const result = await findings.removeFinding(db, actor, req.params.tpId, req.params.aid, req.params.fid, req.body);
     return res.redirect(withToast(`${aUrl(actor, req.params.tpId, req.params.aid)}?step=evidence#findings`, `Finding removed: ${result.finding.title}`));
   }, { permission: 'tp.manage' }));
+
+  const DOCS = '/tprm/clients/:wsId/third-parties/:tpId/documents';
+  const docsUrl = (actor, tpId) => `/tprm/clients/${actor.ws.id}/third-parties/${Number(tpId)}?tab=documents#documents`;
+
+  async function beforeDocument(req, res, next) {
+    try {
+      const actor = await loadActor(req, res, 'tp.manage');
+      if (!actor) return undefined;
+      await register.getThirdParty(db, actor, req.params.tpId);
+      req.tprmActor = actor;
+      return next();
+    } catch (err) {
+      return sendError(req, res, err, next);
+    }
+  }
+
+  const oneFile = upload.single('file');
+  function acceptDocument(req, res, next) {
+    oneFile(req, res, err => {
+      if (!err) return next();
+      if (err && typeof err.code === 'string' && err.code.startsWith('LIMIT_')) {
+        removeFiles(req.file ? [req.file] : []);
+        const message = err.code === 'LIMIT_FILE_SIZE' ? 'The file is larger than the 50 MB limit. Nothing was uploaded.' : 'Upload one file at a time. Nothing was uploaded.';
+        return res.status(400).render('error', { user: req.user, message });
+      }
+      return next(err);
+    });
+  }
+
+  app.post(DOCS, requireAuth, beforeDocument, acceptDocument, handler(async (req, res, actor) => {
+    const staged = req.file || null;
+    try {
+      const result = await partyDocuments.add(db, actor, req.params.tpId, staged, req.body || {});
+      return res.redirect(withToast(docsUrl(actor, req.params.tpId), `"${result.title}" filed`));
+    } catch (err) {
+      removeFiles(staged ? [staged] : []);
+      if (err instanceof TprmError && err.status === 400) {
+        const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
+        const body = req.body || {};
+        const one = k => String(Array.isArray(body[k]) ? body[k][0] ?? '' : body[k] ?? '').slice(0, 200);
+        return res.status(400).render('tprm_party_document_form', {
+          user: req.user, active: 'tprm-portfolio', tpClient: clientView(actor.ws), canManage: true,
+          canSettings: access.can(req.user, actor.perms, 'tp.settings'), thirdParty,
+          kinds: partyDocuments.KINDS, kindLabels: partyDocuments.KIND_LABELS,
+          values: { kind: one('kind'), title: one('title'), issued_on: one('issued_on'), expires_on: one('expires_on') },
+          errors: err.errors || [err.message],
+        });
+      }
+      throw err;
+    }
+  }, { permission: 'tp.manage' }));
+
+  app.post(`${DOCS}/:did/share`, requireAuth, handler(async (req, res, actor) => {
+    await register.getThirdParty(db, actor, req.params.tpId);
+    try {
+      const r = await partyDocuments.setShared(db, actor, req.params.tpId, req.params.did, req.body || {});
+      const message = r.unchanged ? 'Nothing changed' : r.shared ? `"${r.title}" shared with the client` : `"${r.title}" is no longer shared with the client`;
+      return res.redirect(withToast(docsUrl(actor, req.params.tpId), message));
+    } catch (err) {
+      if (err instanceof TprmError && err.status === 409) return res.redirect(withToast(docsUrl(actor, req.params.tpId), err.message, 'error'));
+      throw err;
+    }
+  }, { permission: 'tp.manage' }));
+
+  app.post(`${DOCS}/:did/delete`, requireAuth, handler(async (req, res, actor) => {
+    await register.getThirdParty(db, actor, req.params.tpId);
+    try {
+      const r = await partyDocuments.remove(db, actor, req.params.tpId, req.params.did, req.body || {});
+      return res.redirect(withToast(docsUrl(actor, req.params.tpId), `"${r.title}" deleted. It stays in the history.`));
+    } catch (err) {
+      if (err instanceof TprmError && err.status === 409) return res.redirect(withToast(docsUrl(actor, req.params.tpId), err.message, 'error'));
+      throw err;
+    }
+  }, { permission: 'tp.manage' }));
+
+  app.get(`${DOCS}/:did/download`, requireAuth, handler(async (req, res, actor) => {
+    await register.getThirdParty(db, actor, req.params.tpId);
+    const file = await partyDocuments.firmFile(db, actor, req.params.tpId, req.params.did);
+    const target = await resolveUploadPath(file.stored_path, actor.ws.firm_id, actor.ws.id);
+    if (!target || !fs.existsSync(target)) return res.status(404).render('error', { user: req.user, message: 'This file is missing from storage. Contact your administrator.' });
+    res.set('X-Content-Type-Options', 'nosniff');
+    return res.download(target, file.original_name);
+  }));
 }
 
 module.exports = { register: registerRoutes };

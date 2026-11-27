@@ -41,17 +41,19 @@
       <% } %>
 
       <% p.issues.forEach((i, n) => { const mine = Number(v.issue) === i.id; %>
-        <section class="vq-item" id="issue-<%= i.id %>" data-vendor-issue="<%= i.id %>" data-vendor-issue-status="<%= i.status %>">
+        <section class="vq-item" id="issue-<%= i.id %>" data-vendor-issue="<%= i.id %>" data-vendor-issue-status="<%= i.status %>"<% if (i.stage) { %> data-vendor-issue-stage="<%= i.stage %>"<% } %>>
           <h2 class="vq-h3 vq-item-head"><%= i.title %></h2>
-          <p class="vq-item-ref">Shared <%= fmtDay(i.sharedAt) %>. Status: <span data-vendor-issue-label><%= i.label %></span></p>
+          <p class="vq-item-ref">Shared <%= fmtDay(i.sharedAt) %>. Status: <span data-vendor-issue-label><%= i.label %></span><% if (i.closedAt) { %>, closed <%= fmtDay(i.closedAt) %><% } %></p>
           <p class="vq-item-sub vq-pre"><%= i.body %></p>
 
           <% if (i.status === 'agreed') { %>
             <dl class="vq-facts" data-vendor-issue-agreed>
               <dt>Agreed fix</dt><dd class="vq-pre"><%= i.agreedFix %></dd>
               <% if (i.agreedDate) { %><dt>Due</dt><dd><%= fmtDay(i.agreedDate) %></dd><% } %>
-              <dt>Next step</dt><dd>You will be asked for proof when it is done</dd>
+              <dt>Next step</dt><dd data-vendor-issue-next><%= i.nextStep %></dd>
             </dl>
+          <% } else if (i.stage === 'closed') { %>
+            <p class="vq-muted" data-vendor-issue-next><%= i.nextStep %></p>
           <% } %>
 
           <% if (i.messages.length) { %>
@@ -59,19 +61,19 @@
               <% i.messages.forEach(m => { %>
                 <li class="vq-thread-item" data-vendor-issue-message="<%= m.mine ? 'third_party' : 'firm' %>">
                   <p class="vq-thread-by"><strong><%= m.name %></strong>, <%= fmtWhen(m.at) %></p>
-                  <% if (m.proposedFix) { %><p class="vq-pre">Proposed fix: <%= m.proposedFix %><% if (m.proposedDate) { %>, by <%= fmtDay(m.proposedDate) %><% } %></p><% } %>
+                  <% if (m.proposedFix) { %><p class="vq-pre">Proposed fix: <%= m.proposedFix %><% if (m.proposedDate) { %> (by <%= fmtDay(m.proposedDate) %>)<% } %></p><% } %>
                   <% if (m.body) { %><p class="vq-pre"><%= m.body %></p><% } %>
                 </li>
               <% }) %>
             </ol>
           <% } %>
 
-          <% if (!p.closed) { %>
+          <% if (i.canReply) { %>
             <form method="POST" action="<%= base %>/issues/<%= i.id %>" class="vq-issue-form vq-form-grid" data-vendor-issue-form="<%= i.id %>">
               <input type="hidden" name="_aft" value="<%= aft %>">
-              <div class="vq-field"><label class="vq-label" for="body-<%= i.id %>">Your reply<% if (i.status !== 'agreed') { %> <span class="vq-optional">optional with a proposed fix</span><% } %></label>
+              <div class="vq-field"><label class="vq-label" for="body-<%= i.id %>">Your reply<% if (i.canPropose) { %> <span class="vq-optional">optional with a proposed fix</span><% } %></label>
                 <textarea class="vq-input vq-textarea" id="body-<%= i.id %>" name="body" rows="3" maxlength="<%= p.limits.body %>"><%= mine ? (v.body || '') : '' %></textarea></div>
-              <% if (i.status !== 'agreed') { %>
+              <% if (i.canPropose) { %>
                 <div>
                   <div class="vq-field"><label class="vq-label" for="fix-<%= i.id %>">Proposed fix <span class="vq-optional">optional</span></label>
                     <textarea class="vq-input vq-textarea" id="fix-<%= i.id %>" name="proposed_fix" rows="3" maxlength="<%= p.limits.fix %>"><%= mine ? (v.proposed_fix || '') : '' %></textarea></div>

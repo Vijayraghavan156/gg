@@ -1,0 +1,15 @@
+<% const uv = typeof values !== 'undefined' && values ? values : {}; const ue = typeof errors !== 'undefined' && errors ? errors : []; const uval = k => uv[k] == null ? '' : String(uv[k]); %>
+  <form method="POST" action="<%= docBase %>" enctype="multipart/form-data" class="fx-card fx-mt tprm-ev-upload" data-tprm-party-library-upload>
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <% if (ue.length) { %><div class="callout tprm-callout-error tpu-span-all" role="alert" data-tprm-form-errors>
+      <div class="callout-title">Nothing was filed</div>
+      <ul class="tpu-list"><% ue.forEach(e => { %><li><%= e %></li><% }) %></ul>
+      <p class="meta text-xs" data-tprm-party-library-choose-again>Your entries are kept below. Choose the file again: a browser cannot keep a chosen file after the form is refused.</p></div><% } %>
+    <div><label class="label" for="pd-kind">Kind</label>
+      <select class="select" id="pd-kind" name="kind" required><% kinds.forEach(k => { %><option value="<%= k %>" <%= uval('kind') === k ? 'selected' : '' %>><%= kindLabels[k] %></option><% }) %></select></div>
+    <div><label class="label" for="pd-title">Title</label><input class="input" id="pd-title" name="title" maxlength="200" required value="<%= uval('title') %>"></div>
+    <div><label class="label" for="pd-issued">Issued on <span class="meta text-xs">(optional)</span></label><input class="input" id="pd-issued" type="date" name="issued_on" value="<%= uval('issued_on') %>"></div>
+    <div><label class="label" for="pd-expires">Expires on <span class="meta text-xs">(optional)</span></label><input class="input" id="pd-expires" type="date" name="expires_on" value="<%= uval('expires_on') %>"<% if (uval('issued_on')) { %> min="<%= uval('issued_on') %>"<% } %>></div>
+    <div data-tp-file><label class="label" for="pd-file">File <span class="meta text-xs">(one file, 50 MB at most)</span></label><input class="input" id="pd-file" type="file" name="file" required></div>
+    <div><button class="btn btn-primary" type="submit">File the document</button></div>
+  </form>

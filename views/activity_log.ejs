@@ -1,4 +1,9 @@
 <%- include('partials/header', { title: 'Activity log', user, ws, active: 'activity' }) %>
+<% const zoneOfWs = (() => { const z = (typeof ws !== 'undefined' && ws && (ws.timezone || ws.firm_timezone)) || 'UTC'; try { new Intl.DateTimeFormat('en-GB', { timeZone: z }); return z; } catch (_) { return 'UTC'; } })();
+   const asDate = v => { if (v == null || v === '') return null; const s = String(v); const d = v instanceof Date ? v : new Date(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(s) ? s.replace(' ', 'T') + 'Z' : s); return Number.isNaN(d.getTime()) ? null : d; };
+   const zoneLabel = d => { for (const loc of ['en-IN', 'en-US', 'en-GB']) { const n = (new Intl.DateTimeFormat(loc, { timeZone: zoneOfWs, timeZoneName: 'short' }).formatToParts(d).find(p => p.type === 'timeZoneName') || {}).value || ''; if (/^[A-Z]{2,5}$/.test(n)) return n; } return zoneOfWs; };
+   const dayIn = v => { const d = asDate(v); return d ? new Intl.DateTimeFormat('en-GB', { timeZone: zoneOfWs, day: 'numeric', month: 'short', year: 'numeric' }).format(d) : ''; };
+   const dayTimeIn = v => { const d = asDate(v); return d ? dayIn(d) + ', ' + new Intl.DateTimeFormat('en-GB', { timeZone: zoneOfWs, hour: 'numeric', minute: '2-digit', hour12: true }).format(d).replace(/\s+/g, ' ').replace(/\b(AM|PM)\b/, s => s.toLowerCase()) + ' ' + zoneLabel(d) : ''; }; %>
 
 <style>
   @media (max-width: 600px) {
@@ -10,7 +15,7 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Activity log</h1>
-    <div class="page-subtitle">Tamper-evident record of every change. Filter by user, action, type or date.</div>
+    <div class="page-subtitle">Tamper-evident record of every change. Filter by user, action, type or date.<% if (typeof tprmActivity !== 'undefined' && tprmActivity.available) { %> Third-party risk actions for this client follow the main log.<% } %></div>
   </div>
   <a href="/workspaces/<%= ws.id %>/activity-log.csv?<%= new URLSearchParams(filters).toString() %>" class="btn btn-secondary btn-xs">Export CSV</a>
 </div>
@@ -52,7 +57,7 @@
     <tbody>
       <% log.forEach(l => { %>
         <tr>
-          <td class="meta mono text-sm"><%= l.created_at %></td>
+          <td class="meta text-sm" data-activity-when><time datetime="<%= (asDate(l.created_at) || { toISOString: () => '' }).toISOString() %>"><%= dayTimeIn(l.created_at) || l.created_at %></time></td>
           <td><%= l.user_name %></td>
           <td class="mono text-base"><%= l.action %></td>
           <td class="meta">
@@ -84,5 +89,26 @@
 </div>
 
 <%- include('partials/pager', { pg, pagerHref }) %>
+
+<% if (typeof tprmActivity !== 'undefined' && tprmActivity.available) { %>
+<section class="panel" style="overflow:hidden;margin-top:18px" data-activity-third-party-risk>
+  <div class="panel-head"><h2>Third-party risk</h2><span class="meta text-sm"><%= tprmActivity.total > tprmActivity.list.length ? `Newest ${tprmActivity.list.length} of ${tprmActivity.total}` : `${tprmActivity.total} action${tprmActivity.total === 1 ? '' : 's'}` %></span></div>
+  <table class="t">
+    <thead><tr><th style="width:180px">When</th><th style="width:220px">Third party</th><th>What happened</th></tr></thead>
+    <tbody>
+      <% tprmActivity.list.forEach(e => { %>
+        <tr data-activity-tprm-event="<%= e.id %>">
+          <td class="meta text-sm"><%= e.when %></td>
+          <td><%= e.thirdParty || '-' %></td>
+          <td><%= e.text %></td>
+        </tr>
+      <% }) %>
+      <% if (!tprmActivity.list.length) { %>
+        <tr><td colspan="3" style="padding:0"><div class="empty-state"><div class="empty-sub">No third-party risk actions match these filters.</div></div></td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</section>
+<% } %>
 
 <%- include('partials/footer') %>

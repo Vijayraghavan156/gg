@@ -1,6 +1,6 @@
 <%- include('partials/header', { title: 'Email · Third-party risk', user, active }) %>
 <% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; const title = label.charAt(0).toUpperCase() + label.slice(1); const base = '/tprm/settings/emails/' + encodeURIComponent(kind);
-   const when = d => { try { return new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC'; } catch (_) { return ''; } }; %>
+   const when = d => (d ? tpf.dayTime(d) : ''); %>
 <nav class="tprm-crumbs" aria-label="Breadcrumb"><a href="/tprm">Third-party risk</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><a href="/tprm/settings/emails">Emails</a><span class="tprm-crumb-sep" aria-hidden="true">/</span><span aria-current="page"><%= title %></span></nav>
 <div class="tprm-head" data-tprm-email-editor-page="<%= kind %>">
   <div class="tprm-head-main">

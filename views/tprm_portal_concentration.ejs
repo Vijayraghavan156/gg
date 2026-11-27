@@ -12,7 +12,7 @@
   </div>
 </div>
 <div class="panel tpu-mb-14" data-tprm-concentration-headlines>
-  <div class="panel-head"><h2>Concentration</h2><span class="meta"><%= s.total %> service<%= s.total === 1 ? '' : 's' %> · <%= s.thirdParties %> third part<%= s.thirdParties === 1 ? 'y' : 'ies' %> in use</span></div>
+  <div class="panel-head"><h2>Concentration</h2><span class="meta" data-tprm-concentration-in-use="<%= s.inUse %>"><%= s.total %> service<%= s.total === 1 ? '' : 's' %> · <%= s.inUse %> third part<%= s.inUse === 1 ? 'y' : 'ies' %> in use</span></div>
   <div class="panel-pad meta tpu-rule-bottom">
     <details class="tprm-how"><summary>How this works</summary>Counts the services of third parties in use. Category and tier are the third party's; hosting countries and sole source are the service's. A service hosted in more than one country counts once in each.</details>
     <% if (s.withoutServices) { %><span data-tprm-concentration-without="<%= s.withoutServices %>"><%= s.withoutServices %> third part<%= s.withoutServices === 1 ? 'y' : 'ies' %> in use <%= s.withoutServices === 1 ? 'has' : 'have' %> no service recorded and <%= s.withoutServices === 1 ? 'is' : 'are' %> not counted.</span><% } %>

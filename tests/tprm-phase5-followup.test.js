@@ -455,9 +455,12 @@ test('4. the third party sends proof through the link; any firm user with tp.man
   assert.deepEqual([proof.review_status, Number(proof.reviewed_by)], ['verified', consultant.id]);
   const [after] = await linksOf(ctx.a);
   assert.deepEqual([after.status, after.revoke_reason, Number(after.revoked_by)], ['revoked', L.REVOKE_REASONS.met, consultant.id]);
-  assert.equal((await vget(token)).status, 404);
+  const met = await vget(token);
+  assert.equal(met.status, 200, 'the closed link says the proof was accepted');
+  assert.match(met.text, /data-vendor-conditions-done/);
+  assert.doesNotMatch(met.text, /data-vendor-condition-form/);
   const actions = (await chain(ctx.ws, ctx.a)).map(e => e.action);
-  assert.deepEqual(actions.slice(-2), ['condition.verified', 'condition_link.revoked']);
+  assert.deepEqual(actions.slice(-3), ['condition.verified', 'condition_link.revoked', 'message.sent']);
   page = await consultant.session.get(aBase(ctx.ws, ctx.tp, ctx.a));
   assert.doesNotMatch(page.text, /data-tprm-condition-link-create/, 'nothing left for a link');
   assert.deepEqual(await events.verifyChains(db, ctx.ws), []);

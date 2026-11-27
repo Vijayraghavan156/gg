@@ -224,7 +224,7 @@ async function submitted(name, opts) {
   const ctx = await linked(name, opts);
   await answerAll(ctx);
   const res = await submitLink(ctx.token);
-  assert.equal(res.status, 200, res.text.slice(0, 300));
+  assert.equal(res.status, 303, res.text.slice(0, 300));
   assert.equal((await qRow(ctx.a)).status, 'submitted');
   return ctx;
 }
@@ -345,6 +345,94 @@ test('signed in, the questionnaire opens under the portal, saves are attributed,
   assert.equal(sheet.status, 200);
 });
 
+test('the portal home counts a question as answered only when it is complete enough, the same as the questionnaire', async () => {
+  const ctx = await linked('Portal Count Co');
+  const q = await qRow(ctx.a);
+  const ids = idsOf(q);
+  const done = ids[0];
+  const partial = ids.find(id => id !== done && BANK_BY_ID.get(id) && BANK_BY_ID.get(id).answer_type === 'yes_no_na'
+    && BANK_BY_ID.get(id).evidence_mandatory && BANK_BY_ID.get(id).evidence_on === 'yes');
+  assert.ok(partial, 'a question that needs evidence on Yes');
+  const res = await save(ctx.token, { [done]: good(done), [partial]: { r: 'yes' } });
+  assert.equal(res.status, 303, res.text.slice(0, 300));
+  assert.ok((await answerOf(ctx.a, partial)).response, 'the incomplete answer is saved');
+  const header = (await vget(ctx.token)).text.match(/data-vendor-progress>(\d+) of (\d+) questions answered/);
+  assert.ok(header, 'the questionnaire header shows the count');
+  const [answered, total] = [Number(header[1]), Number(header[2])];
+  assert.equal(answered, 1, 'only the complete answer counts in the questionnaire');
+  const page = await vget(ctx.token);
+  const cookie = cookieOf(await post(`/vendor/q/${ctx.token}/home`, [['_aft', aftOf(page.text)]]));
+  const home = (await get('/vendor/p/home', cookie)).text;
+  assert.match(home, new RegExp(`<td class="vq-num">${answered} / ${total}</td>`), 'the home table matches the questionnaire header');
+  assert.match(home, new RegExp(`Answer ${total - answered} questions in `), 'the to-do counts the incomplete answer as still to do');
+});
+
+test('the reminder email and the Answered by column count only answers complete enough, as the portal does', async () => {
+  const ctx = await linked('Portal Remind Count Co');
+  const q = await qRow(ctx.a);
+  const ids = idsOf(q);
+  const done = ids[0];
+  const partial = ids.find(id => id !== done && BANK_BY_ID.get(id) && BANK_BY_ID.get(id).answer_type === 'yes_no_na'
+    && BANK_BY_ID.get(id).evidence_mandatory && BANK_BY_ID.get(id).evidence_on === 'yes');
+  assert.ok(partial, 'a question that needs evidence on Yes');
+  assert.equal((await save(ctx.token, { [done]: good(done), [partial]: { r: 'yes' } })).status, 303);
+  const dan = Number((await db.prepare(`INSERT INTO tp_vendor_people (workspace_id, third_party_id, email, name, role) VALUES (?, ?, 'dan@thirdparty.example.net', 'Dan Helper', 'colleague') RETURNING id`)
+    .get(ctx.ws, ctx.tp)).id);
+  await db.prepare('UPDATE tp_answers SET saved_by_person_id = ? WHERE questionnaire_id = ? AND question_id = ?').run(dan, q.id, partial);
+  const header = (await vget(ctx.token)).text.match(/data-vendor-progress>(\d+) of (\d+) questions answered/);
+  assert.ok(header);
+  const [answered, total] = [Number(header[1]), Number(header[2])];
+  assert.equal(answered, 1);
+  const sent = await consultant.session.post(`${qBase(ctx)}/remind`, {});
+  assert.equal(sent.status, 302);
+  const mail = (await db.prepare(`SELECT body_text FROM email_outbox WHERE workspace_id=? AND related_type='tprm:vendor_reminder_7' ORDER BY id DESC LIMIT 1`).get(ctx.ws)).body_text;
+  assert.match(mail, new RegExp(`${answered} of ${total} questions is answered so far`), 'the reminder agrees with the questionnaire header');
+  const page = await vget(ctx.token);
+  const cookie = cookieOf(await post(`/vendor/q/${ctx.token}/home`, [['_aft', aftOf(page.text)]]));
+  const home = (await get('/vendor/p/home', cookie)).text;
+  assert.match(home, /<td>Priya Vendor<\/td>/, 'the person whose answer is complete is named');
+  assert.doesNotMatch(home, /Dan Helper/, 'someone who only saved an incomplete answer is not');
+});
+
+test('Questionnaires out counts only answers complete enough, as the supplier portal does', async () => {
+  const ctx = await linked('Out Count Co');
+  const q = await qRow(ctx.a);
+  const ids = idsOf(q);
+  const done = ids[0];
+  const partial = ids.find(id => id !== done && BANK_BY_ID.get(id) && BANK_BY_ID.get(id).answer_type === 'yes_no_na'
+    && BANK_BY_ID.get(id).evidence_mandatory && BANK_BY_ID.get(id).evidence_on === 'yes');
+  assert.equal((await save(ctx.token, { [done]: good(done), [partial]: { r: 'yes' } })).status, 303);
+  const header = (await vget(ctx.token)).text.match(/data-vendor-progress>(\d+) of (\d+) questions answered/);
+  const out = (await consultant.session.get('/tprm/questionnaires')).text;
+  const at = out.indexOf(`data-tprm-out-row="${ctx.a}"`);
+  assert.ok(at >= 0);
+  assert.match(out.slice(at, out.indexOf('</tr>', at)), new RegExp(`<td class="fx-nowrap">${header[1]} of ${header[2]}</td>`));
+});
+
+test('the Questionnaires out search ignores accents', async () => {
+  const ctx = await linked('Société Out Search Co');
+  for (const q of ['societe out', 'SOCIÉTÉ']) {
+    assert.match((await consultant.session.get(`/tprm/questionnaires?q=${encodeURIComponent(q)}`)).text, new RegExp(`data-tprm-out-row="${ctx.a}"`), q);
+  }
+});
+
+test('the portal home still opens when one review\'s progress cannot be worked out', async () => {
+  const ctx = await linked('Portal Broken Bank Co');
+  const page = await vget(ctx.token);
+  const cookie = cookieOf(await post(`/vendor/q/${ctx.token}/home`, [['_aft', aftOf(page.text)]]));
+  const vendorAnswers = require('../lib/tprm/vendor-answers');
+  const real = vendorAnswers.progressDetail;
+  const realError = console.error;
+  const logged = [];
+  vendorAnswers.progressDetail = async () => { throw new Error('bank unreadable'); };
+  console.error = (...args) => { logged.push(args.join(' ')); };
+  let home;
+  try { home = await get('/vendor/p/home', cookie); } finally { vendorAnswers.progressDetail = real; console.error = realError; }
+  assert.equal(home.status, 200);
+  assert.match(home.text, new RegExp(`href="/vendor/p/a/${ctx.a}" data-vendor-home-open`));
+  assert.ok(logged.some(l => /bank unreadable/.test(l)));
+});
+
 test('a session reaches only its own third parties, and only within one firm', async () => {
   const mine = await linked('Portal Mine Co');
   const other = await linked('Portal Other Co', { ws: mine.ws });
@@ -417,7 +505,17 @@ test('the questionnaire link signs its recipient in to a home limited to that th
   const mainReview = await get(`/vendor/p/a/${ctx.a}?view=review`, cookie);
   assert.match(mainReview.text, /data-vendor-submit-form/);
   const ok = await post(`/vendor/p/a/${ctx.a}/submit`, [['_aft', aftOf(mainReview.text)], ['confirm_submit', '1']], cookie);
-  assert.equal(ok.status, 200, ok.text.slice(0, 300));
+  assert.equal(ok.status, 303, ok.text.slice(0, 300));
+  assert.equal(ok.location, `/vendor/p/a/${ctx.a}`);
+  const thanks = (await get(ok.location, cookie)).text;
+  assert.match(thanks, /<h1 class="vq-title">Thank you<\/h1>/, 'a signed-in supplier lands on the thank-you page too');
+  assert.match(thanks, /data-vendor-submitted-page/, 'inside the portal frame');
+  assert.match(thanks, /data-vendor-sign-out/, 'with Sign out');
+  assert.match(thanks, /data-vendor-menu="home"/, 'with the portal menu');
+  assert.doesNotMatch(thanks, /you will receive a new link|You can close this page|Do not share the link/);
+  const bare = (await vget(ctx.token)).text;
+  assert.match(bare, /<h1 class="vq-page-title">Thank you<\/h1>/, 'the link still shows the stand-alone page');
+  assert.doesNotMatch(bare, /data-vendor-submitted-page|data-vendor-sign-out/);
   assert.equal((await qRow(ctx.a)).status, 'submitted');
   const sub = (await chain(ctx.ws, ctx.a)).find(e => e.action === 'questionnaire.submitted');
   assert.equal(sub.after_state.by_name, 'Priya Vendor');
@@ -638,7 +736,7 @@ test('a comment on a question is saved with the section, shown to the third part
   assert.match(again.text, /data-vendor-comments/);
   assert.match(again.text, /new owner next month/);
   await answerAll(ctx);
-  assert.equal((await submitLink(ctx.token)).status, 200);
+  assert.equal((await submitLink(ctx.token)).status, 303);
   const firm = (await firmPage(ctx)).text;
   assert.match(firm, /data-tprm-answer-comments[\s\S]*?new owner next month/, 'the reviewers see the comment on the answer');
   const ev = (await chain(ctx.ws, ctx.a)).find(e => e.action === 'questionnaire.comments_added');
@@ -708,6 +806,8 @@ test('contract clauses: the third party marks each clause; the firm sees it besi
   const ok = await postForm(ctx.token, '/contract', [[`rows[${c1}][status]`, 'in_contract'], [`rows[${c1}][reference]`, 'Clause 14.2'],
     [`rows[${c2}][status]`, 'not_in_contract']], { aft });
   assert.equal(ok.status, 303);
+  assert.match(ok.location, /\/contract\?notice=saved$/);
+  assert.match((await request('GET', ok.location)).text, /data-vendor-notice>Saved\. You can change these until you send the questionnaire\./, 'the saved notice shows while the clauses can change');
   const rows = await db.prepare('SELECT * FROM tp_contract_reviews WHERE assessment_id=? ORDER BY position').all(ctx.a);
   assert.ok(rows.length >= shownIds.length, 'the first save created the clauses');
   const first = rows.find(r => r.clause_id === c1);
@@ -730,9 +830,12 @@ test('contract clauses: the third party marks each clause; the firm sees it besi
   assert.equal(JSON.stringify(shown).includes('SENTINEL-FIRM-ONLY'), false, 'the reviewer\'s comment never reaches the client');
 
   await answerAll(ctx);
-  assert.equal((await submitLink(ctx.token)).status, 200);
+  assert.equal((await submitLink(ctx.token)).status, 303);
   const locked = await request('GET', `/vendor/q/${ctx.token}/contract`);
   assert.match(locked.text, /data-vendor-contract-locked/);
+  const lockedSaved = await request('GET', `/vendor/q/${ctx.token}/contract?notice=saved`);
+  assert.match(lockedSaved.text, /data-vendor-contract-locked/);
+  assert.doesNotMatch(lockedSaved.text, /data-vendor-notice|You can change these until you send/, 'a locked page does not also say the clauses can still change');
   const late = await postForm(ctx.token, '/contract', [[`rows[${c1}][status]`, 'partly']], { aft: aftOf(locked.text) });
   assert.equal(late.status, 409);
   assert.equal((await db.prepare('SELECT vendor_status FROM tp_contract_reviews WHERE id=?').get(first.id)).vendor_status, 'in_contract');
@@ -794,4 +897,161 @@ test('lead and reminders: change the lead of one review or several, and send a q
   assert.equal(Number((await assessmentRow(ctx.a)).lead_consultant_id), consultant.id);
   const remind = await consultant.session.post(`/tprm/clients/${ctx.ws}/third-parties/bulk-remind`, { ids: String(ctx.tp), _tp_confirmed: '1' });
   assert.match(toast(remind), /0 reminders sent\. Not sent: Lead Reminder Co: a reminder already went today/);
+});
+
+const lastMail = async kind => (await mailsTo(kind)).pop();
+
+async function linkedTo(name, email, { submit = false } = {}) {
+  const ws = await tprmClient(`${name} Client`);
+  const tp = await addThirdParty(ws, name);
+  const ctx = { ws, tp, a: await startAssessment(ws, tp, LOW) };
+  assert.equal((await consultant.session.post(qBase(ctx), {})).status, 302);
+  const link = await createLink(ctx, { recipient_name: 'Priya Vendor', recipient_email: email });
+  assert.ok(link.token, 'a link was shown');
+  const out = { ...ctx, token: link.token, email };
+  if (submit) {
+    await answerAll(out);
+    assert.equal((await submitLink(out.token)).status, 303);
+    assert.equal((await qRow(out.a)).status, 'submitted');
+  }
+  return out;
+}
+
+async function replaceRecipient(ctx, domain) {
+  const priya = await addPerson(ctx.ws, ctx.tp, 'Priya Vendor', ctx.email);
+  const eve = await addPerson(ctx.ws, ctx.tp, 'Eve Lal', `eve@${domain}`);
+  assert.equal(priya.role, 'main');
+  assert.match(toast(await consultant.session.post(`${tpBase(ctx.ws, ctx.tp)}/people/${eve.id}/main`, {})), /Eve Lal is now the main contact/);
+  const removed = await consultant.session.post(`${tpBase(ctx.ws, ctx.tp)}/people/${priya.id}/remove`, {});
+  assert.match(toast(removed), /Priya Vendor removed\. Links sent to them no longer open, and they can no longer sign in\./);
+  return { priya, eve };
+}
+
+test('a removed contact loses their link and sign-in, the main contact gets the reminders, and adding them back restores the link', async () => {
+  const ctx = await linkedTo('Removed Link Co', 'priya@removedlink.example');
+  assert.equal((await vget(ctx.token)).status, 200);
+  await replaceRecipient(ctx, 'removedlink.example');
+
+  assert.equal((await vget(ctx.token)).status, 404, 'the removed contact\'s link no longer opens');
+  assert.equal((await vsection(ctx.token, ctx.a, idsOf(await qRow(ctx.a))[0])).status, 404);
+  assert.equal((await request('POST', `/vendor/q/${ctx.token}/home`, { body: form([['to', 'home']]), headers: FORM })).status, 404);
+  const activePriya = async () => (await peopleOf(ctx.ws, ctx.tp)).filter(p => p.email === ctx.email);
+  assert.deepEqual(await activePriya(), [], 'opening the link does not add them back');
+
+  const codes = outboxCodes().length;
+  const asked = await post('/vendor/p/sign-in', [['email', ctx.email]]);
+  assert.equal(asked.status, 200);
+  assert.equal(outboxCodes().length, codes, 'no sign-in code goes to a removed contact');
+  assert.deepEqual(await activePriya(), []);
+
+  const reminded = await consultant.session.post(`${qBase(ctx)}/remind`, {});
+  assert.match(toast(reminded), /Reminder sent to Eve Lal/);
+  const mail = await lastMail('vendor_reminder_7');
+  assert.match(JSON.stringify(mail), /eve@removedlink\.example/);
+  assert.ok(!JSON.stringify(mail).includes(ctx.email), 'nothing goes to the removed contact');
+  assert.match(mail.body_html, /\/vendor\/p\/sign-in/);
+  assert.match(mail.body_html, /Sign in to open the questionnaire/);
+  assert.ok(!mail.body_html.includes(ctx.token), 'the removed contact\'s link is not passed on');
+
+  const { cookie } = await codeSignIn('eve@removedlink.example');
+  const portal = await get(`/vendor/p/a/${ctx.a}`, cookie);
+  assert.equal(portal.status, 200, 'the main contact still opens the questionnaire through sign-in');
+  assert.match(portal.text, /data-vendor-section-link=/);
+
+  const panel = (await firmPage(ctx)).text;
+  assert.match(panel, /data-tprm-link-status="closed"/, 'the firm sees the link no longer opens');
+  assert.match(panel, /No longer opens/);
+  assert.match(panel, /It no longer opens because Priya Vendor is no longer one of the people at this third party\./);
+
+  await addPerson(ctx.ws, ctx.tp, 'Priya Vendor', ctx.email);
+  assert.equal((await vget(ctx.token)).status, 200, 'adding them back restores their link');
+  assert.match((await firmPage(ctx)).text, /data-tprm-link-status="active"/);
+});
+
+test('changing a contact\'s email closes the links sent to the old address; other edits leave them open', async () => {
+  const ctx = await linkedTo('Email Edit Co', 'dan@emailedit.example');
+  const dan = await addPerson(ctx.ws, ctx.tp, 'Dan Roy', ctx.email);
+  const editTo = async (fields) => {
+    const row = await db.prepare('SELECT row_version FROM tp_vendor_people WHERE id=?').get(dan.id);
+    return consultant.session.post(`${tpBase(ctx.ws, ctx.tp)}/people/${dan.id}`, { name: 'Dan Roy', email: ctx.email, job_title: '', phone: '', row_version: String(row.row_version), ...fields });
+  };
+  const renamed = await editTo({ name: 'Dan K. Roy' });
+  assert.match(toast(renamed), /toast=Dan K\. Roy updated#/);
+  assert.equal((await vget(ctx.token)).status, 200, 'a name change keeps the link open');
+
+  const moved = await editTo({ name: 'Eve Lal', email: 'eve@emailedit.example' });
+  assert.match(toast(moved), /Eve Lal updated\. Links sent to their old address no longer open\./);
+  assert.equal((await vget(ctx.token)).status, 404, 'the link sent to the old address no longer opens');
+  assert.deepEqual((await peopleOf(ctx.ws, ctx.tp)).map(p => p.email), ['eve@emailedit.example'], 'opening it does not add the old address back');
+  const codes = outboxCodes().length;
+  await post('/vendor/p/sign-in', [['email', ctx.email]]);
+  assert.equal(outboxCodes().length, codes, 'no sign-in code for the old address');
+  const panel = (await firmPage(ctx)).text;
+  assert.match(panel, /data-tprm-link-status="closed"/);
+
+  const reminded = await consultant.session.post(`${qBase(ctx)}/remind`, {});
+  assert.match(toast(reminded), /Reminder sent to Eve Lal/);
+  assert.match(JSON.stringify(await lastMail('vendor_reminder_7')), /eve@emailedit\.example/);
+
+  const fresh = await createLink(ctx, { recipient_name: 'Dan Roy', recipient_email: ctx.email });
+  assert.equal((await vget(fresh.token)).status, 200, 'a link sent to the old address after the change works');
+});
+
+test('a link sent to a contact after they were removed works for them', async () => {
+  const ctx = await linkedTo('Removed Then Sent Co', 'priya@removedthensent.example');
+  await replaceRecipient(ctx, 'removedthensent.example');
+  assert.equal((await vget(ctx.token)).status, 404);
+  const fresh = await createLink(ctx, { recipient_name: 'Priya Vendor', recipient_email: ctx.email });
+  assert.ok(fresh.token);
+  assert.equal((await vget(fresh.token)).status, 200);
+});
+
+test('a submitted link of a removed contact no longer opens', async () => {
+  const ctx = await linkedTo('Removed Submitted Co', 'priya@removedsubmitted.example', { submit: true });
+  assert.equal((await vget(ctx.token)).status, 200);
+  await replaceRecipient(ctx, 'removedsubmitted.example');
+  assert.equal((await vget(ctx.token)).status, 404);
+});
+
+async function setStatus(ctx, status) {
+  await db.prepare(`UPDATE tp_third_parties SET status = ?, exit_date = ?::date, exit_reason = ?, row_version = row_version + 1 WHERE workspace_id = ? AND id = ?`)
+    .run(status, status === 'exited' ? '2026-11-27' : null, status === 'exited' ? 'Contract ended.' : null, ctx.ws, ctx.tp);
+}
+
+test('when a third party exits, its people are signed out, cannot sign in, and its links stop opening; reversing the exit restores sign-in', async () => {
+  const ctx = await linkedTo('Exit Access Co', 'priya@exitaccess.example', { submit: true });
+  await addPerson(ctx.ws, ctx.tp, 'Omar Sen', 'omar@exitaccess.example');
+  const { cookie } = await codeSignIn('omar@exitaccess.example');
+  assert.equal((await get('/vendor/p/home', cookie)).status, 200);
+  assert.equal((await vget(ctx.token)).status, 200);
+
+  await setStatus(ctx, 'exited');
+  const home = await get('/vendor/p/home', cookie);
+  assert.equal(home.status, 303, 'the open session ends');
+  assert.match(home.location, /\/vendor\/p\/sign-in/);
+  const codes = outboxCodes().length;
+  await post('/vendor/p/sign-in', [['email', 'omar@exitaccess.example']]);
+  await post('/vendor/p/sign-in', [['email', ctx.email]]);
+  assert.equal(outboxCodes().length, codes, 'no sign-in code for an exited third party');
+  assert.equal((await vget(ctx.token)).status, 404, 'its questionnaire link no longer opens');
+  assert.match((await firmPage(ctx)).text, /It no longer opens because the third party has exited\./);
+
+  await setStatus(ctx, 'in_use');
+  const again = await codeSignIn('omar@exitaccess.example');
+  assert.equal((await get('/vendor/p/home', again.cookie)).status, 200);
+});
+
+test('an exit saved through the register ends the third party\'s access', async () => {
+  const ctx = await linkedTo('Exit Register Co', 'priya@exitregister.example', { submit: true });
+  await addPerson(ctx.ws, ctx.tp, 'Lata Iyer', 'lata@exitregister.example');
+  const tp = await db.prepare('SELECT * FROM tp_third_parties WHERE id=?').get(ctx.tp);
+  const saved = await consultant.session.post(tpBase(ctx.ws, ctx.tp), {
+    name: tp.name, status: 'exited', exit_date: '2026-11-20', exit_reason: 'The contract ended.', row_version: String(tp.row_version),
+  });
+  assert.equal(saved.status, 302, toast(saved));
+  assert.equal((await db.prepare('SELECT status FROM tp_third_parties WHERE id=?').get(ctx.tp)).status, 'exited');
+  const codes = outboxCodes().length;
+  await post('/vendor/p/sign-in', [['email', 'lata@exitregister.example']]);
+  assert.equal(outboxCodes().length, codes);
+  assert.equal((await vget(ctx.token)).status, 404);
 });

@@ -45,7 +45,7 @@
           <span class="meta">On version <%= d.version %> · <%= d.decided_by_name || 'Client decision owner' %> · <%= dWhen(d.decided_at) %></span>
         </div>
         <% if (d.diverges) { %>
-          <div class="tpu-mt-6"><%- include('partials/tprm_status', { text: 'Differs from the recommendation (' + dp.labels[d.recommended_outcome] + '). Risk accepted until ' + (tpf.day(d.risk_acceptance_until) || '-') + '.', tone: 'attention', attrs: 'data-tprm-decision-diverges' }) %></div>
+          <div class="tpu-mt-6"><%- include('partials/tprm_status', { text: d.accepts_risk ? 'Less cautious than the recommendation (' + dp.labels[d.recommended_outcome] + '). Risk accepted until ' + (tpf.day(d.risk_acceptance_until) || '-') + '.' : 'Stricter than the recommendation (' + dp.labels[d.recommended_outcome] + '). No risk is accepted.', tone: 'attention', attrs: 'data-tprm-decision-diverges' }) %></div>
         <% } %>
         <% if (d.rationale) { %><div class="tpu-pre tpu-mt-6"><%= d.rationale %></div><% } %>
       </div>

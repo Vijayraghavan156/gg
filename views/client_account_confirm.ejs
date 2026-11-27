@@ -1,0 +1,14 @@
+<%- include('partials/header', { title: 'Remove ' + (person.name || person.email), user, ws, active, portalView }) %>
+<div class="page-head"><div><h1>Remove <%= person.name || person.email %> from your team?</h1></div></div>
+<section class="panel" style="margin-bottom:18px;" data-client-team-confirm-remove="<%= person.id %>">
+  <div class="panel-pad">
+    <p>They can no longer sign in to this client. To bring them back, ask your consultants.</p>
+    <form method="POST" action="<%= action %>" class="row" style="gap:8px;margin:12px 0 0;">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="confirmed" value="1">
+      <a class="btn btn-secondary" href="<%= back %>">Cancel</a>
+      <button class="btn btn-danger" type="submit" data-client-team-confirm-yes>Remove</button>
+    </form>
+  </div>
+</section>
+<%- include('partials/footer') %>

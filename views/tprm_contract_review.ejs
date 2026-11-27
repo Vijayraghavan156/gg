@@ -9,7 +9,7 @@
 %>
 <%- include('tprm_client_nav', { tpClient, section: 'register', canManage, canSettings }) %>
 
-<div class="tpu-mb-10"><a class="text-xs tpu-back" href="<%= back %>?step=contract#contract-review">← <%= at.TYPE_LABELS[assessment.type] %> · <%= thirdParty.name %></a></div>
+<div class="tpu-mb-10"><a class="text-xs tpu-back" href="<%= back %>?step=contract#contract-review">← <%= assessment.type_label || at.TYPE_LABELS[assessment.type] %> · <%= thirdParty.name %></a></div>
 
 <div class="panel tpu-mb-14" data-tprm-contract-review>
   <div class="panel-head">

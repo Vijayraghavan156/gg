@@ -37,12 +37,13 @@
     <%- cvItem('renewals', 'Renewals', cvBase + '?tab=renewals') %>
     <%- cvItem('reports', 'Reports', cvBase + '/concentration') %>
     <span class="cv-gap"></span>
+    <% if (typeof clientWorkspaces !== 'undefined' && Array.isArray(clientWorkspaces) && clientWorkspaces.length > 1) { clientWorkspaces.filter(w => !w.current).forEach(w => { %><a class="cv-nav" href="<%= w.href %>" title="Switch to <%= w.name %>" data-tprm-cv-workspace="<%= w.id %>"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"/><path d="M16 9h2a2 2 0 0 1 2 2v10"/><path d="M8 7h4M8 11h4M3 21h18"/></svg><span><%= w.name.length > 18 ? w.name.slice(0, 17) + '...' : w.name %></span></a><% }) } %>
     <% if (!(typeof tpOnlyClient !== 'undefined' && tpOnlyClient === true)) { %><%- cvItem('portal', 'Portal', '/workspaces/' + ws.id + '/client-portal') %><% } %>
     <form method="POST" action="/logout" class="cv-signout">
       <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
       <button type="submit" class="cv-nav" title="Sign out"><svg viewBox="0 0 24 24" aria-hidden="true"><%- cvIcons.signout %></svg><span>Sign out</span></button>
     </form>
-    <span class="cv-me" title="<%= user.name %>"><%= cvInitials(user.name) %></span>
+    <% if (user && user.user_type === 'client') { %><a class="cv-me<%= cvOn === 'account' ? ' is-on' : '' %>" href="<%= cvBase %>/account" title="Account: <%= user.name %>" aria-label="Account"<% if (cvOn === 'account') { %> aria-current="page"<% } %> data-tprm-cv-account-link><%= cvInitials(user.name) %></a><% } else { %><span class="cv-me" title="<%= user.name %>"><%= cvInitials(user.name) %></span><% } %>
   </nav>
   <main class="cv-main" id="mainContent">
 <% if (typeof cvNotice !== 'undefined' && cvNotice) { %><div class="cv-notice cv-notice--<%= cvNotice.kind %>" role="status" data-tprm-cv-notice><%= cvNotice.text %></div><% } %>

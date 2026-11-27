@@ -555,7 +555,9 @@ const { ALLOWED_FRAMEWORKS, FRAMEWORK_LIST, parseWorkspaceFrameworks } = require
 
 async function requireWorkspace(req, res, next) {
   const ws = await getWorkspace(req.params.wsId, req.user);
-  if (!ws) return res.status(403).render('error', { user: req.user, message: 'This workspace doesn\'t exist, or it belongs to a different firm. If you recently switched tenants, the old workspace URL won\'t resolve. Use the Clients dashboard to pick a workspace in the active firm.' });
+  if (!ws) return res.status(403).render('error', { user: req.user, message: req.user && req.user.user_type === 'client'
+    ? 'This page does not exist, or it is not available to your account.'
+    : 'This workspace doesn\'t exist, or it belongs to a different firm. If you recently switched tenants, the old workspace URL won\'t resolve. Use the Clients dashboard to pick a workspace in the active firm.' });
   ws.frameworks = parseWorkspaceFrameworks(ws.frameworks);
   ws.effective_timezone = workspaceTimeZone(ws);
   req.workspace = ws;
@@ -584,8 +586,23 @@ async function requireWorkspace(req, res, next) {
     && rbac.hasPermission(res.locals.userPerms, 'tp.client_view')
     && await require('./lib/tprm/settings').isEnabled(db, ws.id);
   res.locals.tpOnlyClient = res.locals.tpPortalEnabled && !(await require('./lib/tprm/settings').hasIsoProgramme(db, ws.id));
+  res.locals.tpOnlyWorkspace = !isScopedClient && !require('./lib/iso-lifecycle').hasIsoManagementSystem(ws)
+    && await require('./lib/tprm/settings').isEnabled(db, ws.id);
+  req.tpOnlyWorkspace = res.locals.tpOnlyWorkspace;
   if (res.locals.tpOnlyClient && req.method === 'GET' && (req.path === portalPrefix || req.path === `${portalPrefix}/updates`)) {
     return res.redirect(`${portalPrefix}/third-party-risk`);
+  }
+  res.locals.clientWorkspaces = [];
+  if (isScopedClient && req.method === 'GET') {
+    const mine = await listWorkspaces(req.user);
+    if (mine.length > 1) {
+      res.locals.clientWorkspaces = mine.map(w => ({
+        id: Number(w.id),
+        name: w.brand_display_name || w.client_name,
+        current: Number(w.id) === Number(ws.id),
+        href: `/workspaces/${w.id}/client-portal`,
+      })).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    }
   }
   res.locals.experienceEnabled = await require('./lib/experience-flags').enabledFor(db,{actor:req.user,workspace:ws});
   try {
@@ -714,14 +731,31 @@ function requireEntity(_req) { return null; }
 function listWorkspaceEntities(_wsId) { return []; }
 app.locals.listWorkspaceEntities = listWorkspaceEntities;
 
+async function clientShellContext(req, user, mine) {
+  const settings = require('./lib/tprm/settings');
+  const tpOn = await settings.enabledAmong(db, mine.map(w => w.id));
+  let iso = false;
+  let tp = false;
+  for (const w of mine) {
+    if (require('./lib/iso-lifecycle').hasIsoManagementSystem(w)) iso = true;
+    if (!tp && tpOn.has(Number(w.id)) && rbac.hasPermission(await permissionsFor(user, w), 'tp.client_view')) tp = true;
+  }
+  const lastId = Number(req.session && req.session.last_ws_id);
+  const home = mine.find(w => Number(w.id) === lastId) || (mine.length === 1 ? mine[0] : null);
+  const firm = home ? await db.prepare('SELECT timezone FROM firms WHERE id=?').get(home.firm_id) : null;
+  return { clientHelp: { tp, tpOnly: tp && !iso }, clientHomeZone: home ? workspaceTimeZone(home, firm) : null };
+}
+
 app.use(async (req, res, next) => {
   res.locals.activeEntity = null;
   res.locals.entitySelectorWs = null;
   res.locals.unreadNotifications = 0;
+  res.locals.firmZone = null;
   try {
     const firmId = await getActiveFirmId(req);
-    res.locals.activeFirm = firmId ? await db.prepare('SELECT id, name FROM firms WHERE id=?').get(firmId) : null;
+    res.locals.activeFirm = firmId ? await db.prepare('SELECT id, name, timezone FROM firms WHERE id=?').get(firmId) : null;
     const u = req.user || (await currentUser(req));
+    if (u && res.locals.activeFirm) res.locals.firmZone = workspaceTimeZone(null, res.locals.activeFirm);
     res.locals.allFirms = await listUserFirms(u);
   } catch (_) {
     res.locals.activeFirm = null;
@@ -730,12 +764,15 @@ app.use(async (req, res, next) => {
   res.locals.lastWs = null;
   res.locals.firmWorkspaces = [];
   res.locals.tprmMenuVisible = false;
+  res.locals.clientHelp = null;
+  res.locals.clientHomeZone = null;
   try {
     const u = await currentUser(req);
     if (u) {
       const firmId = await getActiveFirmId(req);
       if (firmId) {
         res.locals.firmWorkspaces = await listWorkspaces(u);
+        if (u.user_type === 'client') Object.assign(res.locals, await clientShellContext(req, u, res.locals.firmWorkspaces));
         res.locals.tprmMenuVisible = await require('./lib/tprm/access').menuVisible(db, u, res.locals.firmWorkspaces);
         if (u.user_type === 'firm') {
           const tprmOn = await require('./lib/tprm/settings').enabledAmong(db, res.locals.firmWorkspaces.map(w => w.id));
@@ -788,8 +825,9 @@ require('./routes/auditor').register(app, {
 async function tprmEnabledIds(workspaces) {
   return require('./lib/tprm/settings').enabledAmong(db, workspaces.map(w => w.id));
 }
+const tprmShell = require('./lib/tprm/shell').bind({ db, getWorkspace, listWorkspaces, permissionsFor });
 require('./routes/dashboard').register(app, { db, requireAuth, logAction, isFirmUser, isFirmOwner,
-  getActiveFirmId, listWorkspaces, workspaceProgress, computeClientStage, tprmEnabledIds });
+  getActiveFirmId, listWorkspaces, workspaceProgress, computeClientStage, tprmEnabledIds, tprmShell });
 
 require('./routes/admin').register(app, { db, requireAuth, logAction, isFirmOwner, getActiveFirmId });
 
@@ -834,7 +872,7 @@ require('./routes/governance').register(app, { db, requireAuth, requireWorkspace
 require('./routes/workspace-ops-b').register(app, { db, requireAuth, requireWorkspace, requirePermission,
   logAction, getActiveFirmId, isFirmUser, isFirmOwner, getOrCreateState, getActiveMethodology,
   defaultMethodology, methodologyBand, ensureWorkspaceMethodology, activeEntityFilter, computeNeedsAttention,
-  getWorkspace, listWorkspaces, permissionsFor });
+  getWorkspace, listWorkspaces, permissionsFor, tprmShell });
 
 require('./routes/readiness').register(app, { db, requireAuth, requireWorkspace });
 
@@ -859,6 +897,7 @@ require('./routes/tprm-assessments').register(app, { db, requireAuth, getWorkspa
 require('./routes/tprm-evidence').register(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces, upload, resolveUploadPath, logAction });
 require('./routes/tprm-recommendations').register(app, { db, requireAuth, getWorkspace, permissionsFor, listWorkspaces });
 require('./routes/tprm-report').register(app, { db, requireAuth, requireWorkspace, getWorkspace, permissionsFor, listWorkspaces, logAction, upload });
+require('./routes/client-team').register(app, { db, requireAuth, requireWorkspace, logAction });
 require('./lib/tprm/ai-review').configure({ resolveUploadPath });
 jobs.registerJob('tprmAiReviews', async () => `${await require('./lib/tprm/ai-review').processQueue(db)} AI review(s) run`);
 jobs.registerJob('tprmReminders', async () => `${await require('./lib/tprm/messages').reminders(db)} TPRM reminder(s) sent`);

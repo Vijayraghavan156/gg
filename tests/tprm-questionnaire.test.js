@@ -229,8 +229,8 @@ test('the module mapping table adds modules from the answers; disabled modules c
   assert.throws(() => assembly.assemble(BANK, { tier: 'high', deliveryModel: 'vendor_hosted', modules: ['Vendor Staff in Client Environment'] }), /switched off/);
   assert.throws(() => assembly.assemble(BANK, { tier: 'high', deliveryModel: 'vendor_hosted', modules: ['Nope'] }), /not a module/);
   const r = assembly.assemble(BANK, { tier: 'high', deliveryModel: 'vendor_hosted', modules: ['Personal Data & Privacy', 'Hosting Platform & Cloud Provider'] });
-  assert.deepEqual(r.counts.modules, { 'Hosting Platform & Cloud Provider': 12, 'Personal Data & Privacy': 9 });
-  assert.equal(r.counts.vendorTotal, 134);
+  assert.deepEqual(r.counts.modules, { 'Hosting Platform & Cloud Provider': 7, 'Personal Data & Privacy': 3 }, 'module questions that repeat a base question already asked are left out');
+  assert.equal(r.counts.vendorTotal, 123);
   assert.deepEqual(r.sections.filter(s => s.kind === 'module').map(s => s.title), ['Hosting Platform & Cloud Provider', 'Personal Data & Privacy']);
 });
 
@@ -294,23 +294,23 @@ test('a High vendor-hosted third party with personal data: base by domain, Cloud
   assert.equal(q.delivery_model, 'vendor_hosted');
   assert.equal(q.delivery_model_source, 'assessment_answer');
   assert.equal(q.bank_version, 1);
-  assert.equal(q.vendor_question_count, 134);
+  assert.equal(q.vendor_question_count, 123);
   assert.deepEqual(q.modules.map(m => [m.module, m.source, m.included]),
     [['Personal Data & Privacy', 'auto', true], ['Hosting Platform & Cloud Provider', 'auto', true]]);
   assert.deepEqual(q.dynamic_modules.map(d => d.module), ['AI Services']);
   assert.deepEqual(q.consultant_check_ids, []);
   const ids = q.sections.flatMap(s => s.ids);
-  assert.equal(ids.length, 134);
-  assert.equal(new Set(ids).size, 134, 'no question twice');
+  assert.equal(ids.length, 123);
+  assert.equal(new Set(ids).size, 123, 'no question twice');
   assert.ok(ids.includes('AIS-01'));
-  assert.deepEqual(q.sections.filter(s => s.kind === 'module').map(s => [s.title, s.ids.length]), [['Hosting Platform & Cloud Provider', 12], ['Personal Data & Privacy', 9]]);
+  assert.deepEqual(q.sections.filter(s => s.kind === 'module').map(s => [s.title, s.ids.length]), [['Hosting Platform & Cloud Provider', 7], ['Personal Data & Privacy', 3]]);
   assert.equal(q.sections.filter(s => s.kind === 'base').reduce((n, s) => n + s.ids.length, 0), 113);
 
   const shown = await allSteps(consultant.session, aBase(ctx.ws, ctx.tp, ctx.a));
-  assert.match(shown.text, /data-tprm-vendor-count>134</);
+  assert.match(shown.text, /data-tprm-vendor-count>123</);
   assert.match(shown.text, /data-tprm-base-count>113</);
-  assert.match(shown.text, /data-tprm-module="Hosting Platform &amp; Cloud Provider" data-tprm-module-included="1"[\s\S]*?data-tprm-module-count>12</);
-  assert.match(shown.text, /data-tprm-module="Personal Data &amp; Privacy" data-tprm-module-included="1"[\s\S]*?data-tprm-module-count>9</);
+  assert.match(shown.text, /data-tprm-module="Hosting Platform &amp; Cloud Provider" data-tprm-module-included="1"[\s\S]*?data-tprm-module-count>7</);
+  assert.match(shown.text, /data-tprm-module="Personal Data &amp; Privacy" data-tprm-module-included="1"[\s\S]*?data-tprm-module-count>3</);
   assert.match(shown.text, /data-tprm-section="Identity &amp; Access Management"[\s\S]*?data-tprm-section-count>8</);
   assert.match(shown.text, /data-tprm-consultant-checks-empty/);
   assert.match(shown.text, /data-tprm-dynamic-modules[\s\S]*AI Services/);
@@ -362,14 +362,14 @@ test('modules are added and removed by hand with a reason, recorded, until the q
   assert.match(toast(await post({ op: 'add', module: 'Personal Data & Privacy', reason: 'x' })), /already in/);
 
   let res = await post({ op: 'remove', module: 'Hosting Platform & Cloud Provider', reason: 'Runs on the client\'s own servers' });
-  assert.match(toast(res), /Hosting Platform & Cloud Provider removed: 122 questions/);
+  assert.match(toast(res), /Hosting Platform & Cloud Provider removed: 116 questions/);
   q = await qRow(ctx.a);
   const cloud = q.modules.find(m => m.module === 'Hosting Platform & Cloud Provider');
   assert.deepEqual([cloud.source, cloud.included, cloud.changed_by, cloud.reason], ['auto', false, consultant.id, 'Runs on the client\'s own servers']);
-  assert.equal(q.vendor_question_count, 122);
+  assert.equal(q.vendor_question_count, 116);
 
   res = await post({ op: 'add', module: 'AI Services', reason: 'The client knows it uses AI' });
-  assert.match(toast(res), /AI Services added: 143 questions/);
+  assert.match(toast(res), /AI Services added: 137 questions/);
   q = await qRow(ctx.a);
   assert.deepEqual(q.modules.find(m => m.module === 'AI Services').source, 'manual');
   assert.deepEqual(q.dynamic_modules, [], 'AI Services is no longer added while answering: it is in already');
@@ -794,7 +794,7 @@ test('every change is an event in the assessment chain, the chain verifies, and 
   ]);
   assert.ok(rows.every(e => Number(e.actor_user_id) === consultant.id));
   assert.equal(rows[0].after_state.bank_version, 1);
-  assert.equal(rows[0].after_state.vendor_question_count, 134);
+  assert.equal(rows[0].after_state.vendor_question_count, 123);
   assert.equal(rows[6].after_state.reason, 'Replaced by a new link');
   assert.equal(rows[8].after_state.reason, 'Contact left');
   for (const e of rows) assert.equal(JSON.stringify(e).includes('token'), false, 'no event carries a token or its hash');
@@ -828,4 +828,18 @@ test('a questionnaire keeps the bank version it pinned when a newer version is p
   assert.ok(!q2.sections.flatMap(s => s.ids).includes('GOV-01'));
   const page = await allSteps(consultant.session, aBase(ctx.ws, ctx.tp, ctx.a));
   assert.match(page.text, /data-tprm-bank-version>Version 1</);
+});
+
+test('the Assurance panel says Not asked at this tier only when the questionnaire for the tier leaves out cyber insurance', async () => {
+  const LOW = { data_handled: 'none', service_stops: 'minor', system_access: 'none', regulated: 'no', replaceability: 'easily',
+    delivery_model: 'vendor_hosted', payments_records: 'no', sites_data: 'no' };
+  const asks = q => (typeof q.sections === 'string' ? JSON.parse(q.sections) : q.sections).some(s => (s.ids || []).includes('GOV-07'));
+  const high = await assessment('Insured High Co');
+  assert.equal(asks(await prepare(high)), true, 'a High questionnaire asks GOV-07');
+  const highPage = await client.get(`/tprm/clients/${high.ws}/third-parties/${high.tp}`);
+  assert.match(highPage.text, /data-tprm-assurance-insurance="not_answered"><dt>Cyber insurance<\/dt><dd>Not answered yet</);
+  const low = await assessment('Insured Low Co', { answers: LOW });
+  assert.equal(asks(await prepare(low)), false, 'a Low questionnaire leaves GOV-07 out');
+  const lowPage = await client.get(`/tprm/clients/${low.ws}/third-parties/${low.tp}`);
+  assert.match(lowPage.text, /data-tprm-assurance-insurance="not_asked"><dt>Cyber insurance<\/dt><dd>Not asked at this tier</);
 });

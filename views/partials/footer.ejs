@@ -4,6 +4,10 @@
 
 <% if (typeof user !== 'undefined' && user) { %>
 <% const clientFooterMode = user.user_type === 'client' || (typeof clientPreview !== 'undefined' && clientPreview === true); %>
+<% const helpAreas = typeof clientHelp !== 'undefined' && clientHelp ? clientHelp : null;
+   const helpTpOnly = typeof tpOnlyClient !== 'undefined' ? tpOnlyClient === true : !!(helpAreas && helpAreas.tpOnly);
+   const helpTp = typeof tpPortalEnabled !== 'undefined' ? tpPortalEnabled === true : !!(helpAreas && helpAreas.tp);
+   const firmHelpTpOnly = !clientFooterMode && ((typeof tpOnlyWorkspace !== 'undefined' && tpOnlyWorkspace === true) || (typeof tpHelpClientTpOnly !== 'undefined' && tpHelpClientTpOnly === true)); %>
 <div class="cp-backdrop" id="cpBackdrop" onclick="if(event.target===this)closePalette()" role="dialog" aria-modal="true" aria-labelledby="cpSearchLabel" aria-hidden="true" hidden>
   <div class="cp-modal" tabindex="-1">
     <span class="sr-only" id="cpSearchLabel">Search <%= clientFooterMode ? 'this engagement' : 'Compliance Sphere' %></span>
@@ -31,15 +35,21 @@
     <div class="help-shortcuts">
       <% if (clientFooterMode) { %>
       <div class="help-row"><span>Search this engagement</span><span><span class="kbd" id="hk1">⌘K</span></span></div>
-      <div class="help-row"><span><strong>Requests</strong><br><small>Provide information, upload files and ask questions.</small></span></div>
-      <div class="help-row"><span><strong>Engagement</strong><br><small>Track agreed deliverables, dates and approvals.</small></span></div>
-      <div class="help-row"><span><strong>Approvals</strong><br><small>Review policies and confirm shared information.</small></span></div>
-      <div class="help-row"><span><strong>Reports</strong><br><small>Open reports released by your engagement team.</small></span></div>
+      <% if (!helpTpOnly) { %>
+      <div class="help-row" data-help-area="home"><span><strong>Home</strong><br><small>What needs your attention, and your engagement contact.</small></span></div>
+      <div class="help-row" data-help-area="actions"><span><strong>My actions</strong><br><small>Requests and deliverables for your team: answer, upload files and comment.</small></span></div>
+      <div class="help-row" data-help-area="progress"><span><strong>Progress</strong><br><small>How the engagement is moving, step by step.</small></span></div>
+      <div class="help-row" data-help-area="updates"><span><strong>Updates</strong><br><small>Notices from your engagement team.</small></span></div>
+      <% } %>
+      <% if (helpTp) { %><div class="help-row" data-help-area="third-party-risk"><span><strong>Third-party risk</strong><br><small>Your suppliers, the recommendations to decide on, and the conditions you own.</small></span></div><% } %>
       <% } else { %>
       <div class="help-row"><span>Open command palette</span><span><span class="kbd" id="hk1">⌘K</span></span></div>
       <div class="help-row"><span>Search</span><span><span class="kbd">/</span></span></div>
       <div class="help-row"><span>Show this help</span><span><span class="kbd">?</span></span></div>
       <div class="help-row"><span>Toggle dark mode</span><span><span class="kbd" id="hk2">⌘⇧L</span></span></div>
+      <% if (firmHelpTpOnly) { %>
+      <div class="help-row" data-help-area="third-party-risk"><span><strong>Third-party risk</strong><br><small>This client has third-party risk only: its register, the assessments, and the recommendations and conditions sent to the client. The ISO shortcuts do not apply here.</small></span></div>
+      <% } else { %>
       <div class="text-xs text-tertiary" style="margin:10px 0 6px;font-weight: 500;text-transform:uppercase;letter-spacing:0.06em;">Go to (within a client)</div>
       <div class="help-row"><span>Overview</span><span><span class="kbd">g</span> <span class="kbd">o</span></span></div>
       <div class="help-row"><span>Readiness</span><span><span class="kbd">g</span> <span class="kbd">e</span></span></div>
@@ -53,12 +63,13 @@
       <div class="help-row"><span>Nonconformities</span><span><span class="kbd">g</span> <span class="kbd">n</span></span></div>
       <div class="help-row"><span>Tasks</span><span><span class="kbd">g</span> <span class="kbd">t</span></span></div>
       <% } %>
+      <% } %>
       <div class="help-faq" aria-label="Frequently asked questions">
         <div class="text-xs text-tertiary help-faq-label">Frequently asked questions</div>
         <details><summary>How do I find a page quickly?</summary><p>Use Search or press Command K on macOS and Control K on Windows. Search shows only pages available in your engagement.</p></details>
         <details><summary>Why is a submit button unavailable?</summary><p>Required fields or supporting evidence are still missing. Complete the highlighted fields before submitting.</p></details>
         <details><summary>Who can see uploaded evidence?</summary><p>Only authorised members of this client workspace and its assigned engagement team can access uploaded evidence.</p></details>
-        <details><summary>How do I contact the engagement team?</summary><p>Use the Contact team button in the client portal or open Portal help for guidance.</p></details>
+        <details><summary>How do I contact the engagement team?</summary><p><%= clientFooterMode && helpTpOnly ? 'Your consultants are named on each third party\'s page in Third-party risk. You can also comment on the findings in a recommendation they issued.' : clientFooterMode ? 'Your engagement contact is shown on your portal Home, with an email button when an address is set. You can also comment on any request or deliverable.' : 'Use the engagement contact shown on the client portal Home, or comment on a request or deliverable.' %></p></details>
       </div>
     </div>
   </div>
@@ -275,14 +286,27 @@ window._unmarkBusy = function (form) {
     return first ? first.getAttribute('href') || '' : '';
   }
 
+  function headAssets(doc, base) {
+    return Array.from(doc.querySelectorAll('head link[rel="stylesheet"][href], head script[src]'))
+      .map(el => new URL(el.getAttribute('href') || el.getAttribute('src'), base).pathname);
+  }
+  function needsHeadAssets(newDoc) {
+    const have = new Set(headAssets(document, location.href));
+    return headAssets(newDoc, location.href).some(path => !have.has(path));
+  }
+
   function swapApp(html, targetHref) {
     const parser = new DOMParser();
     const newDoc = parser.parseFromString(html, 'text/html');
     const newApp = newDoc.querySelector(APP_SELECTOR);
     const oldApp = document.querySelector(APP_SELECTOR);
     if (!newApp || !oldApp) return false;
+    if (needsHeadAssets(newDoc)) return false;
     const newTitle = newDoc.querySelector('title');
     if (newTitle) document.title = newTitle.textContent;
+    const newZone = newDoc.documentElement.getAttribute('data-time-zone');
+    if (newZone) document.documentElement.setAttribute('data-time-zone', newZone);
+    else document.documentElement.removeAttribute('data-time-zone');
     const newCsrf = newDoc.querySelector('meta[name="csrf-token"]');
     const curCsrf = document.querySelector('meta[name="csrf-token"]');
     if (newCsrf && curCsrf) {
@@ -328,6 +352,7 @@ window._unmarkBusy = function (form) {
       updateSidebarActive(target.href);
       window.WorkNavigation?.mount(target.href);
     });
+    document.dispatchEvent(new CustomEvent('app:page-swapped', { detail: { href: targetHref || location.href } }));
     return true;
   }
 
@@ -378,7 +403,7 @@ window._unmarkBusy = function (form) {
       window.WorkNavigation?.capture(renderedPath);
       if (push) window.history.pushState({}, '', href);
       const ok = swapApp(text, href);
-      if (!ok) { leavingDocument = true; window.location.href = href; return; }
+      if (!ok) { leavingDocument = true; window.location.reload(); return; }
       const renderedUrl = new URL(href, location.href);
       renderedPath = renderedUrl.pathname + renderedUrl.search;
       prefetchCache.delete(prefetchKey(href));
@@ -809,6 +834,7 @@ function toast(msg, kind) {
   if (key) {
     const msg = decodeURIComponent(p.get(key));
     const kind = p.get('toastKind') || (key === 'error' ? 'error' : 'success');
+    window.appPageToast = { message: msg, kind };
     setTimeout(() => toast(msg, kind), 50);
     p.delete(key); p.delete('toastKind');
     const newUrl = location.pathname + (p.toString() ? '?' + p.toString() : '') + location.hash;

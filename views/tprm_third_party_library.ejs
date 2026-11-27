@@ -1,0 +1,32 @@
+<% const docBase = tpHref + '/documents'; %>
+<div data-tprm-party-library>
+  <h3 class="fx-h4">Supplier documents <span>filed on the supplier, kept across reviews</span></h3>
+  <div class="fx-table">
+  <% if (!lib.documents.length) { %><div class="fx-empty" data-tprm-party-library-empty>No documents filed on this supplier yet.</div><% } else { %>
+  <div class="table-scroll"><table><thead><tr><th>Document</th><th>Kind</th><th>Issued</th><th>Expires</th><th>Client sees it</th><th></th></tr></thead><tbody>
+  <% lib.documents.forEach(d => { %><tr data-tprm-party-library-doc="<%= d.id %>" data-tprm-party-library-shared="<%= d.shared_with_client ? "1" : "0" %>">
+    <td><b><%= d.title %></b><span class="fx-sub"><%= d.original_name %><%= d.uploaded_by_name ? ', filed by ' + d.uploaded_by_name : '' %></span></td>
+    <td><%= d.kindLabel %></td>
+    <td><%= d.issued_on ? tpf.day(d.issued_on) : '-' %></td>
+    <td class="<%= d.expiry && d.expiry.key === 'expired' ? 'fx-bad' : '' %>" data-tprm-party-library-expiry="<%= d.expiry ? d.expiry.key : 'none' %>"><%= d.expires_on ? tpf.day(d.expires_on) : '-' %><% if (d.expiry && d.expiry.key !== 'valid') { %><span class="fx-sub"><%= d.expiry.label %></span><% } %></td>
+    <td><%= d.shared_with_client ? 'Shared' : 'No' %></td>
+    <td class="tprm-right tprm-nowrap">
+      <a class="btn btn-secondary btn-xs" href="<%= docBase %>/<%= d.id %>/download">Download</a>
+      <% if (canManage) { %>
+      <form method="POST" action="<%= docBase %>/<%= d.id %>/share" style="display:inline" data-tprm-party-library-share="<%= d.id %>">
+        <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= d.row_version %>"><input type="hidden" name="shared" value="<%= d.shared_with_client ? '0' : '1' %>">
+        <button class="btn btn-secondary btn-xs" type="submit"><%= d.shared_with_client ? 'Stop sharing' : 'Share with the client' %></button>
+      </form>
+      <form method="POST" action="<%= docBase %>/<%= d.id %>/delete" style="display:inline" data-tprm-party-library-delete="<%= d.id %>">
+        <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= d.row_version %>">
+        <%- include('partials/tprm_confirm_fields', { title: 'Delete "' + d.title + '"?', body: 'It leaves the list and the client stops seeing it. The history keeps a record that it was filed and deleted.', action: 'Delete', tone: 'problem' }) %>
+        <button class="btn btn-ghost btn-xs" type="submit">Delete</button>
+      </form>
+      <% } %>
+    </td></tr><% }) %>
+  </tbody></table></div><% } %>
+  </div>
+  <% if (canManage) { %>
+  <%- include('partials/tprm_party_document_upload', { docBase, csrf, kinds: lib.kinds, kindLabels: lib.kindLabels, values: typeof libraryForm !== 'undefined' && libraryForm ? libraryForm.values : {}, errors: typeof libraryForm !== 'undefined' && libraryForm ? libraryForm.errors : [] }) %>
+  <% } %>
+</div>

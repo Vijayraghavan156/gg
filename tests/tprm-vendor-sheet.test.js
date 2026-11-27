@@ -224,7 +224,7 @@ async function submitted(name, opts) {
   const ctx = await linked(name, opts);
   await answerAll(ctx);
   const res = await submitLink(ctx.token);
-  assert.equal(res.status, 200, res.text.slice(0, 300));
+  assert.equal(res.status, 303, res.text.slice(0, 300));
   assert.equal((await qRow(ctx.a)).status, 'submitted');
   return ctx;
 }
@@ -429,7 +429,7 @@ test('a wrong answer, an unknown row, a different questionnaire or a file that i
   assert.deepEqual(left, [], 'uploaded spreadsheets are not kept on disk');
 });
 
-test('the spreadsheet is only for a questionnaire being answered, and cannot submit it', async () => {
+test('the spreadsheet is filled in only while answering and cannot submit; after submission it downloads as a record copy that cannot be uploaded', async () => {
   const ctx = await linked('Sheet Submit Co');
   const page = await vget(ctx.token);
   assert.match(page.text, /data-vendor-spreadsheet/);
@@ -438,7 +438,9 @@ test('the spreadsheet is only for a questionnaire being answered, and cannot sub
   assert.equal(withGo.status, 303);
   assert.equal((await qRow(ctx.a)).status !== 'submitted', true);
   const done = await submitted('Sheet Done Co');
-  assert.equal((await requestRaw('GET', `/vendor/q/${done.token}/spreadsheet`)).status, 404);
+  const copy = await requestRaw('GET', `/vendor/q/${done.token}/spreadsheet`);
+  assert.equal(copy.status, 200, 'the supplier can keep a copy of what was submitted');
+  assert.match(String(copy.headers['content-disposition']), /-as-submitted\.xlsx"/);
   const late = await upload(done.token, file, { aft: require('../lib/tprm/vendor-answers').formToken(require('../lib/tprm/questionnaires').hashToken(done.token)) });
   assert.equal(late.status, 404);
 });

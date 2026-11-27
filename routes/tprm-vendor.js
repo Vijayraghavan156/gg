@@ -11,6 +11,7 @@ const vendorAnswers = require('../lib/tprm/vendor-answers');
 const conditionLinks = require('../lib/tprm/condition-links');
 const messages = require('../lib/tprm/messages');
 const issues = require('../lib/tprm/issues');
+const linkAccess = require('../lib/tprm/link-access');
 const contractChecklist = require('../lib/tprm/contract-review');
 const vendorSheet = require('../lib/tprm/vendor-sheet');
 const vendorSession = require('../lib/tprm/vendor-session');
@@ -289,7 +290,20 @@ function registerRoutes(app, { db }) {
       mainContact: req.vperson && req.vperson.role !== 'main' ? (await vendorPeople.list(db, ctx.workspaceId, ctx.thirdPartyId)).find(x => x.role === 'main') || null : null,
       tpf: await datesFor(ctx.workspaceId),
       firmEntry: req.vfirm ? { name: req.vfirm.name || req.vfirm.email, back: req.vfirmBack } : null,
+      reviewName: await vendorPortal.reviewName(db, ctx.workspaceId, ctx.assessmentId),
+      roleLabels: vendorPeople.ROLE_LABELS,
     });
+  }
+
+  async function renderSubmitted(req, res, done, tpf) {
+    const firm = await vendorPortal.firmBrand(db, done.firmId);
+    const shown = { clientName: done.clientName, submittedAt: done.submittedAt, issuesHref: await issuesHrefFor(req), tpf, sheetHref: `${req.vbase}/spreadsheet` };
+    if (req.vsession && req.vperson) {
+      const frame = await vendorPortal.frameFor(db, { firm, session: req.vsession, person: req.vperson,
+        workspaceId: req.vperson.workspace_id, thirdPartyId: req.vperson.third_party_id });
+      return renderView(res, 200, 'tprm_vendor_submitted', { ...shown, frame });
+    }
+    return renderState(res, 200, 'submitted', { ...shown, frame: { firm: { name: firm.name, logo: firm.logo, logoOnDark: firm.logoOnDark } } });
   }
 
   const sectionParam = value => {
@@ -308,13 +322,19 @@ function registerRoutes(app, { db }) {
     return req.vsession;
   }
 
-  const fromToken = family => (req, _res, next) => {
+  const fromToken = family => async (req, res, next) => {
+    try {
+      if (await linkAccess.linkClosed(db, req.params.token, family)) {
+        publicHeaders(res);
+        return await invalidPage(res);
+      }
+    } catch (err) { return next(err); }
     req.vkey = req.params.token;
     req.vtoken = req.params.token;
     req.vbase = `${family === 'c' ? CONDITIONS_PREFIX : PREFIX}${req.params.token}`;
     req.vsession = null;
     req.vperson = null;
-    next();
+    return next();
   };
 
   const fromSession = family => async (req, res, next) => {
@@ -335,7 +355,7 @@ function registerRoutes(app, { db }) {
         req.vassessment = a;
         return next();
       }
-      const key = family === 'c' ? await vendorPortal.conditionsKey(db, a) : await vendorPortal.questionnaireKey(db, a);
+      const key = family === 'c' ? (await vendorPortal.conditionsKey(db, a)) || (await vendorPortal.conditionsDoneKey(db, a)) : await vendorPortal.questionnaireKey(db, a);
       if (!key) return req.method === 'GET' ? res.redirect(303, `${PORTAL}home?notice=closed`) : await invalidPage(res);
       req.vkey = key;
       req.vtoken = null;
@@ -424,7 +444,7 @@ function registerRoutes(app, { db }) {
     const ctx = await vendorAnswers.linkContext(db, req.vkey);
     if (!ctx) {
       const done = await vendorAnswers.submittedLink(db, req.vkey);
-      if (done) return renderState(res, 200, 'submitted', { ...done, issuesHref: await issuesHrefFor(req), tpf: await datesForToken(req.vkey) });
+      if (done) return renderSubmitted(req, res, done, await datesForToken(req.vkey));
       return invalidPage(res);
     }
     const key = String(req.query.notice || '');
@@ -461,13 +481,17 @@ function registerRoutes(app, { db }) {
     for (const stored of result.removedPaths) {
       removeFiles(uploadedFiles(ctx, stored));
     }
+    if (result.commented) await messages.vendorCommented(db, result.commented);
     if (req.body.intent === 'review') {
       const fresh = await vendorAnswers.linkContext(db, req.vkey);
       if (!fresh) return invalidPage(res);
       return renderQuestionnaire(req, res, fresh, { view: 'confirm' });
     }
     const notice = result.ai ? `ai_${result.ai}` : 'saved';
-    const go = goTarget(req.body.go === 'jump' ? req.body.jump : req.body.go);
+    const rawGo = Array.isArray(req.body.go) ? String(req.body.go[0] ?? '') : String(req.body.go ?? '');
+    const toQuestion = /^q:/.test(rawGo) ? goTarget(rawGo.slice(2)) : null;
+    const go = toQuestion && !['start', 'review', 'documents', 'issues', 'contract', 'home', 'pissues', 'people', 'files'].includes(toQuestion)
+      ? toQuestion : goTarget(req.body.go === 'jump' ? req.body.jump : req.body.go);
     if (go) {
       const here = `${req.vbase}`;
       if (go === 'start') return res.redirect(303, `${here}?notice=${notice}`);
@@ -485,7 +509,7 @@ function registerRoutes(app, { db }) {
       let index = sections.findIndex(s => (s.ids || []).includes(go)) + 1;
       if (!index) index = Math.min(Math.max(posted || 1, 1), sections.length);
       if (!index) return res.redirect(303, `${here}?view=review&notice=${notice}`);
-      return res.redirect(303, `${here}?s=${index}&notice=${notice}`);
+      return res.redirect(303, `${here}?s=${index}&notice=${notice}${toQuestion ? `#q-${toQuestion}` : ''}`);
     }
     if (!posted) {
       const anchor = result.ai === 'added' ? '#ai-services' : '';
@@ -590,7 +614,7 @@ function registerRoutes(app, { db }) {
     if (result.problems) return renderQuestionnaire(req, res, pre.ctx, { status: 409, view: 'confirm' });
     if (req.vfirm) return res.redirect(303, `${req.vfirmBack}?step=review&toast=${encodeURIComponent('Submitted for the third party. The answers are ready to review')}`);
     await messages.vendorSubmitted(db, result);
-    return renderState(res, 200, 'submitted', { clientName: result.clientName, submittedAt: result.submittedAt, issuesHref: await issuesHrefFor(req), tpf: await datesFor(pre.ctx.workspaceId) });
+    return res.redirect(303, req.vbase);
   }));
 
   vroute('post', 'q', '/clarifications/:cid', guarded(postLimiter, async (req, res, staged) => {
@@ -623,11 +647,13 @@ function registerRoutes(app, { db }) {
   }));
 
   vroute('get', 'q', '/spreadsheet', guarded(limiter, async (req, res) => {
-    const ctx = await vendorAnswers.linkContext(db, req.vkey);
-    if (!ctx || ctx.mode !== 'answering') return invalidPage(res);
-    const buffer = await vendorSheet.buildWorkbook(await vendorSheet.pageFor(db, ctx));
+    const ctx = await vendorAnswers.linkContext(db, req.vkey) || (req.vfirm ? null : await vendorAnswers.submittedContext(db, req.vkey));
+    if (!ctx) return invalidPage(res);
+    const page = await vendorSheet.pageFor(db, ctx);
+    if (ctx.submittedAt) page.submittedDay = (await datesFor(ctx.workspaceId)).dayTime(ctx.submittedAt, { zone: true });
+    const buffer = await vendorSheet.buildWorkbook(page);
     res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.set('Content-Disposition', `attachment; filename="${vendorSheet.fileName(ctx.clientName)}"`);
+    res.set('Content-Disposition', `attachment; filename="${vendorSheet.fileName(ctx.clientName, { submitted: ctx.mode !== 'answering' })}"`);
     res.set('X-Content-Type-Options', 'nosniff');
     return res.status(200).send(buffer);
   }));
@@ -691,12 +717,21 @@ function registerRoutes(app, { db }) {
     if (!c) return invalidPage(res);
     const p = await issues.vendorPage(db, vctx);
     const aft = aftFor(req, vctx.tokenHash);
+    const key = req.vkey || (req.vassessment ? await vendorPortal.questionnaireKey(db, req.vassessment) : null);
+    const qctx = key ? await vendorAnswers.linkContext(db, key) : null;
+    const qp = qctx && qctx.mode === 'answering' && qctx.assessmentId === vctx.assessmentId ? await vendorAnswers.pageData(db, qctx) : null;
     const frame = await vendorPortal.frameFor(db, { firm: p.firm, session: req.vsession, person: req.vperson, workspaceId: vctx.workspaceId,
-      thirdPartyId: vctx.thirdPartyId, active: null, review: { base: req.vbase, label: 'Contract clauses' },
+      thirdPartyId: vctx.thirdPartyId, active: null, review: qp ? null : { base: req.vbase, label: 'Contract clauses' },
       linkHome: req.vsession || req.vfirm ? null : { action: `${req.vbase}/home`, aft } });
     return renderView(res, status, 'tprm_vendor_contract', {
       p, c, frame, labels: contractChecklist.VENDOR_STATUS_LABELS, statuses: contractChecklist.VENDOR_STATUSES,
-      token: req.vtoken, base: req.vbase, signedIn: req.vperson || null, aft, errors, notice, values,
+      token: req.vtoken, base: req.vbase, signedIn: req.vperson || null, aft, errors, notice: c.open ? notice : null, values,
+      qp, issueCount: qp ? await issues.vendorCount(db, vctx.workspaceId, vctx.assessmentId) : null,
+      assigned: qp && req.vperson ? await vendorPeople.assignments(db, vctx.workspaceId, vctx.assessmentId) : null,
+      reviewName: await vendorPortal.reviewName(db, vctx.workspaceId, vctx.assessmentId),
+      reviewer: qctx && qctx.issuer ? qctx.issuer : null,
+      dueAt: qctx ? qctx.expiresAt : null,
+      tpf: await datesFor(vctx.workspaceId),
     });
   }
 
@@ -763,16 +798,25 @@ function registerRoutes(app, { db }) {
     });
   }
 
+  async function doneOrInvalid(req, res, status = 200) {
+    const done = req.vkey ? await conditionLinks.doneContext(db, req.vkey) : null;
+    if (!done) return invalidPage(res);
+    const p = await conditionLinks.donePageData(db, done);
+    const frame = await vendorPortal.frameFor(db, { firm: p.firm, session: req.vsession, person: req.vperson, workspaceId: done.workspaceId,
+      thirdPartyId: done.thirdPartyId, active: null, review: { base: req.vbase, label: 'Conditions' } });
+    return renderView(res, status, 'tprm_vendor_conditions_done', { p, frame, signedIn: req.vperson || null, tpf: await datesFor(done.workspaceId) });
+  }
+
   vroute('get', 'c', '', guarded(conditionsLimiter, async (req, res) => {
     const ctx = await conditionLinks.linkContext(db, req.vkey);
-    if (!ctx) return invalidPage(res);
+    if (!ctx) return doneOrInvalid(req, res);
     return renderConditions(req, res, ctx, { notice: req.query.notice === 'sent' ? 'Thank you: your proof has been sent. The firm will review it.' : null });
   }));
 
   vroute('post', 'c', '/conditions/:cid/proof', guarded(conditionsPostLimiter, async (req, res, staged) => {
     if (!sameOrigin(req)) return renderState(res, 403, 'forbidden');
     const ctx = await conditionLinks.linkContext(db, req.vkey);
-    if (!ctx) return invalidPage(res);
+    if (!ctx) return doneOrInvalid(req, res, 409);
     req.tprmVendor = ctx;
     const read = await readMultipart(req);
     staged.push(...read.files);
@@ -807,7 +851,7 @@ function registerRoutes(app, { db }) {
 
   const SIGN_IN_NOTICES = Object.freeze({ signed_out: 'You are signed out.', expired: 'Your session ended. Sign in again to continue.' });
   const HOME_NOTICES = Object.freeze({ closed: 'That questionnaire or conditions page is not open at the moment.' });
-  const renderSignIn = (res, status, data) => renderView(res, status, 'tprm_vendor_signin', { step: 'email', email: '', errors: [], notice: null, firms: [], choice: null, codeId: null, minutes: vendorSession.LIMITS.codeMinutes, ...data });
+  const renderSignIn = (res, status, data) => renderView(res, status, 'tprm_vendor_signin', { step: 'email', email: '', errors: [], notice: null, accessEnded: false, firms: [], choice: null, codeId: null, minutes: vendorSession.LIMITS.codeMinutes, ...data });
 
   async function startSession(res, { firmId, email, personId = null, to = 'home' }) {
     const token = await vendorSession.createSession(db, { firmId, email, personId });
@@ -823,6 +867,12 @@ function registerRoutes(app, { db }) {
 
   app.get(`${PORTAL}sign-in`, guarded(limiter, async (req, res) => {
     const key = String(req.query.notice || '');
+    const ended = await vendorSession.accessEnded(db, vendorSession.readCookie(req));
+    if (ended) {
+      const names = ended.thirdParties.length > 1 ? `${ended.thirdParties.slice(0, -1).join(', ')} and ${ended.thirdParties[ended.thirdParties.length - 1]}` : ended.thirdParties[0];
+      res.set('Set-Cookie', vendorSession.cookieValue(null));
+      return renderSignIn(res, 200, { accessEnded: true, notice: `Your access to ${names} has ended, so you were signed out. If you think this is a mistake, contact the firm that sent your questionnaire.` });
+    }
     return renderSignIn(res, 200, { notice: Object.prototype.hasOwnProperty.call(SIGN_IN_NOTICES, key) ? SIGN_IN_NOTICES[key] : null });
   }));
 
@@ -980,7 +1030,7 @@ function registerRoutes(app, { db }) {
 
   app.post(`${PREFIX}:token/home`, guarded(postLimiter, async (req, res) => {
     if (!sameOrigin(req)) return renderState(res, 403, 'forbidden');
-    const vctx = await issues.vendorContext(db, req.params.token);
+    const vctx = await linkAccess.linkClosed(db, req.params.token) ? null : await issues.vendorContext(db, req.params.token);
     if (!vctx) return invalidPage(res);
     if (isMultipart(req) || !vendorAnswers.verifyFormToken(vctx.tokenHash, req.body && req.body._aft)) return renderState(res, 403, 'forbidden');
     return linkSession(res, vctx, String((req.body && req.body.to) || 'home'));
@@ -1001,12 +1051,20 @@ function safeValues(body) {
   const out = {};
   const group = k => (body && typeof body[k] === 'object' && body[k]) || {};
   const s = v => (Array.isArray(v) ? String(v[0] ?? '') : v == null ? '' : String(v)).slice(0, 4000);
-  const blank = () => ({ response: '', detail: '', answer_text: '', fields: {}, yes_details: '', evidence_ref: '', evidence_date: '', confirm: false });
+  const blank = () => ({ response: '', detail: '', answer_text: '', fields: {}, yes_details: '', evidence_ref: '', evidence_date: '', confirm: false, picks: [], remove: [] });
   for (const k of ['r', 'd', 't', 'ref', 'date', 'y']) {
     for (const id of Object.keys(group(k))) {
       if (!/^[A-Z]{2,6}-[0-9]{1,4}$/.test(id)) continue;
       out[id] = out[id] || blank();
       out[id][{ r: 'response', d: 'detail', t: 'answer_text', ref: 'evidence_ref', date: 'evidence_date', y: 'yes_details' }[k]] = s(group(k)[id]);
+    }
+  }
+  for (const k of ['pick', 'remove']) {
+    for (const id of Object.keys(group(k))) {
+      if (!/^[A-Z]{2,6}-[0-9]{1,4}$/.test(id)) continue;
+      out[id] = out[id] || blank();
+      const raw = group(k)[id];
+      out[id][k === 'pick' ? 'picks' : 'remove'] = [...new Set((Array.isArray(raw) ? raw : [raw]).map(x => Number(s(x))).filter(n => Number.isSafeInteger(n) && n > 0))].slice(0, 50);
     }
   }
   for (const id of Object.keys(group('f'))) {

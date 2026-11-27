@@ -14,6 +14,7 @@ function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, withToast, logAction, auditCtx, upload, resolveUploadPath } = deps;
 
   app.get('/workspaces/:wsId/intake', requireAuth, requireWorkspace, async (req, res) => {
+    if (req.tpOnlyWorkspace) return res.redirect(`/workspaces/${req.workspace.id}/setup`);
     const rows = await db.prepare(`SELECT question_id, answer FROM engagement_intake WHERE workspace_id=?`)
       .all(req.workspace.id);
     const answers = {};

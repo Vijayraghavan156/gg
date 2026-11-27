@@ -6,6 +6,10 @@
     <div class="meta text-sm" style="margin-top:2px;">Every engagement ranked worst-first by a health score, so you know where to intervene.</div>
   </div>
 </div>
+<% const tpClients = typeof thirdPartyClients !== 'undefined' ? thirdPartyClients : []; %>
+<% if (tpClients.length) { %>
+<p class="meta text-sm" style="margin:0 0 12px;" data-portfolio-tprm-note><%= tpClients.length %> client<%= tpClients.length === 1 ? ' has' : 's have' %> third-party risk and no ISO programme, so <%= tpClients.length === 1 ? 'it is' : 'they are' %> not given an ISO health score. <%= tpClients.length === 1 ? 'Its' : 'Their' %> third-party risk status is listed below the scored engagements.</p>
+<% } %>
 
 <% if (engagements.length > 0) { %>
 <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--text-secondary);margin:0 0 16px;padding:10px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg);">
@@ -118,7 +122,7 @@
   <strong style="color:#b91c1c;">at risk</strong> below 50.
 </div>
 
-<% } else { %>
+<% } else if (!tpClients.length) { %>
 <div class="panel" style="overflow:hidden;">
   <div class="empty-state">
     <div class="empty-icon">
@@ -128,6 +132,42 @@
     <div class="empty-sub">Once you create client engagements, this board ranks them by health so you can triage at a glance.</div>
   </div>
 </div>
+<% } %>
+
+<% if (tpClients.length) { %>
+<section class="panel" style="overflow:hidden;margin-top:18px;" data-portfolio-tprm>
+  <div class="panel-head"><h2>Third-party risk clients</h2></div>
+  <div style="overflow-x:auto;">
+  <table class="t">
+    <thead><tr>
+      <th>Client</th>
+      <th style="width:110px;">Third parties</th>
+      <th style="width:120px;">Assessments open</th>
+      <th style="width:130px;">Reviews overdue</th>
+      <th style="width:140px;">Conditions overdue</th>
+      <th style="width:130px;">Next review</th>
+      <th>Needs attention</th>
+    </tr></thead>
+    <tbody>
+      <% tpClients.forEach(c => { const st = c.status; %>
+        <tr data-portfolio-tprm-client="<%= c.id %>">
+          <td><a href="<%= c.href %>" style="font-weight:500;color:var(--text);text-decoration:none;"><%= c.name %></a><div class="meta text-xs">Third-party risk</div></td>
+          <% if (st) { %>
+            <td class="num"><%= st.parties %></td>
+            <td class="num"><%= st.openAssessments %></td>
+            <td class="num" style="<%= st.reassessmentsOverdue ? 'color:#b91c1c;font-weight:500;' : '' %>"><%= st.reassessmentsOverdue %></td>
+            <td class="num" style="<%= st.conditionsOverdue ? 'color:#b91c1c;font-weight:500;' : '' %>"><%= st.conditionsOverdue %></td>
+            <td class="text-sm"><%= st.nextDue || '-' %></td>
+            <td class="text-sm"><%= st.reasons.length ? st.reasons.join(' · ') : 'Nothing waiting' %></td>
+          <% } else { %>
+            <td colspan="6" class="meta text-sm">You cannot open this client's third-party risk area.</td>
+          <% } %>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  </div>
+</section>
 <% } %>
 
 <%- include('partials/footer') %>

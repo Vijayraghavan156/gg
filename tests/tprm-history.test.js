@@ -5,12 +5,13 @@ const assert = require('node:assert/strict');
 const history = require('../lib/tprm/history');
 
 const MODULES = ['questionnaires', 'vendor-answers', 'assurance-reports', 'evidence', 'findings', 'recommendations', 'decisions', 'conditions',
-  'ai-review', 'contract-review', 'exit-plans'];
+  'ai-review', 'contract-review', 'exit-plans', 'party-documents'];
+const CLIENT_REQUEST_ACTIONS = ['client_request.accepted', 'client_request.reassessment_requested'];
 const ASSESSMENT_ACTIONS = ['assessment.started', 'assessment.scope_saved', 'assessment.tier_proposed', 'assessment.tier_returned',
   'assessment.tier_confirmed', 'assessment.cancelled', 'assessment.details_updated', 'recommendation.report_generated'];
 
 function allActions() {
-  const actions = new Set(ASSESSMENT_ACTIONS);
+  const actions = new Set([...ASSESSMENT_ACTIONS, ...CLIENT_REQUEST_ACTIONS]);
   for (const m of MODULES) {
     const mod = require(`../lib/tprm/${m}`);
     for (const key of ['EVENT_LABELS', 'ACTION_LABELS']) for (const a of Object.keys(mod[key] || {})) actions.add(a);
@@ -76,3 +77,76 @@ test('self-approval, self-issue and the client decision keep their own words', (
     ['Anita Rao recorded the client\'s decision: Approved (version 1)', { decision: 'Approved (version 1)' }],
   ]);
 });
+
+test('client requests and supplier documents read as plain sentences, and the supplier page has a label for each', () => {
+  const say = (action, after, before = {}) => history.entries([ev(action, after, { before_state: before, actor_name: 'Priya' })]).list[0].text;
+  assert.equal(say('client_request.accepted', { name: 'Hosting Co', kind: 'reassessment', assessment_id: 4 }), 'Priya started the reassessment the client asked for');
+  assert.equal(say('client_request.accepted', { name: 'Hosting Co' }), 'Priya added "Hosting Co" from the client\'s request');
+  assert.equal(say('client_request.reassessment_requested', { request_id: 3, preferred_date: '2026-12-15' }), 'Priya asked for a reassessment from the client portal, ideally by 15 Dec 2026');
+  assert.equal(say('client_request.reassessment_requested', { request_id: 3, preferred_date: null }), 'Priya asked for a reassessment from the client portal');
+  assert.equal(say('party_document.added', { title: 'ISO certificate' }), 'Priya filed the document "ISO certificate"');
+  assert.equal(say('party_document.shared', { title: 'ISO certificate' }), 'Priya shared the document "ISO certificate" with the client');
+  assert.equal(say('party_document.unshared', { title: 'ISO certificate' }), 'Priya stopped sharing the document "ISO certificate" with the client');
+  assert.equal(say('party_document.deleted', null, { title: 'Old policy' }), 'Priya deleted the document "Old policy"');
+  const view = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'views', 'tprm_third_party.ejs'), 'utf8');
+  const labels = view.slice(view.indexOf('const actionLabels = {'), view.indexOf('};', view.indexOf('const actionLabels = {')));
+  for (const action of [...CLIENT_REQUEST_ACTIONS, ...Object.keys(require('../lib/tprm/party-documents').ACTION_LABELS)]) {
+    assert.match(labels, new RegExp(`'${action.replace('.', '\\.')}':`), `${action} has a label`);
+  }
+});
+
+test('every event action written anywhere in third-party risk has a plain sentence', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const families = 'third_party|service|subprocessor|vendor_person|vendor_sections|party_document|client_request|exit_plan|condition|issue|finding|recommendation'
+    + '|assessment|questionnaire|answer|evidence|clarification|ai_review|ai_suggestion|contract_review|message|vendor_link|condition_link|assurance_report|evidence_waiver|client_decision';
+  const re = new RegExp(`'((?:${families})\\.[a-z_]+)'`, 'g');
+  const found = new Set();
+  const scan = dir => {
+    for (const f of fs.readdirSync(dir)) {
+      if (!/\.(js|sql)$/.test(f) || f === 'history.js') continue;
+      for (const m of fs.readFileSync(path.join(dir, f), 'utf8').matchAll(re)) found.add(m[1]);
+    }
+  };
+  scan(path.join(__dirname, '..', 'lib', 'tprm'));
+  scan(path.join(__dirname, '..', 'migrations'));
+  assert.ok(found.has('service.removed') && found.has('third_party.due_date_corrected'));
+  assert.deepEqual([...found].filter(a => !history.SENTENCES[a]).sort(), []);
+  for (const action of found) {
+    for (const after of [{}, { name: 'Northgate', description: 'Printing', current_tier: 'high', next_due_date: '2027-01-04', reason: 'breach', status: 'in_use', website: 'x' }]) {
+      const text = history.entries([ev(action, after)], { tierLabel: t => ({ high: 'High' })[t] }).list[0].text;
+      assert.doesNotMatch(text, /undefined|null|NaN|\[object|[\u2013\u2014]|\s{2}|\s$|_/, `${action}: ${text}`);
+      assert.doesNotMatch(text, /\b[a-z]+ ?[a-z]*\.[a-z_]+\b/, `${action}: ${text}`);
+    }
+  }
+});
+
+test('an event the firm recorded for the third party names the person at the firm', () => {
+  const text = history.entries([ev('vendor_person.added', { name: 'Dana', email: 'dana@x.test', role: 'colleague', by: 'firm' }, { actor_name: 'Arjun Nair' })]).list[0].text;
+  assert.equal(text, 'Arjun Nair (for the third party) added Dana (dana@x.test) as a colleague');
+});
+
+const PARTY_CHAIN = /^(third_party|service|subprocessor|vendor_person|party_document|client_request|exit_plan)\./;
+function partyChainActions() {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const found = new Set();
+  for (const dir of [path.join(__dirname, '..', 'lib', 'tprm'), path.join(__dirname, '..', 'migrations')]) {
+    for (const f of fs.readdirSync(dir)) {
+      if (!/\.(js|sql)$/.test(f) || f === 'history.js') continue;
+      for (const m of fs.readFileSync(path.join(dir, f), 'utf8').matchAll(/'([a-z_]+\.[a-z_]+)'/g)) if (PARTY_CHAIN.test(m[1])) found.add(m[1]);
+    }
+  }
+  return [...found].sort();
+}
+
+test('the supplier page has a plain label for every event recorded on a third party', () => {
+  const view = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'views', 'tprm_third_party.ejs'), 'utf8');
+  const start = view.indexOf('const actionLabels = {');
+  const labels = Function(`return ${view.slice(start + 'const actionLabels = '.length, view.indexOf('};', start) + 1)}`)();
+  const actions = partyChainActions();
+  assert.ok(actions.includes('vendor_person.added') && actions.includes('third_party.client_details_changed') && actions.includes('third_party.due_date_corrected'));
+  assert.deepEqual(actions.filter(a => !labels[a]), []);
+  for (const a of actions) assert.doesNotMatch(labels[a], /[a-z]_[a-z]|\.[a-z]/, `${a}: ${labels[a]}`);
+});
+

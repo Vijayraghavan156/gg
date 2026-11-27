@@ -246,10 +246,29 @@ test('the client sees "After the first assessment" for a third party never asses
   assert.equal(page.status, 200);
   assert.match(page.text, /<dt>Next review<\/dt><dd>After the first assessment<\/dd>/);
 
-  const res = await client.post(`/tprm/clients/${c.id}/third-parties`, { name: 'Assessed Before Co', status: 'in_use', last_assessment_date: '2025-06-01' });
+  const res = await client.post(`/tprm/clients/${c.id}/third-parties`, { name: 'Assessed Before Co', status: 'in_use', last_assessment_date: '2025-06-01', client_designated_critical: '1' });
   const before = idIn(res.location, /third-parties\/(\d+)/);
   const due = (await db.prepare('SELECT next_due_date::text AS d FROM tp_third_parties WHERE id=?').get(before)).d;
-  assert.ok(due, 'a past assessment sets the next due date');
+  assert.equal(due, '2026-06-01', 'a past assessment and a tier set the real next due date');
   const later = await c.owner.session.get(`/workspaces/${c.id}/client-portal/third-party-risk/third-parties/${before}`);
   assert.doesNotMatch(later.text, /After the first assessment/);
+});
+
+test('subprocessor names group ignoring case and spaces, and the add form offers the names already recorded', async () => {
+  const pure = C.fourthParties([
+    { name: 'Amazon Web Services', third_party_id: 1, third_party_name: 'A', client_id: 9 },
+    { name: 'amazon  webservices', third_party_id: 2, third_party_name: 'B', client_id: 9 },
+    { name: 'Amazon Web-Services.', third_party_id: 3, third_party_name: 'C', client_id: 9 },
+  ], { inUse: 3 });
+  assert.deepEqual(pure.list.map(g => g.count), [3], 'one subprocessor, however it was typed');
+  const c = await tprmClient('SP Names Client');
+  const t1 = await addThirdParty(c.id, 'PayNimbus Ltd');
+  const t2 = await addThirdParty(c.id, 'Northgate IT');
+  await addSp(c.id, t1, { name: 'Amazon Web Services EMEA SARL' });
+  await addSp(c.id, t1, { name: 'Twilio' });
+  const page = await consultant.session.get(`/tprm/clients/${c.id}/third-parties/${t2}?tab=subprocessors`);
+  const list = (page.text.match(/<datalist id="sp-known-names"[\s\S]*?<\/datalist>/) || [''])[0];
+  assert.match(list, /<option value="Amazon Web Services EMEA SARL">/);
+  assert.match(list, /<option value="Twilio">/);
+  assert.match(page.text, /id="sp-name"[^>]*list="sp-known-names"/);
 });

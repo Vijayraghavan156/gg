@@ -1,0 +1,36 @@
+<% const attr = v => String(v).replace(/&/g, '&amp;').replace(/"/g, '&#34;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+   const plural = (n, one, many) => n + ' ' + (n === 1 ? one : (many || one + 's'));
+   const goValue = s => (s && s.questions && s.questions[0] ? s.questions[0].id : null);
+   const sectionHref = n => base + '?s=' + n;
+   const onSection = !!locals.formId;
+   const FORM_ID = locals.formId;
+   const section = locals.section || null;
+   const contractInfo = locals.contractInfo || null;
+   const issueCount = locals.issueCount || null;
+   const signedIn = locals.signedIn || null;
+   const navOpen = (kind, cls, go, href, cur, extra) => onSection
+     ? '<button type="submit" form="' + FORM_ID + '" name="go" value="' + attr(go) + '" formnovalidate data-vendor-nav="' + kind + '" class="' + cls + '"' + (cur ? ' aria-current="page"' : '') + (extra || '') + '>'
+     : '<a data-vendor-nav="' + kind + '" class="' + cls + '" href="' + attr(href) + '"' + (cur ? ' aria-current="page"' : '') + (extra || '') + '>';
+   const navClose = onSection ? '</button>' : '</a>';
+   const mine = s => !!(locals.assigned && signedIn && assigned.get(s.title) && assigned.get(s.title).personId === signedIn.id);
+   const mark = (done, part) => ' data-vq-mark="' + (done ? 'done' : part ? 'part' : 'none') + '"';
+   const frac = (a, b, word) => '<span class="vq-menu-state"><span aria-hidden="true">' + a + '/' + b + '</span><span class="sr-only">' + a + ' of ' + b + ' ' + word + '</span></span>';
+   let sectionNav = '';
+   {
+     sectionNav += '<p class="vq-menu-group">Before you start</p><div class="vq-menu-sub">';
+     sectionNav += navOpen('start', 'vq-menu-item' + (view === 'start' ? ' is-current' : ''), 'start', base, view === 'start', ' data-vq-mark="page"') + '<span>Overview</span>' + navClose;
+     sectionNav += navOpen('documents', 'vq-menu-item' + (view === 'documents' ? ' is-current' : ''), 'documents', base + '?view=documents', view === 'documents', mark(p.shelf.length > 0, false)) + '<span>Your documents</span><span class="vq-menu-state">' + p.shelf.length + ' added</span>' + navClose;
+     if (contractInfo) sectionNav += navOpen('contract', 'vq-menu-item' + (view === 'contract' ? ' is-current' : ''), 'contract', base + '/contract', view === 'contract', mark(contractInfo.total && contractInfo.answered >= contractInfo.total, contractInfo.answered > 0)) + '<span>Contract clauses</span>' + (contractInfo.answered >= contractInfo.total ? '<span class="vq-menu-state"><span class="sr-only">All marked</span></span>' : frac(contractInfo.answered, contractInfo.total, 'marked')) + navClose;
+     sectionNav += '</div><p class="vq-menu-group">Questions</p><div class="vq-menu-sub">';
+     p.sections.forEach(s => {
+       const cur = view === 'section' && section && section.index === s.index;
+       sectionNav += navOpen('section', 'vq-menu-item' + (cur ? ' is-current' : ''), goValue(s) || 'review', sectionHref(s.index), cur, ' data-vendor-section-link="' + attr(s.title) + '"' + mark(s.complete, s.responded > 0) + ' title="' + attr(s.title) + '"')
+         + '<span>' + attr(s.title) + (mine(s) ? ' <span class="vq-nav-mine" data-vendor-nav-mine>for you</span>' : '') + '</span>'
+         + (s.complete ? '<span class="vq-menu-state"><span class="sr-only">Done</span></span>'
+           : '<span class="vq-menu-state"><span aria-hidden="true">' + s.answered + '/' + s.total + '</span><span class="sr-only">' + s.answered + ' of ' + s.total + ' answered' + (s.attention ? ', ' + attr(plural(s.attention, 'question needs', 'questions need')) + ' attention' : '') + '</span></span>') + navClose;
+     });
+     sectionNav += '</div><p class="vq-menu-group">Finish</p><div class="vq-menu-sub">';
+     sectionNav += navOpen('review', 'vq-menu-item' + (view === 'confirm' ? ' is-current' : ''), 'review', base + '?view=review', view === 'confirm', mark(!p.problems.length, false)) + '<span>Review and submit</span>' + navClose;
+     if (issueCount && issueCount.total) sectionNav += navOpen('issues', 'vq-menu-item', 'issues', base + '/issues', false, ' data-vq-mark="page"') + '<span>Issues</span><span class="vq-menu-state">' + (issueCount.waiting ? issueCount.waiting + '<span class="sr-only"> waiting for your response</span>' : issueCount.total) + '</span>' + navClose;
+     sectionNav += '</div>';
+   } %><%- sectionNav %>

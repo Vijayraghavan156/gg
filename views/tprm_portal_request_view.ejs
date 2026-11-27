@@ -1,0 +1,73 @@
+<%
+  const base = '/workspaces/' + ws.id + '/client-portal/third-party-risk';
+  const r = request;
+  const status = (text, tone, attrs) => include('partials/tprm_status', { text, tone, attrs });
+  const val = v => v ? escapeHtml(v) : '<span class="cv-muted">Not given</span>';
+  const when = d => d ? tpf.day(new Date(d).toISOString().slice(0, 10)) : '';
+  const tone = r.status === 'accepted' ? 'good' : r.status === 'declined' ? 'problem' : r.status === 'submitted' ? 'attention' : 'quiet';
+  const scored = r.answerRows.filter(x => x.kind === 'criticality');
+  const other = r.answerRows.filter(x => x.kind !== 'criticality');
+  const reassess = r.kind === 'reassessment';
+  const label = typeof requestLabel === 'function' ? requestLabel(r) : requestLabels[r.status] || r.status;
+%>
+<%- include('tprm_client_top', { title: r.name + ' · Request', cvNav: 'home' }) %>
+<div class="cv-top">
+  <div class="cv-crumb"><a href="<%= base %>?tab=requests">Requests</a> / <b><%= r.name %></b></div>
+  <div class="cv-actions">
+    <% if ((r.status === 'accepted' || reassess) && r.third_party_id) { %><a class="cv-btn cv-btn-p" href="<%= base %>/third-parties/<%= r.third_party_id %>">Open the third party</a><% } %>
+    <% if (canWithdraw) { %>
+      <form method="POST" action="<%= base %>/requests/<%= r.id %>/withdraw" class="cv-inline" data-tprm-cv-request-withdraw>
+        <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+        <input type="hidden" name="row_version" value="<%= r.row_version %>">
+        <%- include('partials/tprm_confirm_fields', { title: 'Withdraw the request for ' + r.name + '?', body: 'Your consultants stop work on it. This cannot be undone: to ask again, send a new request.', action: 'Withdraw request', tone: 'problem' }) %>
+        <button class="cv-btn" type="submit">Withdraw</button>
+      </form>
+    <% } %>
+  </div>
+</div>
+<div class="cv-two cv-mt" data-tprm-cv-request-view="<%= r.id %>" data-tprm-cv-request-status="<%= r.status %>" data-tprm-cv-request-kind="<%= r.kind %>">
+  <div>
+    <% if (reassess) { %>
+    <section class="cv-card" data-tprm-cv-request-reassess><h2 class="cv-h"><%= r.first_assessment ? 'Assessment' : 'Reassessment' %> of <%= r.name %></h2>
+      <dl class="cv-kv1">
+        <div><dt>Why</dt><dd class="cv-pre"><%= r.service_description %></dd></div>
+        <div><dt>Preferred date</dt><dd><%- r.preferred_date ? escapeHtml(tpf.day(r.preferred_date)) : '<span class="cv-muted">Not given</span>' %></dd></div>
+      </dl></section>
+    <% } else { %>
+    <section class="cv-card"><h2 class="cv-h">About the supplier</h2>
+      <dl class="cv-kv">
+        <div><dt>Supplier name</dt><dd><%= r.name %></dd></div>
+        <div><dt>Legal name</dt><dd><%- val(r.legal_name) %></dd></div>
+        <div><dt>Website</dt><dd><%- val(r.website) %></dd></div>
+        <div><dt>Country of registration</dt><dd><%- val(r.country) %></dd></div>
+        <div><dt>Main contact</dt><dd><%- val(r.contact_name) %></dd></div>
+        <div><dt>Contact email</dt><dd><%- val(r.contact_email) %></dd></div>
+      </dl></section>
+    <section class="cv-card cv-mt"><h2 class="cv-h">The service</h2>
+      <p class="cv-pre"><%= r.service_description %></p>
+      <dl class="cv-kv">
+        <div><dt>Business unit</dt><dd><%- val(r.business_unit) %></dd></div>
+        <div><dt>Volume</dt><dd><%- val(r.service_volume) %></dd></div>
+        <div><dt>Planned start</dt><dd><%- r.planned_start ? escapeHtml(tpf.day(r.planned_start)) : '<span class="cv-muted">Not given</span>' %></dd></div>
+        <div><dt>Owner at your organisation</dt><dd><%- val(r.owner_name) %></dd></div>
+      </dl></section>
+    <% if (scored.length) { %><section class="cv-card cv-mt" data-tprm-cv-request-view-answers><h2 class="cv-h">How much it matters</h2>
+      <dl class="cv-kv1"><% scored.forEach(x => { %><div><dt><%= x.text %></dt><dd><%= x.answer %></dd></div><% }) %></dl></section><% } %>
+    <% if (other.length) { %><section class="cv-card cv-mt"><h2 class="cv-h">A little more</h2>
+      <dl class="cv-kv1"><% other.forEach(x => { %><div><dt><%= x.text %></dt><dd><%= x.answer %></dd></div><% }) %></dl></section><% } %>
+    <% if (r.notes) { %><section class="cv-card cv-mt"><h2 class="cv-h">Anything else</h2><p class="cv-pre"><%= r.notes %></p></section><% } %>
+    <% } %>
+  </div>
+  <aside>
+    <section class="cv-card"><h3 class="cv-h4">Status</h3>
+      <p><%- status(label, tone, 'data-tprm-cv-request-view-status="' + escapeHtml(r.status) + '"') %></p>
+      <dl class="cv-kv1">
+        <div><dt>Sent</dt><dd><%= when(r.requested_at) %><%= r.requested_by_name ? ' by ' + r.requested_by_name : '' %></dd></div>
+        <% if (r.decided_at && r.status !== 'submitted') { %><div><dt><%= r.status === 'withdrawn' ? 'Withdrawn' : r.status === 'declined' ? 'Declined' : reassess ? 'Started' : 'Added' %></dt><dd><%= when(r.decided_at) %><%= r.decided_by_name ? ' by ' + r.decided_by_name : '' %></dd></div><% } %>
+        <% if (r.status === 'declined' && r.decline_reason) { %><div><dt>Why</dt><dd class="cv-pre"><%= r.decline_reason %></dd></div><% } %>
+      </dl>
+      <% if (r.status === 'submitted') { %><p class="cv-muted cv-small"><%= reassess ? 'Your consultants start the ' + (r.first_assessment ? 'assessment' : 'reassessment') + ' or tell you why not. To change something, withdraw this request and ask again.' : 'Your consultants add the supplier or tell you why not. To change something, withdraw this request and send a new one.' %></p><% } %>
+    </section>
+  </aside>
+</div>
+<%- include('tprm_client_bottom') %>

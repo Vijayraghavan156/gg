@@ -80,8 +80,8 @@ function registerRoutes(app, deps) {
   }, { permission: 'tp.manage' });
 
   app.post('/tprm/clients/:wsId/questionnaires-out/:aid/remind', requireAuth, outAction(async (req, res, actor) => {
-    const r = await require('../lib/tprm/messages').manualReminder(db, { workspaceId: actor.ws.id, assessmentId: Number(req.params.aid) || 0 });
-    return res.redirect(withToast(outBack(req), r.sent ? `Reminder sent to ${r.recipient || 'the third party'}` : `No reminder sent: ${r.reason}`, r.sent ? undefined : 'error'));
+    const r = await require('../lib/tprm/messages').manualReminder(db, { workspaceId: actor.ws.id, assessmentId: Number(req.params.aid) || 0, actorId: req.user.id, actorName: req.user.name });
+    return res.redirect(withToast(outBack(req), r.sent ? `Reminder sent to ${r.recipient || 'the third party'}${r.recipientEmail ? ` at ${r.recipientEmail}` : ''}, and recorded in the assessment history` : `No reminder sent: ${r.reason}`, r.sent ? undefined : 'error'));
   }));
 
   app.post('/tprm/clients/:wsId/questionnaires-out/:aid/reopen', requireAuth, outAction(async (req, res, actor) => {

@@ -116,6 +116,7 @@ test('buckets: overdue, no date, within 30, 31 to 60, 61 to 90 days, later is no
   const today = '2026-11-21';
   assert.equal(R.bucketFor('2026-11-20', today), 'overdue');
   assert.equal(R.bucketFor(null, today), 'no_date');
+  assert.equal(R.bucketFor(null, today, { lastAssessmentDate: '2025-01-10' }), 'no_tier', 'assessed before but no tier: its own bucket, not "Not assessed yet"');
   assert.equal(R.bucketFor('2026-11-21', today), 'within_30');
   assert.equal(R.bucketFor('2026-12-21', today), 'within_30');
   assert.equal(R.bucketFor('2026-12-22', today), 'within_60');
@@ -123,7 +124,7 @@ test('buckets: overdue, no date, within 30, 31 to 60, 61 to 90 days, later is no
   assert.equal(R.bucketFor('2027-01-21', today), 'within_90');
   assert.equal(R.bucketFor('2027-02-19', today), 'within_90');
   assert.equal(R.bucketFor('2027-02-20', today), null);
-  assert.deepEqual(R.BUCKETS, ['overdue', 'no_date', 'within_30', 'within_60', 'within_90']);
+  assert.deepEqual(R.BUCKETS, ['overdue', 'no_date', 'no_tier', 'within_30', 'within_60', 'within_90']);
   assert.equal(R.triggerLabel({ reason: 'breach' }), 'Triggered: Breach');
   assert.equal(R.triggerLabel({ reason: 'ai_change' }), 'Triggered: Change of AI model or provider');
   assert.equal(R.triggerLabel({ reason: 'other', details: 'Regulator letter' }), 'Triggered: Regulator letter');
@@ -149,13 +150,15 @@ test('the due queue lists in-use third parties overdue, without a date or due wi
     ids[name] = await addThirdParty(ws, name);
     await place(ids[name], { due, tier: 'high', last: due && name !== 'Overdue Old' ? shift(today, -400) : null });
   }
+  ids['No Tier'] = await addThirdParty(ws, 'No Tier');
+  await place(ids['No Tier'], { due: null, tier: null, last: shift(today, -400) });
   const proposed = await addThirdParty(ws, 'Proposed One', { status: 'proposed' });
   const exited = await addThirdParty(ws, 'Exited One', { status: 'exited' });
   await place(exited, { due: shift(today, -5) });
   const page = await client.get(`/tprm/due?client=${ws}`);
   assert.equal(page.status, 200);
   const rows = [...page.text.matchAll(/data-tprm-due-row="(\d+)" data-tprm-due-client="(\d+)"/g)].map(m => Number(m[1]));
-  assert.deepEqual(rows, ['Overdue Old', 'Overdue Recent', 'No Date', 'Today', 'Soon', 'Mid', 'Late'].map(n => ids[n]),
+  assert.deepEqual(rows, ['Overdue Old', 'Overdue Recent', 'No Date', 'No Tier', 'Today', 'Soon', 'Mid', 'Late'].map(n => ids[n]),
     'overdue (oldest first), no date, then by due date; later than 90 days, proposed and exited are not listed');
   assert.ok(!rows.includes(proposed) && !rows.includes(exited) && !rows.includes(ids.Far));
   for (const b of R.BUCKETS) assert.match(page.text, new RegExp(`data-tprm-due-bucket="${b}"`), b);
@@ -165,6 +168,8 @@ test('the due queue lists in-use third parties overdue, without a date or due wi
     'never assessed, its due date 40 days past: red, overdue (decision 8)');
   assert.match(page.text, new RegExp(`data-tprm-due-row="${ids['No Date']}"(?:(?!<\\/tr>)[^])*data-tprm-due-state="not_assessed">Not assessed yet<`),
     'never assessed and no due date: "Not assessed yet", not red (decision 8)');
+  assert.match(page.text, new RegExp(`data-tprm-due-row="${ids['No Tier']}"(?:(?!<\\/tr>)[^])*data-tprm-due-state="tier_needed">No date until the tier is set<`),
+    'assessed before but no tier: the label matches its bucket');
   assert.match(page.text, /data-tprm-due-start/, 'the manager can start a reassessment from the queue');
   const queue = await R.dueQueue(lookup(), managerUser(), { clientId: ws });
   assert.deepEqual(queue.rows.map(r => r.id), rows);

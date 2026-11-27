@@ -1,15 +1,20 @@
-<% const fid = 'f-' + q.id + '-' + f.key; const shownLabel = f.label || 'Your answer'; const hideLabel = !f.label; %>
+<% const fid = 'f-' + q.id + '-' + f.key; const shownLabel = f.label || 'Your answer'; const hideLabel = !f.label; const ferrs = locals.ferr || []; const bad = ferrs.length ? ' aria-invalid="true" aria-describedby="' + fid + '-err"' : ''; %>
 <% if (f.kind === 'multi') { const chosen = String(fv || '').split(';').map(x => x.trim()); %>
   <fieldset class="vq-field vq-field--wide vq-multi" data-vendor-multi="<%= f.key %>"><legend class="vq-label"><%= shownLabel %> <span class="vq-optional">tick all that apply</span></legend>
     <input type="hidden" name="f[<%= q.id %>][<%= f.key %>][]" value="">
     <div class="vq-ticks"><% f.options.forEach((o, oi) => { %><label class="vq-check"><input type="checkbox" id="<%= fid %>-<%= oi %>" name="f[<%= q.id %>][<%= f.key %>][]" value="<%= o %>"<%= chosen.includes(o) ? ' checked' : '' %>> <%= o %></label><% }) %></div>
+    <% if (ferrs.length) { %><p class="vq-error" id="<%= fid %>-err" data-vendor-field-error="<%= f.key %>"><%= ferrs.join(' ') %></p><% } %>
   </fieldset>
 <% } else if (f.kind === 'choice') { %>
   <fieldset class="vq-field vq-field--wide vq-multi" data-vendor-choice="<%= f.key %>"><legend class="<%= hideLabel ? 'sr-only' : 'vq-label' %>"><%= shownLabel %></legend>
     <div class="vq-ticks"><% f.options.forEach((o, oi) => { %><label class="vq-check"><input type="radio" id="<%= fid %>-<%= oi %>" name="f[<%= q.id %>][<%= f.key %>]" value="<%= o %>"<%= String(fv) === o ? ' checked' : '' %>> <%= o %></label><% }) %></div>
+    <% if (ferrs.length) { %><p class="vq-error" id="<%= fid %>-err" data-vendor-field-error="<%= f.key %>"><%= ferrs.join(' ') %></p><% } %>
   </fieldset>
 <% } else { %>
-  <div class="vq-field<%= f.kind === 'long' || f.kind === 'url' ? ' vq-field--wide' : '' %>"><label class="<%= hideLabel ? 'sr-only' : 'vq-label' %>" for="<%= fid %>"><%= shownLabel %><% if (f.optional) { %> <span class="vq-optional">optional</span><% } %></label>
-    <% if (f.kind === 'long') { %><textarea class="vq-input vq-textarea" id="<%= fid %>" name="f[<%= q.id %>][<%= f.key %>]" rows="3" maxlength="<%= f.max %>"><%= fv %></textarea>
-    <% } else { %><input class="vq-input" id="<%= fid %>" name="f[<%= q.id %>][<%= f.key %>]" type="<%= f.kind === 'date' ? 'date' : f.kind === 'url' ? 'url' : 'text' %>"<% if (f.kind === 'number') { %> inputmode="decimal"<% } %><% if (f.kind === 'url') { %> placeholder="https://"<% } %> maxlength="<%= f.max %>" value="<%= fv %>"><% } %></div>
+  <div class="vq-field<%= f.kind === 'long' || f.kind === 'url' ? ' vq-field--wide' : '' %>"><label class="<%= hideLabel ? 'sr-only' : 'vq-label' %>" for="<%= fid %>"><%= shownLabel %><% if (f.optional) { %> <span class="vq-optional">optional</span><% } %><% if (f.kind === 'number' && f.hint) { %> <span class="vq-optional" data-vendor-number-hint><%= f.hint %></span><% } %></label>
+    <% if (f.kind === 'long') { %><textarea class="vq-input vq-textarea" id="<%= fid %>" name="f[<%= q.id %>][<%= f.key %>]" rows="3" maxlength="<%= f.max %>"<%- bad %>><%= fv %></textarea>
+    <% } else if (f.kind === 'short') { %><textarea class="vq-input vq-textarea" id="<%= fid %>" name="f[<%= q.id %>][<%= f.key %>]" rows="2" maxlength="<%= f.max %>" data-vendor-short<%- bad %>><%= fv %></textarea>
+    <% } else if (f.kind === 'number') { %><input class="vq-input" id="<%= fid %>" name="f[<%= q.id %>][<%= f.key %>]" type="text" inputmode="decimal" autocomplete="off" data-vendor-number value="<%= fv %>"<%- bad %>>
+    <% } else { %><input class="vq-input" id="<%= fid %>" name="f[<%= q.id %>][<%= f.key %>]" type="<%= f.kind === 'date' ? 'date' : f.kind === 'url' ? 'url' : 'text' %>"<% if (f.kind === 'url') { %> placeholder="https://"<% } %> maxlength="<%= f.max %>" value="<%= fv %>"<%- bad %>><% } %>
+    <% if (ferrs.length) { %><p class="vq-error" id="<%= fid %>-err" data-vendor-field-error="<%= f.key %>"><%= ferrs.join(' ') %></p><% } %></div>
 <% } %>

@@ -1,0 +1,103 @@
+<%
+  const base = '/workspaces/' + ws.id + '/client-portal/third-party-risk';
+  const teamBase = base + '/account/team';
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const asDate = d => {
+    if (d instanceof Date) return d;
+    const v = String(d || '').trim();
+    if (!v || /^\d{4}-\d{2}-\d{2}$/.test(v)) return v || null;
+    return new Date(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(v) ? v.replace(' ', 'T') + 'Z' : v);
+  };
+  const day = d => { const t = asDate(d); return typeof t === 'string' ? tpf.day(t) : t && !Number.isNaN(t.getTime()) ? tpf.day(t) : ''; };
+  const owners = team.clientPeople.filter(p => p.role === 'client_owner').length;
+  const clientName = ws.brand_display_name || ws.client_name;
+%>
+<%- include('tprm_client_top', { title: 'Account', cvNav: 'account' }) %>
+<div class="cv-top">
+  <div class="cv-crumb"><b>Account</b></div>
+</div>
+<div class="cv-two cv-mt" data-tprm-cv-account>
+  <div>
+    <section class="cv-card" data-tprm-cv-account-me>
+      <h2 class="cv-h">You</h2>
+      <dl class="cv-kv">
+        <div><dt>Name</dt><dd><%= user.name %></dd></div>
+        <div><dt>Email</dt><dd><%= user.email %></dd></div>
+        <div><dt>Role at <%= clientName %></dt><dd><%= myRole %></dd></div>
+      </dl>
+      <% const allOff = user.email_notify === 'off'; const emailOff = allOff || user.tprm_email_notify === 'off'; %>
+      <form method="POST" action="<%= base %>/account/email" class="cv-mt" data-tprm-cv-notify-pref="<%= emailOff ? 'off' : 'on' %>">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <input type="hidden" name="value" value="<%= user.tprm_email_notify === 'off' ? 'on' : 'off' %>">
+        <h3 class="cv-h4">Third-party risk emails</h3>
+        <p class="cv-muted cv-small"><%= allOff ? 'Off, because all email notifications are turned off for your account.' : emailOff ? 'Off. You are not emailed when a decision on a third party is waiting for you or a condition you own is due. Other emails from your engagement are not affected.' : 'On. You are emailed when a decision on a third party is waiting for you or a condition you own is due. This setting changes only these emails.' %></p>
+        <% if (!allOff) { %><button class="cv-btn" type="submit"><%= emailOff ? 'Turn third-party risk emails on' : 'Turn third-party risk emails off' %></button><% } %>
+      </form>
+    </section>
+
+    <section class="cv-card cv-mt cv-table" data-tprm-cv-team data-tprm-cv-team-owner="<%= isOwner ? '1' : '0' %>">
+      <div class="cv-pad"><h2 class="cv-h">Your team</h2>
+        <% if (!isOwner) { %><p class="cv-muted cv-small" data-tprm-cv-team-readonly>Only a client sponsor can invite or remove people. Ask one of them, or your consultants.</p><% } %>
+      </div>
+      <div class="cv-scroll"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead><tbody>
+      <% team.clientPeople.forEach(p => { const self = Number(p.id) === Number(user.id); const lastOwner = p.role === 'client_owner' && owners <= 1; %>
+        <tr data-tprm-cv-team-person="<%= p.id %>">
+          <td><%= p.name %><%= self ? ' (you)' : '' %></td><td><%= p.email %></td><td><%= p.roleLabel %></td>
+          <td class="cv-right"><% if (isOwner && !self && !lastOwner) { %>
+            <form method="POST" action="<%= teamBase %>/members/<%= p.id %>/remove" class="cv-inline" data-tprm-cv-team-remove="<%= p.id %>">
+              <input type="hidden" name="_csrf" value="<%= csrf %>">
+              <%- include('partials/tprm_confirm_fields', { title: 'Remove ' + (p.name || p.email) + ' from your team?', body: 'They can no longer sign in to this client. To bring them back, ask your consultants.', action: 'Remove', tone: 'problem' }) %>
+              <button class="cv-btn" type="submit">Remove</button>
+            </form>
+          <% } %></td>
+        </tr>
+      <% }) %>
+      </tbody></table></div>
+      <div class="cv-pad"><h3 class="cv-h4">Your consultants</h3></div>
+      <% if (!team.consultants.length) { %><p class="cv-pad cv-muted">No consultant is assigned yet.</p><% } else { %>
+      <div class="cv-scroll"><table><tbody>
+      <% team.consultants.forEach(c => { %><tr data-tprm-cv-team-consultant="<%= c.id %>"><td><%= c.name %></td><td><%= c.email %></td><td><%= c.is_lead ? 'Engagement lead' : 'Consultant' %></td></tr><% }) %>
+      </tbody></table></div><% } %>
+    </section>
+
+    <% if (isOwner) { %>
+    <section class="cv-card cv-mt cv-table" data-tprm-cv-team-invites>
+      <div class="cv-pad"><h2 class="cv-h">Invitations</h2></div>
+      <% if (!team.invites.length) { %><p class="cv-pad cv-muted">No invitations waiting.</p><% } else { %>
+      <div class="cv-scroll"><table><thead><tr><th>Email</th><th>Role</th><th>Sent</th><th>Link</th><th></th></tr></thead><tbody>
+      <% team.invites.forEach(i => { %><tr data-tprm-cv-team-invite="<%= i.id %>">
+        <td><%= i.name ? i.name + ', ' : '' %><%= i.email %></td><td><%= i.roleLabel %></td><td><%= day(i.created_at) %></td>
+        <td><%= i.expired ? 'Expired ' + day(i.expires_at) : 'Expires ' + day(i.expires_at) %></td>
+        <td class="cv-right"><% if (i.manageable) { %>
+          <form method="POST" action="<%= teamBase %>/invites/<%= i.id %>/resend" class="cv-inline" data-tprm-cv-team-resend="<%= i.id %>"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="cv-btn" type="submit">Resend</button></form>
+          <form method="POST" action="<%= teamBase %>/invites/<%= i.id %>/revoke" class="cv-inline" data-tprm-cv-team-revoke="<%= i.id %>"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="cv-btn" type="submit">Withdraw</button></form>
+        <% } else { %><span class="cv-muted cv-small" data-tprm-cv-team-invite-theirs="<%= i.id %>">Sent by your consultants</span><% } %></td></tr><% }) %>
+      </tbody></table></div><% } %>
+    </section>
+
+    <form method="POST" action="<%= teamBase %>/invite" class="cv-card cv-fm cv-mt" data-tprm-cv-team-invite-form>
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <h2 class="cv-h">Invite a colleague</h2>
+      <div class="cv-fg">
+        <div class="cv-fl"><label for="ti-email">Email <em>*</em></label><input class="cv-in" id="ti-email" type="email" name="email" maxlength="254" required autocomplete="off"></div>
+        <div class="cv-fl"><label for="ti-name">Name</label><input class="cv-in" id="ti-name" name="name" maxlength="200" autocomplete="off"></div>
+        <div class="cv-fl"><label for="ti-role">Role</label><select class="cv-in" id="ti-role" name="role"><% inviteRoles.forEach(r => { %><option value="<%= r.value %>"><%= r.label %></option><% }) %></select></div>
+      </div>
+      <p class="cv-muted cv-small">They get an email with a link to set a password. The link works once and expires in 7 days.</p>
+      <div class="cv-form-actions"><button class="cv-btn cv-btn-p" type="submit">Send invitation</button></div>
+    </form>
+    <% } %>
+  </div>
+  <aside>
+    <section class="cv-card" data-tprm-cv-activity>
+      <h3 class="cv-h4">Recent activity</h3>
+      <p class="cv-muted cv-small">Third-party risk does not keep a personal notification list. This shows recent events for <%= clientName %>: decisions waiting for you and requests your consultants have answered.</p>
+      <% if (!activity.length) { %><p class="cv-muted" data-tprm-cv-activity-empty>Nothing recent.</p><% } %>
+      <% activity.forEach(a => { %><div class="cv-mt" data-tprm-cv-activity-item="<%= a.kind %>">
+        <a class="cv-link" href="<%= a.href %>"><%= a.title %></a>
+        <span class="cv-muted cv-small cv-block"><%= day(a.at) %><%= a.text ? ' · ' + a.text : '' %></span>
+      </div><% }) %>
+    </section>
+  </aside>
+</div>
+<%- include('tprm_client_bottom') %>

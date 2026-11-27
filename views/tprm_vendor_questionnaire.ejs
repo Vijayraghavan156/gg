@@ -18,7 +18,7 @@
   const pct = p.total ? Math.round((p.answered / p.total) * 100) : 0;
   const answering = ctx.mode === 'answering';
   const firstOpen = p.sections.find(s => !s.complete) || null;
-  const started = p.answered > 0;
+  const started = p.responded > 0;
   const fileMb = p.limits.fileBytes / 1048576;
   const plural = (n, one, many) => n + ' ' + (n === 1 ? one : (many || one + 's'));
   const rv = reportValues || null;
@@ -28,6 +28,26 @@
   const listWords = items => (items.length < 2 ? items.join('') : items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1]);
   const docCount = p.documentsNeeded.reduce((n, g) => n + g.documents.length, 0);
   const shelfFor = q => p.shelf.filter(d => !q.files.some(f => f.id === d.id));
+  const reviewer = ctx.issuer ? (ctx.issuer.name ? ctx.issuer.name + ' (' + ctx.issuer.email + ')' : ctx.issuer.email) : null;
+  const commentWho = (p.firm.name ? 'The reviewers at ' + p.firm.name : 'The reviewers') + ' see your comment once you save. Replies come by email from ' + (reviewer ? 'your reviewer, ' + reviewer : 'your reviewer') + '.';
+  const ANSWER_STYLE = 'vq-seg';
+  const brandName = p.firm.name || (frame && frame.firm && frame.firm.name) || '';
+  const expYmd = ctx.expiresAt ? tpf.ymd(ctx.expiresAt) : '';
+  const daysLeft = expYmd && today ? Math.round((Date.parse(expYmd) - Date.parse(today)) / 86400000) : null;
+  const daysText = daysLeft == null ? '' : daysLeft > 1 ? daysLeft + ' days left' : daysLeft === 1 ? '1 day left' : daysLeft === 0 ? 'last day' : '';
+  const ready = !p.problems.length;
+  const reviewerName = ctx.issuer ? (ctx.issuer.name || ctx.issuer.email) : null;
+  const askerOf = c => c.asked_by_name || (p.firm.name ? 'The reviewers at ' + p.firm.name : 'The reviewers');
+  const firstName = n => String(n || '').split(' ')[0];
+  const extOf = name => { const m = /\.([A-Za-z0-9]{1,5})$/.exec(String(name || '')); return m ? m[1].toUpperCase() : 'FILE'; };
+  const usedIn = (qid, fid) => allQuestions.filter(x => x.id !== qid && x.files.some(f => f.id === fid)).map(x => x.id);
+  const onShelf = fid => p.shelf.some(d => d.id === fid);
+  const isOpenQ = q => q.asked && q.rules.required !== false && !(q.answer && q.answer.response);
+  const guidanceHtml = g => { const m = /^A good answer includes:?\s*([\s\S]*)$/.exec(g || ''); return m ? '<b>A good answer includes</b> ' + attrText(m[1]) : attrText(g); };
+  function attrText(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  const infoIcon = '<svg class="vq-i" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M17 22v-8h-4v2h2v6h-3v2h8v-2zM16 8a1.5 1.5 0 101.5 1.5A1.5 1.5 0 0016 8z"/><path d="M16 30a14 14 0 1114-14 14 14 0 01-14 14zm0-26a12 12 0 1012 12A12 12 0 0016 4z"/></svg>';
+  const downloadIcon = '<svg class="vq-i" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M26 24v4H6v-4H4v4a2 2 0 002 2h20a2 2 0 002-2v-4zM26 14l-1.41-1.41L17 20.17V2h-2v18.17l-7.59-7.58L6 14l10 10 10-10z"/></svg>';
+  const commentIcon = '<svg class="vq-i" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M17.74 30L16 29l4-7h6a2 2 0 002-2V8a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2h9v2H6a4 4 0 01-4-4V8a4 4 0 014-4h20a4 4 0 014 4v12a4 4 0 01-4 4h-4.84z"/></svg>';
 %><!doctype html>
 <html lang="en" class="page-standalone" data-theme="light">
 <head>
@@ -35,52 +55,47 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <link rel="stylesheet" href="/app.css">
-<%- include('tprm_portal_head', { title: 'Questionnaire for ' + ctx.clientName + ' · ' + titleOf, frame, withScript: true }) %>
+<%- include('tprm_portal_head', { title: 'Questionnaire for ' + ctx.clientName + ' · ' + titleOf, frame, withScript: true, qframe: true }) %>
 </head>
-<body class="vq-body">
+<body class="vq-body vq-c">
   <a class="vq-skip" href="#main">Skip to the content</a>
   <% if (locals.firmEntry) { %><div class="vq-firm-entry" role="note" data-vendor-firm-entry>You are entering answers for the third party, as <%= firmEntry.name %>. Each answer you save shows that you entered it. <a href="<%= firmEntry.back %>?step=questionnaire#questionnaire">Back to the assessment</a></div><% } %>
-  <%- include('partials/tprm_portal_top', { frame }) %>
   <% const attr = v => String(v).replace(/&/g, '&amp;').replace(/"/g, '&#34;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-     const navOpen = (kind, cls, go, href, cur, extra) => onSection
-       ? '<button type="submit" form="' + FORM_ID + '" name="go" value="' + attr(go) + '" formnovalidate data-vendor-nav="' + kind + '" class="' + cls + '"' + (cur ? ' aria-current="page"' : '') + (extra || '') + '>'
-       : '<a data-vendor-nav="' + kind + '" class="' + cls + '" href="' + attr(href) + '"' + (cur ? ' aria-current="page"' : '') + (extra || '') + '>';
-     const navClose = onSection ? '</button>' : '</a>';
-     const mine = s => !!(locals.assigned && signedIn && assigned.get(s.title) && assigned.get(s.title).personId === signedIn.id);
-     let sectionNav = '';
+     const sectionNav = answering ? include('partials/tprm_vendor_qmenu', { p, ctx, base, view, section, formId: onSection ? FORM_ID : null, contractInfo: locals.contractInfo || null, issueCount: locals.issueCount || null, assigned: locals.assigned || null, signedIn: locals.signedIn || null }) : '';
+     const meta = [];
+     if (ctx.expiresAt) meta.push('<span class="vq-due" data-vendor-deadline>Due <strong>' + attr(fmtDay(ctx.expiresAt)) + '</strong>' + (daysText ? ' · ' + daysText : '') + '</span>');
+     if (ctx.issuer) meta.push('<span data-vendor-reviewer>Reviewer <a href="mailto:' + attr(ctx.issuer.email) + '"><strong>' + attr(reviewerName) + '</strong></a>' + (brandName ? ', ' + attr(brandName) : '') + '</span>');
+     if (view === 'start' && ctx.recipientName && !(frame && frame.me)) meta.push('<span>Sent to <span data-vendor-recipient>' + attr(ctx.recipientName) + '</span></span>');
+     let actions = '';
      if (answering) {
-       sectionNav += '<p class="vq-menu-group">' + attr('Questionnaire for ' + ctx.clientName) + '</p><div class="vq-menu-sub">';
-       sectionNav += navOpen('start', 'vq-menu-item' + (view === 'start' ? ' is-current' : ''), 'start', base, view === 'start') + '<span>Overview</span>' + navClose;
-       sectionNav += navOpen('documents', 'vq-menu-item' + (view === 'documents' ? ' is-current' : ''), 'documents', base + '?view=documents', view === 'documents') + '<span>Your documents</span><span class="vq-menu-state">' + p.shelf.length + '<span class="sr-only"> added</span></span>' + navClose;
-       if (locals.contractInfo && contractInfo) sectionNav += navOpen('contract', 'vq-menu-item', 'contract', base + '/contract', false) + '<span>Contract clauses</span><span class="vq-menu-state">' + contractInfo.answered + ' of ' + contractInfo.total + '<span class="sr-only"> marked</span></span>' + navClose;
-       if (locals.issueCount && issueCount.total) sectionNav += navOpen('issues', 'vq-menu-item', 'issues', base + '/issues', false) + '<span>Issues</span><span class="vq-menu-state">' + (issueCount.waiting ? issueCount.waiting + '<span class="sr-only"> waiting for your response</span>' : issueCount.total) + '</span>' + navClose;
-       p.sections.forEach(s => {
-         const cur = view === 'section' && section && section.index === s.index;
-         sectionNav += navOpen('section', 'vq-menu-item' + (cur ? ' is-current' : ''), goValue(s) || 'review', sectionHref(s.index), cur, ' data-vendor-section-link="' + attr(s.title) + '"')
-           + '<span>' + attr(s.title) + (mine(s) ? ' <span class="vq-nav-mine" data-vendor-nav-mine>for you</span>' : '') + '</span>'
-           + '<span class="vq-menu-state">' + (s.complete ? 'Done' : s.answered + ' of ' + s.total) + '<span class="sr-only"> answered' + (s.attention ? ', ' + attr(plural(s.attention, 'question needs', 'questions need')) + ' attention' : '') + '</span></span>' + navClose;
-       });
-       sectionNav += navOpen('review', 'vq-menu-item' + (view === 'confirm' ? ' is-current' : ''), 'review', base + '?view=review', view === 'confirm') + '<span>Review and submit</span>' + navClose + '</div>';
-     } %>
+       actions += '<a class="vq-btn vq-btn--band" href="' + attr(base) + '/spreadsheet" data-vendor-toolbar-excel>' + downloadIcon + 'Excel</a>';
+       if (view !== 'confirm') {
+         if (!ready) actions += '<button class="vq-btn vq-btn--band-main" type="button" disabled title="Submit opens once every required answer is in" aria-describedby="vq-submit-why" data-vendor-toolbar-submit>Submit</button><span class="sr-only" id="vq-submit-why">Submit opens once every required answer is in.</span>';
+         else if (onSection) actions += '<button class="vq-btn vq-btn--band-main" type="submit" form="' + FORM_ID + '" name="go" value="review" formnovalidate data-vendor-toolbar-submit>Submit</button>';
+         else actions += '<a class="vq-btn vq-btn--band-main" href="' + attr(base) + '?view=review" data-vendor-toolbar-submit>Submit</a>';
+       }
+     }
+     const curMark = view === 'section' && section ? (section.complete ? 'done' : section.responded ? 'part' : 'none') : null;
+     const pickerHtml = view === 'section' && section
+       ? '<span class="vq-picker-mark" data-vq-mark="' + curMark + '"></span><span class="vq-picker-title">' + attr(section.title) + '</span><span class="vq-picker-of">' + section.index + ' of ' + p.sections.length + '</span>'
+       : '<span class="vq-picker-title">' + attr(titleOf) + '</span>';
+     const showRail = !!ctx; %>
   <% if (onSection) { %>
     <button type="submit" form="<%= FORM_ID %>" name="intent" value="save" class="vq-default-submit" tabindex="-1" aria-hidden="true" data-vendor-default-submit>Save</button>
   <% } %>
-  <div class="vq-frame">
-    <%- include('partials/tprm_portal_side', { frame, formId: onSection ? FORM_ID : null, extraHtml: sectionNav, pickerNow: view === 'section' && section ? 'Section ' + section.index + ' of ' + p.sections.length + ': ' + section.title : titleOf }) %>
+  <%- include('partials/tprm_vq_top', { frame, band: {
+        eyebrow: [frame && frame.orgName, locals.reviewName].filter(Boolean).join(' · '),
+        h1Attrs: ' data-vendor-cover-title',
+        titleHtml: 'Security questionnaire for <span data-vendor-client>' + attr(ctx.clientName) + '</span>',
+        metaHtml: meta,
+        progress: answering ? { answered: p.answered, total: p.total } : null,
+        actionsHtml: actions,
+        savedHtml: answering ? '<span data-vendor-last-saved>' + attr(p.lastSavedAt ? 'Saved ' + fmtWhen(p.lastSavedAt) : 'Nothing saved yet') + '</span>' : '',
+      } }) %>
+  <div class="vq-frame<%= showRail ? ' has-rail' : '' %>">
+    <%- include('partials/tprm_portal_side', { frame, formId: onSection ? FORM_ID : null, extraHtml: sectionNav, cframe: true, pickerHtml, pickerNow: titleOf }) %>
 
-    <main class="vq-main" id="main" data-vendor-link-open data-vendor-mode="<%= ctx.mode %>" data-vendor-view="<%= view %>">
-      <header class="vq-top">
-        <div class="vq-top-main">
-          <h1 class="vq-title" data-vendor-cover-title>Security questionnaire for <span data-vendor-client><%= ctx.clientName %></span></h1>
-          <p class="vq-top-meta"><span class="vq-due" data-vendor-deadline>Due <strong><%= fmtDay(ctx.expiresAt) %></strong></span><% if (answering) { %>. <span data-vendor-questions-left="<%= p.total - p.answered %>" data-vendor-progress><%= p.answered %> of <%= p.total %> questions answered</span>. <span data-vendor-last-saved><%= p.lastSavedAt ? 'Saved ' + fmtWhen(p.lastSavedAt) : 'Nothing saved yet' %></span><% } %><% if (view === 'start' && ctx.recipientName && !(frame && frame.me)) { %>. Sent to <span data-vendor-recipient><%= ctx.recipientName %></span><% } %>.</p>
-        </div>
-        <% if (answering && view !== 'confirm') { %>
-        <div class="vq-toolbar" data-vendor-toolbar>
-          <a class="vq-btn vq-btn--secondary" href="<%= base %>/spreadsheet" data-vendor-toolbar-excel>Download as Excel</a>
-          <% if (onSection) { %><button class="vq-btn vq-btn--secondary" type="submit" form="<%= FORM_ID %>" name="go" value="review" formnovalidate data-vendor-toolbar-submit>Review and submit</button><% } else { %><a class="vq-btn vq-btn--secondary" href="<%= base %>?view=review" data-vendor-toolbar-submit>Review and submit</a><% } %>
-        </div>
-        <% } %>
-      </header>
+    <main class="vq-main <%= ANSWER_STYLE %>" id="main" data-vendor-link-open data-vendor-mode="<%= ctx.mode %>" data-vendor-view="<%= view %>">
       <% if (notice) { %>
         <p class="vq-notice" role="status" data-vendor-notice><%= notice %></p>
       <% } %>
@@ -88,45 +103,52 @@
         <div class="vq-errors" role="alert" data-vendor-errors>
           <p class="vq-errors-title">Nothing was saved. Correct the following:</p>
           <ul>
-            <% errorList.forEach(e => { const inHere = view === 'section' && section && section.questions.some(q => q.id === e.id); %><li><% if (e.id) { %><a href="<%= inHere ? '' : sectionHref(p.sectionOf.get(e.id) || 1) %>#q-<%= e.id %>"><%= e.id %></a>: <% } %><%= e.message %></li><% }) %>
+            <% errorList.forEach(e => { const inHere = view === 'section' && section && section.questions.some(q => q.id === e.id); %><li><% if (e.id) { %><a href="<%= inHere ? '' : sectionHref(p.sectionOf.get(e.id) || 1) %>#<%= e.field ? 'f-' + e.id + '-' + e.field : 'q-' + e.id %>"><%= e.id %></a>: <% } %><%= e.message %></li><% }) %>
           </ul>
         </div>
       <% } %>
 
       <% if (view === 'clarify' || openClarifications.length || answeredClarifications.length) { %>
-        <section class="vq-page" aria-labelledby="clarifications-title" data-vendor-clarifications>
-          <h2 class="vq-page-title" id="clarifications-title">Questions from the reviewers</h2>
-          <% if (openClarifications.length) { %>
-            <p class="vq-lead">The reviewers need more information about these answers. Each response is sent on its own.</p>
-          <% } %>
+        <section class="vq-page vq-card" aria-labelledby="clarifications-title" data-vendor-clarifications>
+          <header class="vq-card-head">
+            <h2 class="vq-page-title" id="clarifications-title">Questions from the reviewers</h2>
+            <% if (openClarifications.length) { %>
+              <p class="vq-lead">The reviewers need more information about these answers. Each response is sent on its own.</p>
+              <p class="vq-note" data-vendor-asked-banner><%= openClarifications.length === 1 ? askerOf(openClarifications[0]) + ' asked about ' + openClarifications[0].question_id : 'The reviewers asked about ' + plural(openClarifications.length, 'answer') %>. Reply below.</p>
+            <% } %>
+          </header>
           <% openClarifications.forEach(c => { %>
-            <form method="POST" action="<%= base %>/clarifications/<%= c.id %>" enctype="multipart/form-data" class="vq-item" data-vendor-clarification="<%= c.id %>">
+            <form method="POST" action="<%= base %>/clarifications/<%= c.id %>" enctype="multipart/form-data" class="vq-item vq-clar" data-vendor-clarification="<%= c.id %>">
               <input type="hidden" name="_aft" value="<%= aft %>">
               <p class="vq-item-ref">Question <%= c.question_id %><% if (c.raised_for) { %>. <span data-vendor-clarification-document>A document is needed.</span><% } %></p>
               <p class="vq-item-text"><%= c.question %></p>
               <% if (c.answer && c.answer.response) { %><p class="vq-item-sub vq-pre" data-vendor-clarify-answer>Your answer: <%= c.answerText ? c.answerText : p.responseLabels[c.answer.response] + (c.answer.detail ? ': ' + c.answer.detail : '') %></p><% } %>
-              <p class="vq-item-label">The reviewers asked on <%= fmtDay(c.asked_at) %></p>
-              <p class="vq-item-quote vq-pre"><%= c.body %></p>
-              <div class="vq-field">
-                <label class="vq-label" for="cr-<%= c.id %>">Your response</label>
-                <textarea class="vq-input vq-textarea" id="cr-<%= c.id %>" name="response" rows="4" maxlength="<%= p.limits.response %>" required></textarea>
+              <div class="vq-thread">
+                <p class="vq-thread-head"><strong><%= askerOf(c) %></strong> <span class="vq-thread-when"><%= c.asked_by_name && brandName ? brandName + ' reviewer · ' : '' %>asked on <%= fmtDay(c.asked_at) %></span><span class="vq-thread-tag">Awaiting your reply</span></p>
+                <p class="vq-item-quote vq-pre vq-thread-body"><%= c.body %></p>
+                <div class="vq-field">
+                  <label class="vq-label" for="cr-<%= c.id %>">Your response</label>
+                  <textarea class="vq-input vq-textarea" id="cr-<%= c.id %>" name="response" rows="3" maxlength="<%= p.limits.response %>" required<% if (c.asked_by_name) { %> placeholder="Reply to <%= firstName(c.asked_by_name) %>"<% } %>></textarea>
+                </div>
+                <div class="vq-field">
+                  <label class="vq-label" for="cf-<%= c.id %>">Attach a file <span class="vq-optional">optional, up to <%= fileMb %> MB</span></label>
+                  <input class="vq-file-input" id="cf-<%= c.id %>" type="file" name="file">
+                </div>
+                <div class="vq-form-foot"><button class="vq-btn vq-btn--secondary" type="submit" data-vendor-clarification-send>Send response</button></div>
               </div>
-              <div class="vq-field">
-                <label class="vq-label" for="cf-<%= c.id %>">Attach a file <span class="vq-optional">optional, up to <%= fileMb %> MB</span></label>
-                <input class="vq-file-input" id="cf-<%= c.id %>" type="file" name="file">
-              </div>
-              <div class="vq-form-foot"><button class="vq-btn vq-btn--secondary" type="submit" data-vendor-clarification-send>Send response</button></div>
             </form>
           <% }) %>
           <% answeredClarifications.forEach(c => { %>
-            <div class="vq-item" data-vendor-clarification-answered="<%= c.id %>">
+            <div class="vq-item vq-clar" data-vendor-clarification-answered="<%= c.id %>">
               <p class="vq-item-ref">Question <%= c.question_id %>. Response sent; waiting for the reviewers.</p>
               <p class="vq-item-text"><%= c.question %></p>
-              <p class="vq-item-label">The reviewers asked</p>
-              <p class="vq-item-quote vq-pre"><%= c.body %></p>
-              <p class="vq-item-label">You responded on <%= fmtDay(c.responded_at) %></p>
-              <p class="vq-item-quote vq-pre"><%= c.response %></p>
-              <% if (c.response_file_name) { %><p class="vq-item-sub">File: <span class="vq-file-name"><%= c.response_file_name %></span></p><% } %>
+              <div class="vq-thread vq-thread--done">
+                <p class="vq-item-label">The reviewers asked</p>
+                <p class="vq-item-quote vq-pre"><%= c.body %></p>
+                <p class="vq-item-label">You responded on <%= fmtDay(c.responded_at) %></p>
+                <p class="vq-item-quote vq-pre"><%= c.response %></p>
+                <% if (c.response_file_name) { %><p class="vq-item-sub">File: <span class="vq-file-name"><%= c.response_file_name %></span></p><% } %>
+              </div>
             </div>
           <% }) %>
           <% if (!answering && locals.issueCount && issueCount.total) { %>
@@ -142,33 +164,21 @@
       <% } %>
 
       <% if (view === 'start' && answering) { const n = p.counts; %>
-        <section class="vq-start" aria-label="Overview" data-vendor-start-page>
-          <% const asked = ['iso27001', 'soc2_type2'].filter(k => p.reports.inQuestions[k]); if (asked.length && !p.coveredDocuments) { const sIdx = p.reports.questionSection[asked[0]]; %><p class="vq-start-note" data-vendor-report-hint>If you hold a current <%= asked.map(k => k === 'iso27001' ? 'ISO 27001 certificate' : 'SOC 2 Type II report').join(' or ') %>, answer <%= asked.map(k => k === 'iso27001' ? 'ASR-01' : 'ASR-03').join(' and ') %> in <a href="<%= sectionHref(sIdx) %>"><%= p.sections[sIdx - 1].title %></a> first: it covers the documents for up to <%= plural(Math.max(...asked.map(k => p.reports.others[k])), 'other question') %>.</p><% } %>
+        <div class="vq-card vq-card--start">
+        <section class="vq-start" aria-labelledby="start-title" data-vendor-start-page>
+          <header class="vq-card-head"><p class="vq-section-where">Before you start</p><h2 class="vq-section-title" id="start-title">Overview</h2></header>
+          <p class="vq-start-lead" data-vendor-start-count><%= plural(p.total, 'question') %> in <%= plural(p.sections.length, 'section') %>. Answer them in any order, then submit once every required answer is in.</p>
+          <% const asked = ['iso27001', 'soc2_type2'].filter(k => p.reports.inQuestions[k]); if (asked.length && !p.coveredDocuments) { const sIdx = p.reports.questionSection[asked[0]];
+               const soaWhere = p.reports.soaOnExtra ? 'as a second file on ASR-01, or on ASR-02' : 'as a second file on ASR-01';
+               const tipFor = k => k === 'iso27001'
+                 ? 'a current ISO 27001 certificate, answer ASR-01 with the certificate and your Statement of Applicability attached (' + soaWhere + '): together they cover the documents for ' + plural(p.reports.others[k], 'other question')
+                 : 'a current SOC 2 Type II report, answer ASR-03 with the report attached and its period end date: it covers the documents for ' + plural(p.reports.others[k], 'other question'); %><p class="vq-start-note" data-vendor-report-hint>If you hold <%= asked.map(tipFor).join('. If you hold ') %>. Answer <%= asked.length > 1 ? 'them' : 'it' %> first in <a href="<%= sectionHref(sIdx) %>"><%= p.sections[sIdx - 1].title %></a>. Naming a document is not enough here: the files are needed.</p><% } %>
           <% if (p.coveredDocuments) { %><p data-vendor-report-covered>Your certificate or report covers the documents for <%= plural(p.coveredDocuments, 'question') %>, so they need none of their own.</p><% } %>
           <% if (p.lastTime) { %><p class="vq-start-note" data-vendor-last-time-note>Some answers are filled in from your answers of <%= fmtDay(p.lastTime) %>, marked "From last time". Confirm each one is still correct, or change it.</p><% } %>
           <% if (locals.contractInfo && contractInfo) { %><p class="vq-start-note" data-vendor-contract-note>Also tell us which <a href="<%= base %>/contract">contract clauses</a> your contract with <%= ctx.clientName %> has: <%= contractInfo.answered %> of <%= contractInfo.total %> marked so far.</p><% } %>
           <% if (p.aiAddedByAnswer) { %><p class="vq-start-note" id="ai-services">An <strong>AI Services</strong> section has been added because you answered Yes to AIS-01.</p><% } %>
-          <% if (p.sections.length) { const pctOf = s => (s.total ? Math.round((s.answered / s.total) * 100) : 0); %>
-          <h2 class="vq-h2<%= p.coveredDocuments || p.lastTime || p.aiAddedByAnswer ? ' vq-mt' : '' %>">Sections</h2>
-          <div class="vq-panel">
-          <table class="vq-table vq-progress" data-vendor-overview-sections>
-            <thead><tr><th scope="col">Section</th><th scope="col" class="vq-num">Answered</th><th scope="col" class="vq-num">Complete</th><th scope="col">Status</th></tr></thead>
-            <tbody>
-              <% p.sections.forEach(s => { const left = s.total - s.answered; %>
-                <tr data-vendor-overview-section="<%= s.title %>">
-                  <td><a href="<%= sectionHref(s.index) %>"><%= s.title %></a></td>
-                  <td class="vq-num"><%= s.answered %> of <%= s.total %></td>
-                  <td class="vq-num"><%= pctOf(s) %>%</td>
-                  <td><%= s.complete ? 'Done' : s.attention ? plural(s.attention, 'question needs', 'questions need') + ' attention' : s.answered ? left + ' to answer' : 'Not started' %></td>
-                </tr>
-              <% }) %>
-            </tbody>
-            <tfoot><tr><th scope="row">Total</th><td class="vq-num"><%= p.answered %> of <%= p.total %></td><td class="vq-num"><%= pct %>%</td><td></td></tr></tfoot>
-          </table>
-          </div>
-          <% } %>
           <% if (p.sections.length) { %>
-          <div class="vq-actions vq-actions--bar">
+          <div class="vq-actions vq-actions--start">
             <form method="GET" action="<%= base %>" class="vq-jump" data-vendor-jump>
               <label class="sr-only" for="vq-jump">Go to a section</label>
               <select class="vq-input vq-jump-select" id="vq-jump" name="s">
@@ -184,7 +194,7 @@
         </section>
 
         <% if (locals.assigned && locals.colleagues && colleagues.length > 1 && p.sections.length) { const isMain = signedIn.role === 'main'; %>
-          <section class="vq-page vq-page--follow" id="who-answers" aria-labelledby="who-title" data-vendor-who-answers>
+          <section class="vq-page vq-page--follow vq-card-part" id="who-answers" aria-labelledby="who-title" data-vendor-who-answers>
             <h2 class="vq-h2" id="who-title">Who answers each section</h2>
             <p class="vq-lead"><%= isMain ? 'Colleagues are emailed the sections you give them. Anyone can still answer any section.' : 'Chosen by the main contact. Anyone can answer any section.' %></p>
             <% if (isMain) { %>
@@ -211,7 +221,7 @@
         <% } %>
 
         <% if (docCount) { %>
-          <section class="vq-page vq-page--follow" aria-labelledby="ready-title" data-vendor-documents-needed>
+          <section class="vq-page vq-page--follow vq-card-part" aria-labelledby="ready-title" data-vendor-documents-needed>
             <h2 class="vq-h2" id="ready-title">What to have ready</h2>
             <p class="vq-lead">Add each file once on <a href="<%= base %>?view=documents">Your documents</a>, then choose it on every question it supports.</p>
             <details class="vq-docs">
@@ -227,7 +237,7 @@
         <% } %>
 
         <% if (p.sections.length) { %>
-          <section class="vq-page vq-page--follow" id="spreadsheet" aria-labelledby="sheet-title" data-vendor-spreadsheet>
+          <section class="vq-page vq-page--follow vq-card-part" id="spreadsheet" aria-labelledby="sheet-title" data-vendor-spreadsheet>
             <h2 class="vq-h2" id="sheet-title">Answer in a spreadsheet <span class="vq-optional">optional</span></h2>
             <p class="vq-lead">Download the questions with your saved answers, fill them in and upload the file. Empty rows keep what is saved. Nothing is submitted. Documents are added on this site, not in the spreadsheet.</p>
             <p><a class="vq-btn vq-btn--secondary" href="<%= base %>/spreadsheet" data-vendor-sheet-download>Download the spreadsheet</a></p>
@@ -244,7 +254,7 @@
 
         <% const panelKinds = ['iso27001', 'soc2_type2'].filter(k => !p.reports.inQuestions[k] && p.reports.would[k] > 0); %>
         <% if (p.reports.enabled && panelKinds.length) { %>
-          <section class="vq-page vq-page--follow" id="reports" aria-labelledby="reports-title" data-vendor-reports>
+          <section class="vq-page vq-page--follow vq-card-part" id="reports" aria-labelledby="reports-title" data-vendor-reports>
             <h2 class="vq-h2" id="reports-title">Your certificate or report <span class="vq-optional">optional, saves time</span></h2>
             <p class="vq-lead">A current ISO 27001 certificate or SOC 2 Type II report covers the documents for the questions it applies to.</p>
             <% if (p.reports.counts.total) { %>
@@ -320,26 +330,42 @@
             </div>
           </section>
         <% } %>
+        </div>
       <% } %>
 
       <% if (view === 'section' && answering && section) { const s = section; const prev = p.sections[s.index - 2] || null; const next = p.sections[s.index] || null;
            const stillNeeded = { evidence: 'a document for this answer.', explain: 'an explanation of your answer.', fields: 'each field of your answer.' };
-           const qn = qi => s.questions[qi].id; %>
-        <section class="vq-section" data-vendor-section="<%= s.title %>">
-        <header class="vq-section-head">
-          <h2 class="vq-section-title" id="<%= s.slug %>"><%= s.title %></h2>
-          <p class="vq-section-where">Section <%= s.index %> of <%= p.sections.length %><% if (locals.assigned && assigned.get(s.title)) { %>. Assigned to <%= assigned.get(s.title).name %><% } %></p>
+           const qn = qi => s.questions[qi].id;
+           const hereOpen = s.questions.find(isOpenQ) || null;
+           const laterSections = p.sections.slice(s.index).concat(p.sections.slice(0, s.index - 1));
+           const laterOpen = (() => { for (const x of laterSections) { const q = x.questions.find(isOpenQ); if (q) return q; } return null; })();
+           %>
+        <section class="vq-section vq-card" data-vendor-section="<%= s.title %>">
+        <header class="vq-section-head vq-card-head">
+          <div class="vq-head-row">
+            <div class="vq-head-text">
+              <p class="vq-section-where">Section <%= s.index %> of <%= p.sections.length %> · <span class="vq-section-progress"><%= s.answered %> of <%= s.total %> answered.</span></p>
+              <h2 class="vq-section-title" id="<%= s.slug %>"><%= s.title %></h2>
+            </div>
+            <% if (hereOpen) { %><a class="vq-btn vq-btn--sm vq-next-open" href="#q-<%= hereOpen.id %>" data-vendor-next-unanswered="<%= hereOpen.id %>"<% if (laterOpen) { %> data-vendor-next-later="<%= laterOpen.id %>"<% } %>>Next unanswered</a><% } else if (laterOpen) { %><button class="vq-btn vq-btn--sm vq-next-open" type="submit" form="<%= FORM_ID %>" name="go" value="q:<%= laterOpen.id %>" formnovalidate data-vendor-next-unanswered="<%= laterOpen.id %>">Next unanswered</button><% } %>
+          </div>
+          <% if (locals.assigned && assigned.get(s.title)) { %><p class="vq-section-assigned">Assigned to <%= assigned.get(s.title).name %></p><% } %>
           <% if (s.summary) { %><p class="vq-section-summary" data-vendor-section-summary><%= s.summary %></p><% } %>
           <% const stillOpen = errorList.length ? 0 : s.questions.filter(q => q.problems.some(x => stillNeeded[x.kind])).length; %>
-          <p class="vq-section-progress"><%= s.answered %> of <%= s.total %> answered.<% if (stillOpen) { %> <span data-vendor-section-attention><%= plural(stillOpen, 'question still needs', 'questions still need') %> something before you can submit.</span><% } %><% if (s.aiAdded) { %> Added because you answered Yes to AIS-01.<% } %></p>
+          <% if (stillOpen || s.aiAdded) { %><p class="vq-section-note"><% if (stillOpen) { %><span data-vendor-section-attention><%= plural(stillOpen, 'question still needs', 'questions still need') %> something before you can submit.</span><% } %><% if (s.aiAdded) { %> Added because you answered Yes to AIS-01.<% } %></p><% } %>
         </header>
 
-        <form method="POST" action="<%= base %>/save" enctype="multipart/form-data" novalidate class="vq-form" id="<%= FORM_ID %>" data-vendor-answer-form>
+        <form method="POST" action="<%= base %>/save" enctype="multipart/form-data" novalidate class="vq-form" id="<%= FORM_ID %>" data-vendor-answer-form<%= errorList.length ? ' data-vendor-unsaved' : '' %>>
           <input type="hidden" name="_aft" value="<%= aft %>">
           <input type="hidden" name="section" value="<%= s.index %>">
           <% s.questions.forEach((q, qi) => { const v = q.value; const errs = errorsFor(q.id); const R = q.rules; const attrJson = o => JSON.stringify(o).replace(/&/g, '&amp;').replace(/"/g, '&#34;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); const valueQ = !!R.valueType; const freeText = R.typed && (R.type === 'free_text' || valueQ); const legacy = !R.typed; const covered = q.badge.key === 'covered';
                const required = !!R.evidenceMandatory && !covered; const needed = !errs.length ? q.problems.filter(x => stillNeeded[x.kind]) : [];
-               const docOpen = !!errs.length || needed.some(x => x.kind === 'evidence'); %>
+               const docOpen = !!errs.length || needed.some(x => x.kind === 'evidence') || !!(v.picks && v.picks.length);
+               const ferr = f => errs.filter(e => e.field === f.key).map(e => e.message);
+               const setAside = !!(q.files.length && v.response && !R.evidenceOn.includes(v.response));
+               const fileList = () => '<ul class="vq-files" data-vendor-files>' + q.files.map(f => { const also = usedIn(q.id, f.id); const note = [onShelf(f.id) ? 'From your documents' : null, also.length ? 'also used in ' + also.join(', ') : null].filter(Boolean).join(' · ');
+                 return '<li class="vq-chip" data-vendor-file="' + f.id + '"><span class="vq-chip-type" aria-hidden="true">' + attr(extOf(f.name)) + '</span><span class="vq-file-name">' + attr(f.name) + '</span> <span class="vq-chip-note">' + attr(sizeOf(f.size)) + (note ? ' · ' + attr(note) : '') + '</span>'
+                 + (f.locked ? '' : ' <label class="vq-check vq-check--sm"><input type="checkbox" name="remove[' + q.id + ']" value="' + f.id + '"' + ((v.remove || []).includes(f.id) ? ' checked' : '') + '> Remove when I save</label>') + '</li>'; }).join('') + '</ul>'; %>
             <div class="vq-q<%= errs.length ? ' has-error' : '' %><%= q.followup ? ' vq-followup' : '' %>" id="q-<%= q.id %>" role="group" aria-labelledby="qt-<%= q.id %>" data-vendor-question="<%= q.id %>"<%- q.followup ? ' data-vendor-followup-of="' + q.followup.parent + '"' + (q.followup.rule ? ' data-vendor-followup-rule="' + attrJson(q.followup.rule) + '"' : ' data-vendor-followup-when="' + q.followup.when + '"') + (q.asked ? '' : ' hidden') : '' %> data-kind="<%= legacy ? 'legacy' : freeText ? 'text' : 'choice' %>"<% if (errs.length) { %> aria-invalid="true"<% } %>>
               <input type="hidden" name="v[<%= q.id %>]" value="<%= locals.postedVersions && /^[0-9a-f]{20}$/.test(String(postedVersions[q.id] || '')) && !errs.some(e => e.stale) ? postedVersions[q.id] : q.version %>">
               <span class="vq-q-num" aria-hidden="true"><%= qn(qi) %></span>
@@ -347,7 +373,7 @@
               <% if (q.followup) { %><p class="vq-q-why" data-vendor-followup-why><% if (q.followup.rule) { %>Asked because of your answer<%= q.followup.rule.conditions.length > 1 ? 's' : '' %> to <%= [...new Set(q.followup.rule.conditions.map(c => c.question))].join(' and ') %>.<% } else { %>Asked because you answered <%= p.responseLabels[q.followup.when] || q.followup.when %> to <%= q.followup.parent %>.<% } %></p><% } %>
               <% if (R.required === false) { %><p class="vq-q-why" data-vendor-optional>Optional: you can leave this blank.</p><% } %>
               <p class="vq-q-text" id="qt-<%= q.id %>"><span class="sr-only">Question <%= qn(qi) %>: </span><%= q.question %></p>
-              <% if (q.guidance) { %><p class="vq-q-guidance" id="g-<%= q.id %>"><%= q.guidance %></p><% } %>
+              <% if (q.guidance) { %><p class="vq-q-guidance vq-q-guide" id="g-<%= q.id %>"><%- infoIcon %><span><%- guidanceHtml(q.guidance) %></span></p><% } %>
               <% if (q.acronyms && q.acronyms.length) { %>
                 <details class="vq-what" data-vendor-what="<%= q.id %>"><summary class="vq-what-summary">What is <%= q.acronyms.map(a => a.term).join(', ') %>?</summary>
                   <dl class="vq-what-list"><% q.acronyms.forEach(a => { %><div><dt><%= a.term %></dt><dd><%= a.meaning %></dd></div><% }) %></dl></details>
@@ -358,7 +384,7 @@
                   <p><%= e.theirs.by %>'s answer: <span class="vq-pre"><%= e.theirs.answer %></span></p>
                   <p>Your version is in the form below. Save again if it should replace <%= e.theirs.by %>'s.</p>
                 </div>
-              <% } else { %><p class="vq-error" role="alert"><%= e.message %></p><% } }) %>
+              <% } else if (!e.field) { %><p class="vq-error" role="alert"><%= e.message %></p><% } }) %>
               <% needed.forEach(x => { %><p class="vq-needed">Still needed: <%= stillNeeded[x.kind] %></p><% }) %>
               <% if (q.fromLastTime) { %>
                 <p class="vq-last" data-vendor-from-last-time>Filled in from your answers last time.
@@ -371,12 +397,12 @@
                 <% if (R.responses.includes('na')) { %><label class="vq-check vq-na-toggle"><input data-vendor-na class="vq-na-input" type="checkbox" name="r[<%= q.id %>]" value="na"<% if (v.response === 'na') { %> checked<% } %>> This does not apply to us</label><% } %>
               <% } else if (valueQ) { %>
                 <div class="vq-fields vq-answer-text" data-vendor-fields="<%= q.id %>" data-vendor-value="<%= R.valueType %>">
-                  <% R.fields.forEach(f => { %><%- include('partials/tprm_vendor_field', { q, f, fv: (v.fields || {})[f.key] || '' }) %><% }) %>
+                  <% R.fields.forEach(f => { %><%- include('partials/tprm_vendor_field', { q, f, fv: (v.fields || {})[f.key] || '', ferr: ferr(f) }) %><% }) %>
                 </div>
                 <% if (R.responses.includes('na')) { %><label class="vq-check vq-na-toggle"><input data-vendor-na class="vq-na-input" type="checkbox" name="r[<%= q.id %>]" value="na"<% if (v.response === 'na') { %> checked<% } %>> This does not apply to us</label><% } %>
               <% } else if (freeText && R.fieldsOn === 'answer') { %>
                 <div class="vq-fields<%= R.fieldsOn === 'answer' ? ' vq-answer-text' : ' vq-yes' %>" data-vendor-fields="<%= q.id %>">
-                  <% R.fields.forEach(f => { %><%- include('partials/tprm_vendor_field', { q, f, fv: (v.fields || {})[f.key] || '' }) %><% }) %>
+                  <% R.fields.forEach(f => { %><%- include('partials/tprm_vendor_field', { q, f, fv: (v.fields || {})[f.key] || '', ferr: ferr(f) }) %><% }) %>
                 </div>
                 <label class="vq-check vq-na-toggle"><input data-vendor-na class="vq-na-input" type="checkbox" name="r[<%= q.id %>]" value="na"<% if (v.response === 'na') { %> checked<% } %>> This does not apply to us</label>
               <% } else if (freeText) { %>
@@ -394,7 +420,7 @@
                 </fieldset>
                 <% if (R.fieldsOn === 'yes') { %>
                 <div class="vq-fields<%= R.fieldsOn === 'answer' ? ' vq-answer-text' : ' vq-yes' %>" data-vendor-fields="<%= q.id %>">
-                  <% R.fields.forEach(f => { %><%- include('partials/tprm_vendor_field', { q, f, fv: (v.fields || {})[f.key] || '' }) %><% }) %>
+                  <% R.fields.forEach(f => { %><%- include('partials/tprm_vendor_field', { q, f, fv: (v.fields || {})[f.key] || '', ferr: ferr(f) }) %><% }) %>
                 </div>
                 <% } else if (R.detailsOnYes) { %>
                 <div class="vq-field vq-yes" data-vendor-yes-details="<%= q.id %>">
@@ -418,21 +444,14 @@
                 <% } else if (required) { %>
                   <p class="vq-doc-line" data-vendor-evidence-required>This answer needs a supporting document.</p>
                 <% } %>
-                <% if (q.files.length) { %>
-                  <ul class="vq-files" data-vendor-files>
-                    <% q.files.forEach(f => { %>
-                      <li data-vendor-file="<%= f.id %>"><span class="vq-file-name"><%= f.name %></span> <span class="vq-muted"><%= sizeOf(f.size) %></span>
-                        <% if (!f.locked) { %><label class="vq-check vq-check--sm"><input type="checkbox" name="remove[<%= q.id %>]" value="<%= f.id %>"> Remove when I save</label><% } %></li>
-                    <% }) %>
-                  </ul>
-                <% } %>
-                <% if (v.evidence_ref && !q.files.length) { %><p class="vq-doc-named">Named: <%= v.evidence_ref %><%= v.evidence_date ? ', dated ' + fmtDay(v.evidence_date) : '' %></p><% } %>
+                <% if (q.files.length && !setAside) { %><%- fileList() %><% } %>
+                <% const savedRef = q.answer && q.answer.evidence_ref; if (savedRef && !q.files.length) { %><p class="vq-doc-named" data-vendor-named>Named: <%= savedRef %><%= q.answer.evidence_date ? ', dated ' + fmtDay(q.answer.evidence_date) : '' %></p><% } %>
                 <details class="vq-doc"<%= docOpen ? ' open' : '' %>>
-                  <summary class="vq-doc-summary"><%= q.files.length || v.evidence_ref ? 'Add another document or change it' : 'Add a document' %></summary>
+                  <summary class="vq-doc-summary"><%= q.files.length || savedRef ? 'Add another document or change it' : 'Add a document' %></summary>
                   <% const choosable = shelfFor(q); if (choosable.length) { %>
                     <fieldset class="vq-pick" data-vendor-pick="<%= q.id %>">
                       <legend class="vq-label">Choose from your documents</legend>
-                      <% choosable.forEach(d => { %><label class="vq-check"><input type="checkbox" name="pick[<%= q.id %>]" value="<%= d.id %>"> <span><span class="vq-file-name"><%= d.name %></span><% if (d.description) { %> <span class="vq-muted"><%= d.description %></span><% } %></span></label><% }) %>
+                      <% choosable.forEach(d => { %><label class="vq-check"><input type="checkbox" name="pick[<%= q.id %>]" value="<%= d.id %>"<%= (v.picks || []).includes(d.id) ? ' checked' : '' %>> <span><span class="vq-file-name"><%= d.name %></span><% if (d.description) { %> <span class="vq-muted"><%= d.description %></span><% } %></span></label><% }) %>
                     </fieldset>
                   <% } %>
                   <p class="vq-pick-more"><button type="submit" form="<%= FORM_ID %>" name="go" value="documents" formnovalidate class="vq-link-btn" data-vendor-to-documents>Add files to your documents</button> <span class="vq-muted">saves this section first</span></p>
@@ -449,12 +468,19 @@
                 </details>
               </div>
               <% } %>
+              <% if (setAside) { %>
+              <div class="vq-set-aside" data-vendor-set-aside="<%= q.id %>">
+                <p class="vq-doc-line">Kept from an earlier answer. With the answer "<%= p.responseLabels[v.response] || v.response %>", no document is needed, so the reviewers do not see <%= q.files.length === 1 ? 'this file' : 'these files' %>. Remove <%= q.files.length === 1 ? 'it' : 'them' %>, or change the answer back.</p>
+                <%- fileList() %>
+              </div>
+              <% } %>
               <% if (q.report) { const rq = q.report; const noun = rq.kind === 'iso27001' ? 'certificate' : 'report'; const others = plural(rq.would, 'other question'); %>
                 <p class="vq-report-note" data-vendor-report-note="<%= rq.kind %>"><%=
                   rq.row ? 'Saved as your ' + rq.label + '. It covers the documents for ' + others + (rq.row.file && !q.files.some(f => f.id === rq.row.file.id) ? ' (file: ' + rq.row.file.name + ')' : '') + '.'
                   : rq.draft.expired ? 'This certificate has expired, so it cannot cover other questions.'
                   : rq.draft.answered && rq.draft.problems.length ? 'To use this ' + noun + ' for ' + others + ', ' + rq.draft.problems.join(', ') + '.'
-                  : 'Answer Yes with the ' + noun + ' attached and it covers the documents for ' + others + '.' %></p>
+                  : rq.kind === 'iso27001' ? 'Answer Yes with the certificate and the Statement of Applicability attached, as a second file here' + (rq.extraAsked ? ' or on ' + 'ASR-02' : '') + ', and together they cover the documents for ' + others + '. Naming the Statement of Applicability is not enough: the file is needed.'
+                  : 'Answer Yes with the report attached and its period end date, and it covers the documents for ' + others + '.' %></p>
               <% } %>
               <% if (q.comments.length) { %>
                 <ul class="vq-comments" data-vendor-comments="<%= q.id %>">
@@ -463,37 +489,32 @@
               <% } %>
               <% const cv = locals.postedComments && typeof postedComments[q.id] === 'string' ? postedComments[q.id] : ''; %>
               <% if (!locals.firmEntry) { %><details class="vq-comment-add"<%= cv ? ' open' : '' %>>
-                <summary class="vq-doc-summary">Add a comment</summary>
+                <summary class="vq-doc-summary vq-lk"><%- commentIcon %>Add a comment</summary>
                 <div class="vq-field"><label class="vq-label" for="c-<%= q.id %>">Comment for the reviewers <span class="vq-optional">saved with this section</span></label>
-                  <textarea class="vq-input vq-textarea" id="c-<%= q.id %>" name="c[<%= q.id %>]" rows="2" maxlength="<%= p.limits.comment %>"><%= cv %></textarea></div>
+                  <textarea class="vq-input vq-textarea" id="c-<%= q.id %>" name="c[<%= q.id %>]" rows="2" maxlength="<%= p.limits.comment %>" aria-describedby="cw-<%= q.id %>"><%= cv %></textarea>
+                  <p class="vq-muted" id="cw-<%= q.id %>" data-vendor-comment-who><%= commentWho %></p></div>
               </details><% } %>
-              <% if (q.answer && q.answer.saved_at) { %><p class="vq-q-by" data-vendor-answered-by>Answered<%= q.answer.saved_by_name ? ' by ' + q.answer.saved_by_name : '' %><%= q.answer.saved_by_firm ? ' of ' + firmName + ', on your behalf,' : '' %> on <%= fmtWhen(q.answer.saved_at) %></p><% } %>
+              <% if (q.answer && q.answer.saved_at && q.answer.response) { const savedOnly = q.problems.length > 0; %><p class="vq-q-by" <%= savedOnly ? 'data-vendor-saved-by' : 'data-vendor-answered-by' %>><%= savedOnly ? 'Saved' : 'Answered' %><%= q.answer.saved_by_name ? ' by ' + q.answer.saved_by_name : '' %><%= q.answer.saved_by_firm ? ' of ' + firmName + ', on your behalf,' : '' %> on <%= fmtWhen(q.answer.saved_at) %><%= savedOnly ? '. Not complete yet: it still needs something before you can submit.' : '' %></p><% } %>
               </div>
             </div>
           <% }) %>
 
-          <div class="vq-actions vq-actions--bar">
-            <% if (prev) { %><button class="vq-btn vq-btn--secondary" type="submit" name="go" value="<%= goValue(prev) %>" formnovalidate data-vendor-prev>Previous section</button><% } else { %><button class="vq-btn vq-btn--secondary" type="submit" name="go" value="start" formnovalidate data-vendor-prev>Overview</button><% } %>
-            <span class="vq-jump" data-vendor-jump>
-              <label class="sr-only" for="vq-jump">Go to a section</label>
-              <select class="vq-input vq-jump-select" id="vq-jump" name="jump">
-                <option value="start">Overview</option>
-                <% p.sections.forEach(x => { %><option value="<%= goValue(x) || 'review' %>"<%= x.index === s.index ? ' selected' : '' %>>Section <%= x.index %> of <%= p.sections.length %>: <%= x.title %></option><% }) %>
-                <option value="review">Review and submit</option>
-              </select>
-              <button class="vq-btn vq-btn--secondary vq-jump-go" type="submit" name="go" value="jump" formnovalidate data-vendor-jump-go>Save and go</button>
-            </span>
-            <span class="vq-actions-gap"></span>
-            <button class="vq-btn vq-btn--secondary" type="submit" name="intent" value="save" data-vendor-save>Save</button>
-            <button class="vq-btn vq-btn--primary" type="submit" name="intent" value="next" data-vendor-next><%= next ? 'Save and next section' : 'Save and review' %></button>
-          </div>
+          <span class="vq-jump vq-jump--kept" data-vendor-jump>
+            <label class="sr-only" for="vq-jump">Go to a section</label>
+            <select class="vq-input vq-jump-select" id="vq-jump" name="jump">
+              <option value="start">Overview</option>
+              <% p.sections.forEach(x => { %><option value="<%= goValue(x) || 'review' %>"<%= x.index === s.index ? ' selected' : '' %>>Section <%= x.index %> of <%= p.sections.length %>: <%= x.title %></option><% }) %>
+              <option value="review">Review and submit</option>
+            </select>
+            <button class="vq-btn vq-btn--secondary vq-jump-go" type="submit" name="go" value="jump" formnovalidate data-vendor-jump-go>Save and go</button>
+          </span>
         </form>
 
         </section>
       <% } %>
 
       <% if (view === 'documents' && answering) { %>
-        <section class="vq-page" aria-labelledby="documents-title" data-vendor-documents>
+        <section class="vq-page vq-card" aria-labelledby="documents-title" data-vendor-documents>
           <h2 class="vq-page-title" id="documents-title">Your documents</h2>
           <p class="vq-lead">Add each file once, then choose it on each question it supports. The reviewers see the files you choose for your answers.</p>
           <% if (p.shelf.length) { %>
@@ -545,7 +566,7 @@
       <% } %>
 
       <% if (view === 'confirm' && answering) { const ready = !p.problems.length; %>
-        <section class="vq-page" aria-labelledby="confirm-title" data-vendor-confirm>
+        <section class="vq-page vq-card" aria-labelledby="confirm-title" data-vendor-confirm>
           <h2 class="vq-page-title" id="confirm-title">Review and submit</h2>
           <% if (!ready) { %>
             <p class="vq-lead" data-vendor-problem-count><%= plural(p.problems.length, 'item needs', 'items need') %> attention before you can submit. Your answers so far are saved.</p>
@@ -556,7 +577,7 @@
           <table class="vq-table">
             <thead><tr><th scope="col">Section</th><th scope="col" class="vq-num">Answered</th><th scope="col">Still to do</th></tr></thead>
             <tbody>
-              <% p.sections.forEach(s => { const left = s.total - s.answered; %>
+              <% p.sections.forEach(s => { const left = s.total - s.responded; %>
                 <tr data-vendor-review-section="<%= s.title %>">
                   <td><a href="<%= sectionHref(s.index) %>"><%= s.title %></a></td>
                   <td class="vq-num"><%= s.answered %> of <%= s.total %></td>
@@ -595,9 +616,55 @@
           <% } %>
         </section>
       <% } %>
-
-      <%- include('partials/tprm_vendor_footer', { firm: p.firm, expiresAt: null, note: locals.signedIn ? '' : 'Do not share this link.' }) %>
     </main>
+
+    <% if (showRail) { const team = locals.signedIn && locals.colleagues && !locals.firmEntry ? colleagues : null; const isMain = !!(locals.signedIn && signedIn.role === 'main'); const labels = locals.roleLabels || {}; %>
+    <aside class="vq-rail" aria-label="About this review">
+      <section class="vq-rcard vq-rcard--dark" aria-labelledby="rail-about">
+        <h2 class="vq-rtitle" id="rail-about">About this review</h2>
+        <ul class="vq-kv">
+          <li><span class="vq-kv-k">For</span><span class="vq-kv-v"><%= ctx.clientName %></span></li>
+          <% if (brandName) { %><li><span class="vq-kv-k">Run by</span><span class="vq-kv-v"><%= brandName %></span></li><% } %>
+          <% if (reviewerName) { %><li><span class="vq-kv-k">Reviewer</span><span class="vq-kv-v"><%= reviewerName %></span></li><% } %>
+          <% if (ctx.expiresAt) { %><li><span class="vq-kv-k">Due</span><span class="vq-kv-v"><%= fmtDay(ctx.expiresAt) %></span></li><% } %>
+        </ul>
+      </section>
+      <% if (team && team.length) { %>
+      <section class="vq-rcard" aria-labelledby="rail-team" data-vendor-rail-team>
+        <h2 class="vq-rtitle" id="rail-team">Your team on this review</h2>
+        <ul class="vq-team">
+          <% team.forEach(c => { const me = Number(c.id) === Number(signedIn.id); %><li><span><%= c.name || c.email %></span><span class="vq-team-role"><%= me ? 'You' : (c.job_title || labels[c.role] || '') %></span></li><% }) %>
+        </ul>
+        <% const peopleLabel = isMain ? 'Invite a colleague' : 'See your colleagues'; %>
+        <% if (onSection) { %><button class="vq-btn vq-btn--sm vq-rail-btn" type="submit" form="<%= FORM_ID %>" name="go" value="people" formnovalidate data-vendor-invite><%= peopleLabel %></button><% } else { %><a class="vq-btn vq-btn--sm vq-rail-btn" href="/vendor/p/people" data-vendor-invite><%= peopleLabel %></a><% } %>
+      </section>
+      <% } %>
+      <% if (answering) { %>
+      <section class="vq-rcard" aria-labelledby="rail-time" data-vendor-rail-time>
+        <h2 class="vq-rtitle" id="rail-time">Save time</h2>
+        <% const railCovered = p.coveredDocuments && view !== 'start'; if (railCovered) { %><p class="vq-rail-text" data-vendor-rail-covered>Your certificate or report covers the documents for <strong><%= plural(p.coveredDocuments, 'question') %></strong>, so they need none of their own.</p><% } %>
+        <p class="vq-rail-text<%= railCovered ? ' vq-rail-split' : '' %>" data-vendor-rail-sheet>Prefer a spreadsheet? <a href="<%= base %>/spreadsheet">Download with your answers</a><% if (locals.firmEntry) { %>.<% } else { %>, fill it in, then upload it <% if (view === 'start') { %><a href="#spreadsheet">below</a><% } else { %>on the <a href="<%= base %>#spreadsheet">Overview</a><% } %>.<% } %></p>
+      </section>
+      <% } %>
+    </aside>
+    <% } %>
+  </div>
+
+  <% if (onSection) { const s = section; const prev = p.sections[s.index - 2] || null; const next = p.sections[s.index] || null; %>
+  <div class="vq-footbar" data-vendor-actions>
+    <div class="vq-footbar-in">
+      <% if (prev) { %><button class="vq-btn vq-btn--prev" form="<%= FORM_ID %>" type="submit" name="go" value="<%= goValue(prev) %>" formnovalidate data-vendor-prev>Previous section</button><% } else { %><button class="vq-btn vq-btn--prev" form="<%= FORM_ID %>" type="submit" name="go" value="start" formnovalidate data-vendor-prev>Overview</button><% } %>
+      <p class="vq-footbar-note">Your answers are saved each time you change section. You can leave and come back.</p>
+      <span class="vq-actions-gap"></span>
+      <button class="vq-btn" form="<%= FORM_ID %>" type="submit" name="go" value="<%= locals.firmEntry ? 'start' : 'home' %>" formnovalidate data-vendor-save>Save and exit</button>
+      <button class="vq-btn vq-btn--next" form="<%= FORM_ID %>" type="submit" name="intent" value="next" data-vendor-next><%= next ? 'Next section' : 'Save and review' %></button>
+    </div>
+  </div>
+  <% } %>
+
+  <div class="vq-pagefoot">
+    <% if (answering) { %><p class="vq-phone-excel"><a href="<%= base %>/spreadsheet">Download as Excel</a></p><% } %>
+    <%- include('partials/tprm_vendor_footer', { firm: p.firm, expiresAt: null, note: locals.signedIn ? '' : 'Do not share this link.', runBy: brandName ? { firm: brandName, client: ctx.clientName, logo: frame && frame.firm ? frame.firm.logo : null, logoOnDark: !!(frame && frame.firm && frame.firm.logoOnDark) } : null }) %>
   </div>
 </body>
 </html>

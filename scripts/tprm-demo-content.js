@@ -86,7 +86,7 @@ const A = {
 
   'RET-01': p => ({ r: 'yes', f: { period: p.retention, deletion_trigger: 'Automatic deletion job at the end of the period' }, ref: 'Retention schedule v1.4', date: '2026-02-20' }),
   'RET-02': () => ({ r: 'yes', f: { standard: 'NIST SP 800-88 (purge or destroy)', third_party: 'Certified e-waste partner, with a destruction certificate per batch' }, ref: 'Media disposal procedure v1.1', date: '2026-02-20' }),
-  'RET-03': p => ({ f: { frequency: p.backup.frequency, location: p.backup.location, encryption: 'Yes, AES-256', restore_frequency: 'Every quarter', last_restore: p.backup.lastRestore }, doc: 'bcp' }),
+  'RET-03': p => ({ f: { frequency: p.backup.frequency, location: p.backup.location, encryption: 'Yes, AES-256', restore_frequency: 'Every quarter', last_restore: p.backup.lastRestore, retention: '35 days, and monthly copies for a year' }, doc: 'bcp' }),
   'RET-04': () => ({ r: 'yes', f: { format: 'CSV and the original files, over SFTP', timeframe_days: '30' } }),
 
   'INC-01': p => ({ r: 'yes', f: { last_review: p.irReviewed, owner: `${p.ciso.name}, ${p.ciso.title}` }, doc: 'ir' }),
@@ -107,9 +107,9 @@ const A = {
 
   'FTP-01': p => ({ t: p.subprocessors, doc: 'subprocessors' }),
   'FTP-02': () => ({ r: 'yes', ref: 'Supplier security procedure v1.2', date: '2026-03-30' }),
-  'FTP-03': () => ({ r: 'yes' }),
+  'FTP-03': () => ({ r: 'yes', y: 'Security, privacy, audit and breach notification terms are all flowed down; none are left out.' }),
   'FTP-04': () => ({ t: 'Every year: we review their certificates and audit reports, their incident history and any change to where they process data. Critical subprocessors also answer our security questionnaire.' }),
-  'FTP-05': () => ({ r: 'yes' }),
+  'FTP-05': () => ({ r: 'yes', y: '30 days notice before a material subprocessor is added, replaced or relocated; the client can object in writing within that time.' }),
 
   'PHY-01': p => ({ r: 'yes', y: `Badge access at ${p.sites[0]}, with a separate locked area for ${p.physicalArea}.`, ref: 'Physical security standard v1.0', date: '2026-01-25' }),
   'PHY-02': () => ({ f: { controls_in_place: 'CCTV at all entrances and in the production area, a visitor register with ID checks and escorts, and badge access logs.', cctv_retention: '90 days', visitor_record_retention: '1 year', access_log_retention: '1 year' }, ref: 'Physical security standard v1.0', date: '2026-01-25' }),
@@ -127,7 +127,7 @@ const A = {
   'ASR-03': p => (p.soc2
     ? { r: 'yes', f: { period_covered: p.soc2.period, trust_services_criteria: 'Security, Availability and Confidentiality', exceptions: p.soc2.exceptions, subservice_organisations: p.soc2.subservice, user_entity_controls: 'Client user access reviews and secure transfer of files to us.' }, doc: 'soc2' }
     : { r: 'no', d: 'We hold ISO 27001 instead; a SOC 2 Type II report is not planned.' }),
-  'ASR-04': p => ({ t: p.otherCerts, doc: 'iso' }),
+  'ASR-04': p => (p.otherCerts && !/^None\b/.test(p.otherCerts) ? { r: 'yes', y: p.otherCerts, doc: 'iso' } : { r: 'no' }),
   'ASR-05': p => (p.soc2 ? { r: 'yes', y: 'A bridge letter is issued every quarter until the next report.', doc: 'soc2' } : { r: 'na', d: 'We have no SOC 2 report, so no bridge letter applies.' }),
   'ASR-06': p => ({ f: { open_items: p.openAudit, closure_plan: p.openAuditPlan } }),
 

@@ -66,8 +66,8 @@ function registerRoutes(app, { db, requireAuth, handler, renderAssessment }) {
 
   app.post(`${BASE}/remind`, requireAuth, handler(step(async (req, res, actor, thirdParty, back) => {
     const a = await require('../lib/tprm/assessments').getAssessment(db, actor, thirdParty.id, req.params.aid);
-    const r = await require('../lib/tprm/messages').manualReminder(db, { workspaceId: actor.ws.id, assessmentId: a.id });
-    return res.redirect(withToast(back, r.sent ? `Reminder sent to ${r.recipient || 'the third party'}` : `No reminder sent: ${r.reason}`, r.sent ? undefined : 'error'));
+    const r = await require('../lib/tprm/messages').manualReminder(db, { workspaceId: actor.ws.id, assessmentId: a.id, actorId: req.user.id, actorName: req.user.name });
+    return res.redirect(withToast(back, r.sent ? `Reminder sent to ${r.recipient || 'the third party'}${r.recipientEmail ? ` at ${r.recipientEmail}` : ''}, and recorded in the assessment history` : `No reminder sent: ${r.reason}`, r.sent ? undefined : 'error'));
   }), { permission: 'tp.manage' }));
 
   app.post(`${BASE}/links/:lid/revoke`, requireAuth, handler(step(async (req, res, actor, thirdParty, back) => {
@@ -90,6 +90,7 @@ function registerRoutes(app, { db, requireAuth, handler, renderAssessment }) {
   app.post(`${BASE}/answers/:ansId/conclusion.json`, requireAuth, handler(json(async (req, actor, thirdParty) => {
     const result = await review.setConclusion(db, actor, thirdParty.id, req.params.aid, req.params.ansId, req.body || {});
     const state = await review.reviewState(db, actor, result.questionnaireId);
+    const filterCounts = await review.filterCounts(db, actor, thirdParty.id, req.params.aid);
     const a = result.answer;
     return {
       unchanged: !!result.unchanged,
@@ -98,6 +99,7 @@ function registerRoutes(app, { db, requireAuth, handler, renderAssessment }) {
         conclusion_label: review.CONCLUSION_LABELS[a.review_conclusion], comment: a.review_comment || '',
         reviewed_line: result.unchanged ? null : `${actor.user.name || actor.user.email}, ${tpf.day(new Date())}` },
       ...state,
+      filterCounts,
     };
   })));
 

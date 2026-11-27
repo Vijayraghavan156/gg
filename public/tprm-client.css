@@ -29,6 +29,7 @@ body.cv-body { margin: 0; color: var(--cv-ink); font-family: var(--tp-font); fon
 .cv-nav:focus-visible, .cv-btn:focus-visible, .cv-tabs a:focus-visible, .cv-in:focus-visible { outline: 2px solid var(--cv-teal); outline-offset: 2px; }
 .cv-gap { flex: 1; }
 .cv-signout { margin: 0; }
+a.cv-me { text-decoration: none; }
 .cv-me { width: 32px; height: 32px; border-radius: 50%; background: var(--cv-teal-soft); color: var(--cv-teal); font-size: 11.5px; font-weight: 600; display: flex; align-items: center; justify-content: center; margin-top: 6px; }
 .cv-main { padding: 0 28px 36px; min-width: 0; }
 .cv-main a { text-decoration: none; }
@@ -98,6 +99,8 @@ body.cv-body { margin: 0; color: var(--cv-ink); font-family: var(--tp-font); fon
 .cv-s-red { stroke: var(--cv-red); background: var(--cv-red); }
 .cv-s-red2 { stroke: var(--cv-red2); background: var(--cv-red2); }
 .cv-foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--cv-line2); }
+.cv-hub > [data-tprm-cv-tile="added"] { align-self: start; }
+.cv-hub > [data-tprm-cv-tile="added"] .cv-foot { margin-top: 10px; }
 .cv-foot div { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; padding: 3px 0; color: #4f5b68; }
 .cv-foot a { color: #4f5b68; }
 .cv-foot a:hover { color: var(--cv-teal); }
@@ -164,6 +167,8 @@ body.cv-body { margin: 0; color: var(--cv-ink); font-family: var(--tp-font); fon
 .cv-main .page-head { margin-top: 4px; }
 @media (max-width: 1180px) {
   .cv-hub { grid-template-columns: 1fr 1fr; }
+  .cv-hub > [data-tprm-cv-tile="added"], .cv-hub > .cv-stack { grid-column: 1 / -1; }
+  .cv-hub > .cv-stack { grid-template-columns: 1fr 1fr; }
   .cv-ov { grid-template-columns: 1fr; }
   .cv-cards4 { grid-template-columns: 1fr 1fr; }
 }
@@ -173,7 +178,7 @@ body.cv-body { margin: 0; color: var(--cv-ink); font-family: var(--tp-font); fon
   .cv-logo { margin: 0 6px 0 0; }
   .cv-gap { display: none; }
   .cv-main { padding: 0 16px 28px; }
-  .cv-hub, .cv-cards4 { grid-template-columns: 1fr; }
+  .cv-hub, .cv-cards4, .cv-hub > .cv-stack { grid-template-columns: 1fr; }
   .cv-kv { grid-template-columns: 1fr 1fr; }
   .cv-search { width: 100%; }
   .cv-vh { flex-wrap: wrap; }
@@ -238,3 +243,5 @@ body.cv-body { margin: 0; color: var(--cv-ink); font-family: var(--tp-font); fon
 .cv-inline { display: inline; margin: 0; }
 @media (max-width: 720px) { .cv-fg { grid-template-columns: 1fr; } }
 .cv-table tr.cv-cat td { background: var(--cv-head); font-weight: 600; font-size: 12.5px; color: #4f5b68; }
+.cv-main .callout-title { text-transform: none; letter-spacing: normal; font-size: 13px; }
+.cv-error { max-width: 560px; margin: 48px auto; }

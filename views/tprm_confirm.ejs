@@ -1,4 +1,5 @@
-<%- include('partials/header', { title: confirm.title, user, active: 'tprm-portfolio' }) %>
+<% const cvShell = !!(locals.ws && user && user.user_type === 'client'); %>
+<% if (cvShell) { %><%- include('tprm_client_top', { title: confirm.title, cvNav: '' }) %><% } else { %><%- include('partials/header', { title: confirm.title, user, active: 'tprm-portfolio' }) %><% } %>
 <div class="tp-confirm-page" data-tprm-confirm-page>
   <h1 class="tp-confirm-title"><%= confirm.title %></h1>
   <% if (confirm.body) { %><p class="tp-confirm-body"><%= confirm.body %></p><% } %>
@@ -9,4 +10,4 @@
     <button class="tp-btn <%= confirm.tone === 'problem' ? 'tp-btn--problem' : 'tp-btn--primary' %>" type="submit" data-tprm-confirm-yes><%= confirm.action %></button>
   </form>
 </div>
-<%- include('partials/footer') %>
+<% if (cvShell) { %><%- include('tprm_client_bottom') %><% } else { %><%- include('partials/footer') %><% } %>

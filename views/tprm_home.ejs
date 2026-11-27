@@ -100,7 +100,7 @@
           data-tp-sort-days="<%= String(r.days).padStart(5, '0') %>" data-tp-sort-due="<%= r.due || '9999' %>"
           data-tprm-pipeline-row="<%= r.id %>" data-tprm-waiting="<%= r.waiting %>"<%- r.late ? ' data-tprm-late' : '' %>>
         <td><a href="/tprm/clients/<%= r.workspaceId %>/third-parties/<%= r.thirdPartyId %>/assessments/<%= r.id %>"><%= r.thirdPartyName %></a>
-          <span class="tpa-meta tprm-block"><%= r.clientName %><% if (r.tier) { %> · <%= tierLabels[r.tier] || r.tier %><% } %><%= r.type === 'reassessment' ? ' · reassessment' : '' %></span></td>
+          <span class="tpa-meta tprm-block"><%= r.clientName %><% if (r.tier) { %> · <%= tierLabels[r.tier] || r.tier %><% } %><%= (r.typeLabel ? r.typeLabel === 'Reassessment' : r.type === 'reassessment') ? ' · reassessment' : '' %></span></td>
         <td><%= r.step %></td>
         <td><%= r.waitingLabel %><% if (r.waitingName) { %><span class="tpa-meta tprm-block"><%= r.waitingName %></span><% } %><% if (r.forMe) { %><span class="tpa-meta tprm-block" data-tprm-for-me>You</span><% } %></td>
         <td class="tprm-right" title="Days since the last change on this assessment"><%= r.days %></td>
@@ -125,7 +125,7 @@
     <section class="fx-card fx-tile" data-tprm-client-row="<%= c.id %>">
       <h3 class="fx-h4"><a href="/tprm/clients/<%= c.id %>"><%= c.name %></a><span><%= c.sector || '' %></span></h3>
       <div class="fx-mini3"><div><b><%= k.parties %></b><span>Third parties</span></div><div><b class="<%= k.open ? 'fx-warn' : '' %>"><%= k.open %></b><span>Open reviews</span></div><div><b class="<%= k.late ? 'fx-bad' : '' %>"><%= k.late %></b><span>Late</span></div></div>
-      <div class="fx-foot"><div>Waiting on the client<b><%= k.waitingClient ? k.waitingClient + ' decision' + (k.waitingClient === 1 ? '' : 's') : 'none' %></b></div><div>Requests to add<b><%= k.requests %></b></div><div><a href="/tprm/clients/<%= c.id %>">Open register</a></div></div>
+      <div class="fx-foot"><div>Waiting on the client<b><%= k.waitingClient ? k.waitingClient + ' decision' + (k.waitingClient === 1 ? '' : 's') : 'none' %></b></div><div data-tprm-client-requests="add">Requests to add<b><%= k.requests %></b></div><% if (k.reassessRequests) { %><div data-tprm-client-requests="reassess">Requests to reassess<b><%= k.reassessRequests %></b></div><% } %><div><a href="/tprm/clients/<%= c.id %>">Open register</a></div></div>
     </section>
   <% }) %>
   </div>

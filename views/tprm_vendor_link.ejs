@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="/tprm-vendor.css">
 </head>
 <body class="vq-body">
-  <%- include('partials/tprm_portal_top', { frame: null }) %>
+  <%- include('partials/tprm_portal_top', { frame: state === 'submitted' && locals.frame ? frame : null }) %>
   <div class="vq-state-page">
   <main class="vq-state">
     <% if (state === 'submitted') { %>
@@ -20,6 +20,7 @@
       <h1 class="vq-page-title">Thank you</h1>
       <p data-vendor-submitted>Submitted on <%= locals.tpf ? tpf.dayTime(submittedAt, { zone: true }) : '' %>.</p>
       <p>Your answers can no longer be changed. If more information is needed, you will receive a new link.</p>
+      <% if (locals.sheetHref) { %><p data-vendor-submitted-copy><a href="<%= sheetHref %>">Download your answers as submitted</a> (Excel) to keep a copy for your records.</p><% } %>
       <% if (locals.issuesHref) { %><p data-vendor-issues-link>The reviewers have shared issues with you. <a href="<%= issuesHref %>">Open the issues</a> to respond.</p><% } %>
       <p class="vq-muted">You can close this page.</p>
     <% } else if (state === 'limited') { %>

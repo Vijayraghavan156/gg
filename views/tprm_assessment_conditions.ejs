@@ -51,7 +51,7 @@
       <% const past = cl.links.filter(l => !cl.active || l.id !== cl.active.id); if (past.length) { %>
         <details class="tpu-mt-6"><summary class="meta text-xs">Earlier links (<%= past.length %>)</summary>
           <ul class="text-xs meta tprm-list">
-            <% past.forEach(l => { %><li data-tprm-condition-link="<%= l.id %>" data-tprm-condition-link-status="<%= l.display_status %>"><%= cl.statusLabels[l.display_status] %> · <%= l.recipient_name %> · created <%= cDay(l.created_at) %><% if (l.revoke_reason) { %> · <%= l.revoke_reason %><% } %></li><% }) %>
+            <% past.forEach(l => { %><li data-tprm-condition-link="<%= l.id %>" data-tprm-condition-link-status="<%= l.display_status %>"><%= cl.statusLabels[l.display_status] %> · <%= l.recipient_name %> · created <%= cDay(l.created_at) %><% if (l.revoke_reason) { %> · <%= l.revoke_reason %><% } %><% if (l.closed_note) { %> · <span data-tprm-condition-link-closed><%= l.closed_note %></span><% } %></li><% }) %>
           </ul></details>
       <% } %>
     </div>

@@ -274,7 +274,7 @@ test('report contents: the sections a client reads, and nothing internal', async
   assert.match(html, /data-report-fact="client">Report Main Client</);
   assert.match(html, /Acme Hosting &lt;Ltd&gt; &amp; &quot;Co&quot;/, 'values are escaped');
   assert.doesNotMatch(html, /Acme Hosting <Ltd>/);
-  assert.match(html, /data-report-fact="assessment">Reassessment</);
+  assert.match(html, /data-report-fact="assessment">Assessment</, 'the first assessment of a supplier in use is not called a reassessment');
   assert.match(html, /data-report-fact="issued">\d{1,2} [A-Z][a-z]{2} \d{4}, version 1</);
   assert.doesNotMatch(html.slice(html.indexOf('<body>'), html.indexOf('class="rest"')), /UTC/, 'page 1 prints no UTC time');
   assert.match(html, /data-report-outcome>Continue with conditions</);

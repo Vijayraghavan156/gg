@@ -100,6 +100,29 @@ function register(app, deps) {
   const { db, requireAuth, logAction, isFirmUser, isFirmOwner, getActiveFirmId,
           listWorkspaces, workspaceProgress } = deps;
   const tprmEnabledIds = deps.tprmEnabledIds || (async () => new Set());
+  const tprmShell = deps.tprmShell || null;
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : (many || `${one}s`)}`;
+
+  async function thirdPartyOnlyIds(workspaces) {
+    const on = await tprmEnabledIds(workspaces);
+    return new Set(workspaces.filter(w => !isoLifecycle.hasIsoManagementSystem(require('../lib/frameworks').parseWorkspaceFrameworks(w.frameworks)) && on.has(Number(w.id))).map(w => Number(w.id)));
+  }
+
+  function thirdPartyService(status) {
+    if (!status) {
+      return { path: 'Third-party risk', position: 'Third-party register', detail: 'No ISO programme',
+        metric: '', target: 'Third-party risk', targetDetail: '', tone: 'neutral' };
+    }
+    return {
+      path: 'Third-party risk',
+      position: plural(status.parties, 'third party', 'third parties'),
+      detail: status.openAssessments ? `${plural(status.openAssessments, 'assessment')} open` : 'No assessment open',
+      metric: status.reassessmentsOverdue ? `${plural(status.reassessmentsOverdue, 'review')} overdue` : 'No review overdue',
+      target: status.nextDue ? `Next review ${status.nextDue}` : 'No review date set',
+      targetDetail: '',
+      tone: status.severity === 'high' ? 'danger' : status.severity === 'medium' ? 'warning' : 'neutral',
+    };
+  }
 
   app.get('/dashboard', requireAuth, async (req, res) => {
     const workspaces = await listWorkspaces(req.user);
@@ -132,14 +155,14 @@ function register(app, deps) {
     }));
 
     // A client whose only service is third-party risk opens on its TPRM home.
-    const tprmOn = await tprmEnabledIds(workspacesWithProgress);
+    const tprmOnlyIds = await thirdPartyOnlyIds(workspacesWithProgress);
+    const tprmStatus = tprmShell && tprmOnlyIds.size ? await tprmShell.clientStatuses(req.user, [...tprmOnlyIds]) : new Map();
     for (const w of workspacesWithProgress) {
-      const frameworks = Array.isArray(w.frameworks) ? w.frameworks : (() => { try { return JSON.parse(w.frameworks || '[]'); } catch (_) { return []; } })();
-      w.tprmOnly = !frameworks.length && tprmOn.has(Number(w.id));
+      w.tprmOnly = tprmOnlyIds.has(Number(w.id));
       w.homeUrl = w.tprmOnly ? `/tprm/clients/${w.id}` : `/workspaces/${w.id}`;
       if (w.tprmOnly) {
-        w.service = { ...w.service, path: 'Third-party risk', position: 'Third-party register', detail: 'No ISO programme',
-          metric: '', target: 'Third-party risk', targetDetail: '', tone: 'neutral' };
+        w.tprmStatus = tprmStatus.get(Number(w.id)) || null;
+        w.service = { ...w.service, ...thirdPartyService(w.tprmStatus) };
       }
     }
 
@@ -209,8 +232,10 @@ function register(app, deps) {
       return index === -1 ? REASON_ORDER.length : index;
     };
     for (const workspace of workspacesWithProgress) {
-      const risk = riskById.get(workspace.id);
-      const reasons = risk ? [...risk.reasons].sort((a, b) => reasonRank(a) - reasonRank(b)) : [];
+      const risk = workspace.tprmStatus
+        ? { severity: workspace.tprmStatus.severity, reasons: workspace.tprmStatus.reasons }
+        : riskById.get(workspace.id);
+      const reasons = risk ? (workspace.tprmStatus ? [...risk.reasons] : [...risk.reasons].sort((a, b) => reasonRank(a) - reasonRank(b))) : [];
       workspace.attention = {
         severity: risk ? risk.severity : 'ok',
         reasons,
@@ -403,9 +428,19 @@ function register(app, deps) {
     if (!isFirmUser(req.user) || !rbac.rolePermissions(req.user.firm_role).includes('firm.cross_view')) {
       return res.status(403).render('error', { user: req.user, message: 'The portfolio board is for firm managers and senior consultants.' });
     }
-    const engagements = (await Promise.all((await listWorkspaces(req.user))
+    const visible = await listWorkspaces(req.user);
+    const tprmOnlyIds = await thirdPartyOnlyIds(visible);
+    const engagements = (await Promise.all(visible.filter(w => !tprmOnlyIds.has(Number(w.id)))
       .map(async w => await computeEngagementHealth(w))))
       .sort((a, b) => a.score - b.score);
+    const tprmStatus = tprmShell && tprmOnlyIds.size ? await tprmShell.clientStatuses(req.user, [...tprmOnlyIds]) : new Map();
+    const rank = { high: 0, medium: 1, ok: 2 };
+    const thirdPartyClients = visible.filter(w => tprmOnlyIds.has(Number(w.id))).map(w => ({
+      id: w.id,
+      name: w.brand_display_name || w.client_name,
+      href: `/tprm/clients/${w.id}`,
+      status: tprmStatus.get(Number(w.id)) || null,
+    })).sort((a, b) => (rank[a.status ? a.status.severity : 'ok'] - rank[b.status ? b.status.severity : 'ok']) || String(a.name).localeCompare(String(b.name)));
     const summary = {
       total: engagements.length,
       atRisk: engagements.filter(e => e.band === 'at_risk').length,
@@ -414,7 +449,7 @@ function register(app, deps) {
       avgScore: engagements.length ? Math.round(engagements.reduce((s, e) => s + e.score, 0) / engagements.length) : 0,
       overdueNCs: engagements.reduce((s, e) => s + e.signals.overdueNCs, 0),
     };
-    res.render('portfolio', { user: req.user, ws: null, active: 'portfolio', engagements, summary });
+    res.render('portfolio', { user: req.user, ws: null, active: 'portfolio', engagements, summary, thirdPartyClients });
   });
 
   async function collectManagerSchedule(user) {
@@ -561,6 +596,12 @@ function register(app, deps) {
          WHERE workspace_id IN (${ph}) AND status IN ('approved','published') AND next_review_date IS NULL`
       ).get(...wsIds)).n;
     } catch (_) {}
+
+    if (tprmShell) {
+      for (const item of await tprmShell.calendarItems(user)) {
+        if (wsById[item.wsId]) items.push(item);
+      }
+    }
 
     return { items, people, wsName, projects, docsNeedingReviewDate };
   }
@@ -740,6 +781,7 @@ function register(app, deps) {
       year, months, monthRows, prevYear, nextYear,
       overdue, workload, unassigned, maxLoad, kpi,
       docsNeedingReviewDate: docsNeedingReviewDate || 0,
+      thirdPartyKinds: items.some(e => String(e.kind).startsWith('tp-')),
     });
   });
 

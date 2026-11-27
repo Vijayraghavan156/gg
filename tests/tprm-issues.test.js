@@ -224,7 +224,7 @@ async function submitted(name, opts) {
   const ctx = await linked(name, opts);
   await answerAll(ctx);
   const res = await submitLink(ctx.token);
-  assert.equal(res.status, 200, res.text.slice(0, 300));
+  assert.equal(res.status, 303, res.text.slice(0, 300));
   assert.equal((await qRow(ctx.a)).status, 'submitted');
   return ctx;
 }

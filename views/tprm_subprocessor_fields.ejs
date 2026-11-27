@@ -1,5 +1,8 @@
 <div><label class="label" for="sp-name">Name</label>
-  <input class="input" id="sp-name" name="name" required maxlength="<%= LIMITS.name %>" value="<%= v.name || '' %>" placeholder="For example Amazon Web Services"></div>
+  <% const known = helper && Array.isArray(helper.knownNames) ? helper.knownNames : []; %>
+  <input class="input" id="sp-name" name="name" required maxlength="<%= LIMITS.name %>" value="<%= v.name || '' %>" placeholder="For example Amazon Web Services"<%- known.length ? ' list="sp-known-names"' : '' %> autocomplete="off">
+  <% if (known.length) { %><datalist id="sp-known-names" data-tprm-subprocessor-names><% known.forEach(n => { %><option value="<%= n %>"><% }) %></datalist>
+  <div class="meta text-xs tpu-mt-4">Pick a name already recorded for this client so the same subprocessor is counted once.</div><% } %></div>
 <div><label class="label" for="sp-service">What they do</label>
   <textarea class="input" id="sp-service" name="service" rows="2" maxlength="<%= LIMITS.service %>"><%= v.service || '' %></textarea></div>
 <div><label class="label" for="sp-country">Country</label>

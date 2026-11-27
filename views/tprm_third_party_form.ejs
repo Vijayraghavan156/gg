@@ -34,6 +34,16 @@
       <select class="select" id="tp-status" name="status" required>
         <% tp.STATUSES.forEach(s => { %><option value="<%= s %>" <%= val('status') === s ? 'selected' : '' %>><%= tp.STATUS_LABELS[s] %></option><% }) %>
       </select></div>
+    <% if (thirdParty) { %>
+      <div class="tprm-full tprm-form-section" data-tprm-exit-fields>
+        <h3 class="tprm-sub">If the client stops using it</h3>
+        <div class="meta text-xs">Needed when you change the status to Exited. An open assessment is cancelled with this reason, and no new one can start.</div>
+        <div class="tprm-form-grid tprm-form-2">
+          <div><label class="label" for="tp-exit-date">Exit date</label><input class="input" id="tp-exit-date" type="date" name="exit_date" value="<%= val('exit_date') %>"></div>
+          <div><label class="label" for="tp-exit-reason">Reason for the exit</label><textarea class="input" id="tp-exit-reason" name="exit_reason" rows="2" maxlength="900"><%= val('exit_reason') %></textarea></div>
+        </div>
+      </div>
+    <% } %>
     <% if (!thirdParty) { %>
       <div class="tprm-form-section" data-tprm-first-service>
         <h3 class="tprm-sub">What do they provide for this client?</h3>
@@ -67,7 +77,8 @@
         <div><label class="label" for="tp-web">Website</label><input class="input" id="tp-web" name="website" maxlength="300" value="<%= val('website') %>"></div>
         <div><label class="label" for="tp-country">Country</label><input class="input" id="tp-country" name="country" maxlength="100" value="<%= val('country') %>"></div>
         <div><label class="label" for="tp-contact">Primary contact</label><input class="input" id="tp-contact" name="primary_contact_name" maxlength="200" value="<%= val('primary_contact_name') %>"></div>
-        <div><label class="label" for="tp-email">Contact email</label><input class="input" id="tp-email" type="email" name="primary_contact_email" maxlength="200" value="<%= val('primary_contact_email') %>"></div>
+        <div><label class="label" for="tp-email">Contact email</label><input class="input" id="tp-email" type="email" name="primary_contact_email" maxlength="200" value="<%= val('primary_contact_email') %>">
+      <% if (!thirdParty) { %><div class="meta text-xs tpu-mt-4" data-tprm-contact-note>With an email, this person is added as the main contact on the People tab.</div><% } %></div>
         <div><label class="label" for="tp-owner">Owner at the client</label>
           <select class="select" id="tp-owner" name="client_owner_user_id" data-tprm-client-owner>
             <option value="">No owner named</option>

@@ -47,7 +47,7 @@
           <input class="vq-input" id="email" name="email" type="email" autocomplete="email" maxlength="200" value="<%= email %>" required autofocus></div>
         <div class="vq-form-foot"><button class="vq-btn vq-btn--primary" type="submit" data-vendor-email-send>Email me a code</button></div>
       </form>
-      <p class="vq-muted">You can also open the questionnaire link you were emailed: it still works.</p>
+      <% if (!locals.accessEnded) { %><p class="vq-muted" data-vendor-link-hint>If you have a questionnaire link from an email, you can also open it.</p><% } %>
     <% } %>
   </main>
     <div class="vq-state"><%- include('partials/tprm_vendor_footer', { firm: null, expiresAt: null, note: 'Sign-in codes are personal. Do not share them.' }) %></div>

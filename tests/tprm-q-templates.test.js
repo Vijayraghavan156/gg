@@ -243,7 +243,7 @@ test('sending it instead of the automatic questionnaire: the supplier answers ea
 
   const bad = await vsave(token, [['r[CNT-01]', 'yes'], ['f[CNT-04][value]', 'six'], ['v[CNT-01]', EMPTY], ['v[CNT-04]', EMPTY]]);
   assert.equal(bad.status, 400);
-  assert.match(bad.text, /Give a number\./);
+  assert.match(bad.text, /Write a number only, such as 4\./);
 
   const saved = await vsave(token, [
     ['r[CNT-01]', 'yes'], ['f[CNT-02][value]', '2026-03-01'], ['f[CNT-04][value]', '6'], ['t[CNT-05]', 'Mainframe restore takes six hours; payroll runs from a standby.'],
@@ -274,7 +274,7 @@ test('sending it instead of the automatic questionnaire: the supplier answers ea
   assert.deepEqual([(await answerOf(ctx.a, 'CNT-06')).fields.value, (await answerOf(ctx.a, 'CNT-08')).response], ['Yearly', 'value']);
 
   const done = await vsubmit(token);
-  assert.equal(done.status, 200, done.text.slice(0, 300));
+  assert.equal(done.status, 303, done.text.slice(0, 300));
   assert.equal((await qRow(ctx.a)).status, 'submitted', 'optional CNT-03 and CNT-07 were left blank');
 
   const review = await consultant.session.get(`${aBase(ctx.ws, ctx.tp, ctx.a)}?step=review&answers=all`);
@@ -431,7 +431,7 @@ test('also ask for: a file only when they answer No, an explanation only for No;
   const v2 = (await vget(token, '?s=1')).text.match(/name="v\[EXP-01\]" value="([0-9a-f]{20})"/)[1];
   assert.equal((await vsave(token, [['r[EXP-01]', 'no'], ['d[EXP-01]', 'Two legacy servers are patched monthly.'], ['v[EXP-01]', v2]], [{ field: 'file__EXP-01', filename: 'exceptions.txt', content: 'Exception record' }])).status, 303);
   const done = await vsubmit(token);
-  assert.equal(done.status, 200, done.text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').match(/(Still needed|not|must|Answer)[^.]{0,200}/g));
+  assert.equal(done.status, 303, done.text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').match(/(Still needed|not|must|Answer)[^.]{0,200}/g));
   assert.equal((await qRow(ctx.a)).status, 'submitted');
 });
 

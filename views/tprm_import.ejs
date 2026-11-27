@@ -64,7 +64,7 @@
           <td><%= tpf.day(r.values.last_assessment_date) || r.values.last_assessment_date || '-' %></td>
           <td><%= r.values.client_label || '-' %></td>
           <td><% if (p) { %><% if (p.tier) { %><%= tp.TIER_LABELS[p.tier] %><% } else { %><%- include('partials/tprm_status', { text: tpLabels.TIER_NEEDED, tone: 'attention' }) %><% } %><% } else { %>-<% } %></td>
-          <td><% if (p && p.nextDueDate) { const d = tpLabels.due({ nextDueDate: p.nextDueDate, lastAssessmentDate: r.values.last_assessment_date || null, inProgress: false, today: a.today }); %><%- include('partials/tprm_status', { text: d.label, tone: d.tone, attrs: 'data-tprm-import-due="' + d.key + '"' }) %><% } else { %>-<% } %></td>
+          <td><% if (p && r.values.status === 'in_use') { const d = tpLabels.due({ nextDueDate: p.nextDueDate, lastAssessmentDate: r.values.last_assessment_date || null, inProgress: false, today: a.today }); %><%- include('partials/tprm_status', { text: d.label, tone: d.tone, attrs: 'data-tprm-import-due="' + d.key + '"' }) %><% } else { %>-<% } %></td>
           <% if (a.summary.services) { %><td data-tprm-import-service><%= r.service ? r.service.description : '-' %></td><% } %>
           <td><% r.errors.forEach(e => { %><div class="text-danger text-xs"><%= e %></div><% }) %><% r.warnings.forEach(w => { %><div class="text-warn text-xs"><%= w %></div><% }) %><% if (!r.errors.length && !r.warnings.length) { %><span class="meta">OK</span><% } %></td>
         </tr>

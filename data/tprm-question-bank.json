@@ -1,6 +1,6 @@
 {
- "version": "2026-11-24 version 7",
- "source": "TPRM Question Bank (draft).xlsx, approved 20 Nov 2026; answer types, benchmarks, report coverage and evidence rules from \"TPRM questions vs ISO 27001 and SOC 2.xlsx\", 22 Nov 2026; version 3: the \"Cloud & Hosting\" module renamed \"Hosting Platform & Cloud Provider\", internal notes moved out of the third party's text into the firm-only benchmark, report_partly_supported dropped; version 4: base and module questions no longer assume an Indian client (the India-specific expectations moved to the firm-only benchmark), answer hints that did not fit the Yes / No / Not applicable control fixed, and the unverified Central Bank timeline out of UAE-03; version 6: tick-box fields for questions with a fixed set of choices; version 7: the cyber insurance question GOV-07 is asked of High-tier suppliers too",
+ "version": "Version 8",
+ "source": "TPRM Question Bank (draft).xlsx, approved 20 Nov 2026; answer types, benchmarks, report coverage and evidence rules from \"TPRM questions vs ISO 27001 and SOC 2.xlsx\", 22 Nov 2026; version 3: the \"Cloud & Hosting\" module renamed \"Hosting Platform & Cloud Provider\", internal notes moved out of the third party's text into the firm-only benchmark, report_partly_supported dropped; version 4: base and module questions no longer assume an Indian client (the India-specific expectations moved to the firm-only benchmark), answer hints that did not fit the Yes / No / Not applicable control fixed, and the unverified Central Bank timeline out of UAE-03; version 6: tick-box fields for questions with a fixed set of choices; version 7: the cyber insurance question GOV-07 is asked of High-tier suppliers too; version 8: a module question that repeats a base question is not asked when the base question is; the base Data Privacy section is called Privacy Programme; ASR-04 is a Yes or No question with a box for what is held, and AIM-18 asks for certificates only if held, so none needs no document; REG-07 is worded so Yes confirms; FTP-03, FTP-05 and RET-03 have a box for each detail their guidance asks for",
  "questions": [
   {
    "id": "GOV-01",
@@ -3178,7 +3178,7 @@
    "id": "PRV-01",
    "set": "Base",
    "pack": "-",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Processing role",
    "question": "In relation to <Client> personal data, do you act solely as a Data Processor under <Client>'s instructions?",
    "guidance": "If you process any of the personal data for your own purposes, answer No and describe that processing.",
@@ -3208,7 +3208,7 @@
    "id": "PRV-02",
    "set": "Base",
    "pack": "-",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Processing scope",
    "question": "What categories of personal data do you process for <Client>, for which purposes, and on what lawful basis of instruction?",
    "guidance": "A good answer includes: the categories of personal data processed, including any special or financial data, the purposes of processing, the lawful basis of instruction and confirmation of purpose limitation.",
@@ -3260,7 +3260,7 @@
    "id": "PRV-03",
    "set": "Base",
    "pack": "-",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Privacy accountability",
    "question": "Have you appointed a privacy officer, Data Protection Officer or equivalent contact for data protection matters?",
    "guidance": "A good answer includes: the name, the job title and the contact address.",
@@ -3308,7 +3308,7 @@
    "id": "PRV-04",
    "set": "Base",
    "pack": "-",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Privacy governance",
    "question": "Do you maintain a documented privacy policy and records of processing activities?",
    "guidance": "A good answer includes: the review cycle and whether the <Client> service is recorded.",
@@ -3351,7 +3351,7 @@
    "id": "PRV-05",
    "set": "Base",
    "pack": "-",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Security safeguards",
    "question": "Have you implemented reasonable technical and organisational security safeguards to protect personal data?",
    "guidance": "A good answer includes: a summary of the safeguards specific to personal data, rather than general IT controls.",
@@ -3384,7 +3384,7 @@
    "id": "PRV-06",
    "set": "Base",
    "pack": "-",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Data subject rights",
    "question": "Can you assist <Client> in responding to data subject access, correction, erasure and grievance requests within its SLA?",
    "guidance": "A good answer includes: your turnaround time and the request channel.",
@@ -3442,7 +3442,7 @@
    "id": "PRV-07",
    "set": "Base",
    "pack": "-",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Breach notification",
    "question": "Within how many hours of detection will you notify <Client> of any personal data breach?",
    "guidance": "A good answer includes: the committed notification window in hours and the escalation contact.",
@@ -3484,7 +3484,7 @@
    "id": "PRV-08",
    "set": "Base",
    "pack": "-",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Erasure",
    "question": "Will personal data be erased on completion of the purpose or on <Client>'s instruction, with certification of erasure?",
    "guidance": "A good answer includes: the timeframe for erasure, how deletion from immutable backups is handled, how backup deletion is documented and any legal retention exception.",
@@ -3537,7 +3537,7 @@
    "id": "PRV-09",
    "set": "Base",
    "pack": "-",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Cross-border transfer",
    "question": "Is <Client> personal data transferred outside <Client>'s country?",
    "guidance": "A good answer includes: the countries it is transferred to, including for support access, telemetry, backup and disaster recovery, and the safeguards that apply.",
@@ -3674,8 +3674,8 @@
    "evidence_mandatory": true,
    "min_tier": "Medium",
    "iso27001": "8.13",
-   "status": "Changed in version 5",
-   "change_note": "Six asks split into five fields; backup retention kept in guidance only because of the five-field limit.",
+   "status": "Changed in version 8",
+   "change_note": "How long backups are kept, asked in the guidance, has its own field.",
    "source": "Original pack, Tier tabs",
    "delivery_models": "Vendor-hosted",
    "answered_by": "Vendor",
@@ -3711,6 +3711,11 @@
      "key": "last_restore",
      "label": "Date of last successful restore test",
      "kind": "date"
+    },
+    {
+     "key": "retention",
+     "label": "How long backups are kept",
+     "kind": "short"
     }
    ],
    "fields_on": "answer",
@@ -4632,8 +4637,8 @@
    "evidence_mandatory": false,
    "min_tier": "High",
    "iso27001": "5.20",
-   "status": "Unchanged",
-   "change_note": null,
+   "status": "Changed in version 8",
+   "change_note": "The details the guidance asks for have a box on Yes.",
    "source": "Original pack, Tier tabs",
    "delivery_models": "Vendor-hosted; Non-technology services (all tiers)",
    "answered_by": "Vendor",
@@ -4644,7 +4649,10 @@
     "na"
    ],
    "report_coverage": "none",
-   "benchmark": null
+   "benchmark": null,
+   "details_on_yes": {
+    "label": "Which obligations are flowed down, and any that are not"
+   }
   },
   {
    "id": "FTP-04",
@@ -4683,8 +4691,8 @@
    "evidence_mandatory": false,
    "min_tier": "Medium",
    "iso27001": "5.22",
-   "status": "Unchanged",
-   "change_note": null,
+   "status": "Changed in version 8",
+   "change_note": "The details the guidance asks for have a box on Yes.",
    "source": "Original pack, Tier tabs",
    "delivery_models": "Vendor-hosted",
    "answered_by": "Vendor",
@@ -4695,7 +4703,10 @@
     "na"
    ],
    "report_coverage": "none",
-   "benchmark": null
+   "benchmark": null,
+   "details_on_yes": {
+    "label": "The notice period in days, and how <Client> can object"
+   }
   },
   {
    "id": "FTP-06",
@@ -5063,14 +5074,14 @@
    "pack": "-",
    "domain": "Regulatory & Contractual",
    "theme": "Conflicts and ownership",
-   "question": "Confirm that you are not owned or controlled by any director, key managerial personnel or approver of the outsourcing arrangement at <Client>, or by their relatives.",
-   "guidance": "Disclose any such relationship. Any exception needs approval under <Client>'s governance.",
+   "question": "Can you confirm that no director, key managerial personnel or approver of the outsourcing arrangement at <Client>, and none of their relatives, owns or controls you?",
+   "guidance": "Answer Yes to confirm there is no such relationship. Answer No if there is one, and describe it in the explanation: any exception needs approval under <Client>'s governance.",
    "evidence": "Signed declaration of ownership, control and related-party relationships",
    "evidence_mandatory": false,
    "min_tier": "High",
    "iso27001": "5.19",
-   "status": "Changed in version 5",
-   "change_note": "'The vendor' changed to 'you'; disclosure belongs in the No explanation, so no Yes box added.",
+   "status": "Changed in version 8",
+   "change_note": "Asked as a question that Yes confirms, so Yes and No each mean one thing; the meaning of a Yes or No is unchanged from earlier versions.",
    "source": "Original pack, Tier tabs",
    "delivery_models": "Vendor-hosted",
    "answered_by": "Vendor",
@@ -5298,19 +5309,19 @@
    "pack": "-",
    "domain": "Assurance & Certification",
    "theme": "Other assurance",
-   "question": "List any other current certifications or attestations held, such as ISO 27701, ISO 22301, PCI DSS or CSA STAR.",
-   "guidance": "State scope and expiry for each.",
+   "question": "Do you hold any other current certifications or attestations, such as ISO 27701, ISO 22301, PCI DSS or CSA STAR?",
+   "guidance": "If you hold none, answer No: nothing more is needed. If Yes, give the scope and expiry of each one and attach the certificates.",
    "evidence": "Certificates for each attestation claimed",
    "evidence_mandatory": true,
    "min_tier": "Medium",
    "iso27001": "5.35",
-   "status": "Unchanged",
-   "change_note": null,
+   "status": "Changed in version 8",
+   "change_note": "A written list became Yes or No with a box on Yes, so \"none\" is an honest No that needs no document.",
    "source": "Original pack, Tier tabs",
    "delivery_models": "Vendor-hosted",
    "answered_by": "Vendor",
-   "answer_type": "free_text",
-   "evidence_on": "answer",
+   "answer_type": "yes_no_na",
+   "evidence_on": "yes",
    "explain_on": [
     "na"
    ],
@@ -5325,7 +5336,10 @@
     "ISO 22301",
     "PCI DSS",
     "CSA STAR"
-   ]
+   ],
+   "details_on_yes": {
+    "label": "Each certification or attestation, with its scope and expiry"
+   }
   },
   {
    "id": "ASR-05",
@@ -6469,12 +6483,12 @@
    "theme": "AI certification",
    "question": "What is your ISO/IEC 42001 certification status (certified, in progress or none), and which AI features, if any, are included in your ISO 27001 or SOC 2 scopes?",
    "guidance": "A good answer includes: your ISO/IEC 42001 certification status (Certified, In progress or None), which AI features, if any, are in your ISO 27001 scope and which are in your SOC 2 scope.",
-   "evidence": "Certificates with scope",
-   "evidence_mandatory": true,
+   "evidence": "Certificates with scope, if you hold any",
+   "evidence_mandatory": false,
    "min_tier": "All tiers",
    "iso27001": "5.35",
-   "status": "Changed in version 5",
-   "change_note": "Status and two scope questions split into three fields; v4 guidance said No where the question said none, aligned to None.",
+   "status": "Changed in version 8",
+   "change_note": "Certificates are asked for only if held, so None or In progress needs no document.",
    "source": "Topics informed by reco.ai AI Vendor Security Questionnaire (Jul 2026); SEBI Intermediaries Reg. 16C (Feb 2025, binding); RBI FREE-AI report (Aug 2025, guidance) and draft Model Risk Management guidance (Jun 2026, draft); CERT-In AI Security Auditing Guidelines (Nov 2026, guidance); OWASP Top 10 for LLM Applications 2026; ISO/IEC 42001",
    "delivery_models": "Any (when AIS-01 is Yes)",
    "answered_by": "Vendor",
@@ -7253,8 +7267,8 @@
    "evidence_mandatory": true,
    "min_tier": "All tiers",
    "iso27001": "5.23",
-   "status": "Changed in version 5",
-   "change_note": "The not-sufficient rule moved from guidance into the question. \"The vendor\" changed to \"you\".",
+   "status": "Changed in version 8",
+   "change_note": "Not asked when CLD-02 is asked, since it repeats that question.",
    "source": "Original pack, Conditional Modules",
    "delivery_models": "Any (when module triggered)",
    "answered_by": "Vendor",
@@ -7272,6 +7286,9 @@
    },
    "acronyms": [
     "CSP"
+   ],
+   "same_as": [
+    "CLD-02"
    ]
   },
   {
@@ -7286,8 +7303,8 @@
    "evidence_mandatory": true,
    "min_tier": "All tiers",
    "iso27001": "5.23",
-   "status": "Changed in version 5",
-   "change_note": "Six data categories split into five fields; DR and backup share one to stay within the limit.",
+   "status": "Changed in version 8",
+   "change_note": "Not asked when REG-10 is asked, since it repeats that question.",
    "source": "Original pack, Conditional Modules",
    "delivery_models": "Any (when module triggered)",
    "answered_by": "Vendor",
@@ -7332,6 +7349,9 @@
    },
    "acronyms": [
     "DR"
+   ],
+   "same_as": [
+    "REG-10"
    ]
   },
   {
@@ -7346,8 +7366,8 @@
    "evidence_mandatory": false,
    "min_tier": "All tiers",
    "iso27001": "5.23",
-   "status": "Changed in version 5",
-   "change_note": "Enforcement, validation and independent testing split into three fields; the seven layers stay in one field.",
+   "status": "Changed in version 8",
+   "change_note": "Not asked when CLD-04 is asked, since it repeats that question.",
    "source": "Original pack, Conditional Modules",
    "delivery_models": "Any (when module triggered)",
    "answered_by": "Vendor",
@@ -7375,7 +7395,10 @@
      "kind": "short"
     }
    ],
-   "fields_on": "answer"
+   "fields_on": "answer",
+   "same_as": [
+    "CLD-04"
+   ]
   },
   {
    "id": "CLM-04",
@@ -7389,8 +7412,8 @@
    "evidence_mandatory": false,
    "min_tier": "All tiers",
    "iso27001": "8.2",
-   "status": "Changed in version 5",
-   "change_note": "Two detail asks became two fields on Yes.",
+   "status": "Changed in version 8",
+   "change_note": "Not asked when CLD-05 is asked, since it repeats that question.",
    "source": "Original pack, Conditional Modules",
    "delivery_models": "Any (when module triggered)",
    "answered_by": "Vendor",
@@ -7420,6 +7443,9 @@
     "MFA",
     "PAM",
     "PIM"
+   ],
+   "same_as": [
+    "CLD-05"
    ]
   },
   {
@@ -7659,8 +7685,8 @@
    "evidence_mandatory": false,
    "min_tier": "All tiers",
    "iso27001": "5.23",
-   "status": "Changed in version 5",
-   "change_note": "Three detail asks became three fields on Yes. Two-part Yes/No kept as one answer.",
+   "status": "Changed in version 8",
+   "change_note": "Not asked when EXT-08 is asked, since it repeats that question.",
    "source": "Original pack, Conditional Modules",
    "delivery_models": "Any (when module triggered)",
    "answered_by": "Vendor",
@@ -7689,7 +7715,10 @@
      "kind": "long"
     }
    ],
-   "fields_on": "yes"
+   "fields_on": "yes",
+   "same_as": [
+    "EXT-08"
+   ]
   },
   {
    "id": "CLM-12",
@@ -8067,8 +8096,8 @@
    "evidence_mandatory": true,
    "min_tier": "All tiers",
    "iso27001": "5.34",
-   "status": "Changed in version 5",
-   "change_note": "Guidance asks for a confirmation; added a details box on Yes for it.",
+   "status": "Changed in version 8",
+   "change_note": "Not asked when PRV-04 is asked, since it repeats that question.",
    "source": "Original pack, Conditional Modules",
    "delivery_models": "Any (when module triggered)",
    "answered_by": "Vendor",
@@ -8089,6 +8118,9 @@
    },
    "acronyms": [
     "RoPA"
+   ],
+   "same_as": [
+    "PRV-04"
    ]
   },
   {
@@ -8149,8 +8181,8 @@
    "evidence_mandatory": true,
    "min_tier": "All tiers",
    "iso27001": "5.34",
-   "status": "Changed in version 6",
-   "change_note": "Request channel became tick boxes.",
+   "status": "Changed in version 8",
+   "change_note": "Not asked when PRV-06 is asked, since it repeats that question.",
    "source": "Original pack, Conditional Modules",
    "delivery_models": "Any (when module triggered)",
    "answered_by": "Vendor",
@@ -8195,7 +8227,10 @@
    "document": {
     "name": "Rights-request procedure",
     "group": "Policies and procedures"
-   }
+   },
+   "same_as": [
+    "PRV-06"
+   ]
   },
   {
    "id": "PRM-05",
@@ -8209,8 +8244,8 @@
    "evidence_mandatory": true,
    "min_tier": "All tiers",
    "iso27001": "5.34; 8.10",
-   "status": "Changed in version 5",
-   "change_note": "Guidance asks one thing; added a details box on Yes.",
+   "status": "Changed in version 8",
+   "change_note": "Not asked when PRV-08 is asked, since it repeats that question.",
    "source": "Original pack, Conditional Modules",
    "delivery_models": "Any (when module triggered)",
    "answered_by": "Vendor",
@@ -8228,7 +8263,10 @@
    "document": {
     "name": "Retention schedule covering all copies",
     "group": "Policies and procedures"
-   }
+   },
+   "same_as": [
+    "PRV-08"
+   ]
   },
   {
    "id": "PRM-06",
@@ -8242,8 +8280,8 @@
    "evidence_mandatory": true,
    "min_tier": "All tiers",
    "iso27001": "5.34; 5.21",
-   "status": "Unchanged",
-   "change_note": null,
+   "status": "Changed in version 8",
+   "change_note": "Not asked when PRV-09 and FTP-01 are asked, since it repeats those questions.",
    "source": "Original pack, Conditional Modules",
    "delivery_models": "Any (when module triggered)",
    "answered_by": "Vendor",
@@ -8258,7 +8296,11 @@
    "document": {
     "name": "Subprocessor list with country and function",
     "group": "Records, logs and registers"
-   }
+   },
+   "same_as": [
+    "PRV-09",
+    "FTP-01"
+   ]
   },
   {
    "id": "PRM-07",
@@ -8272,8 +8314,8 @@
    "evidence_mandatory": true,
    "min_tier": "All tiers",
    "iso27001": "8.33; 8.11",
-   "status": "Changed in version 5",
-   "change_note": "Two detail asks became two fields on Yes.",
+   "status": "Changed in version 8",
+   "change_note": "Not asked when APP-06 is asked, since it repeats that question.",
    "source": "Original pack, Conditional Modules",
    "delivery_models": "Any (when module triggered)",
    "answered_by": "Vendor",
@@ -8301,7 +8343,10 @@
    "document": {
     "name": "Information security policy",
     "group": "Policies and procedures"
-   }
+   },
+   "same_as": [
+    "APP-06"
+   ]
   },
   {
    "id": "PRM-08",
@@ -8358,8 +8403,8 @@
    "evidence_mandatory": false,
    "min_tier": "All tiers",
    "iso27001": "5.34; 5.27",
-   "status": "Changed in version 5",
-   "change_note": "Five asks in one box split into five fields.",
+   "status": "Changed in version 8",
+   "change_note": "Not asked when INC-08 is asked, since it repeats that question.",
    "source": "Original pack, Conditional Modules",
    "delivery_models": "Any (when module triggered)",
    "answered_by": "Vendor",
@@ -8373,7 +8418,10 @@
    "document": {
     "name": "Incident summary or redacted post-incident report",
     "group": "Records, logs and registers"
-   }
+   },
+   "same_as": [
+    "INC-08"
+   ]
   },
   {
    "id": "PHM-01",
@@ -10118,7 +10166,7 @@
    "id": "STF-07",
    "set": "Module",
    "pack": "Vendor Staff in Client Environment",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "External tools and AI assistants",
    "question": "Is it prohibited to paste <Client> code or data into external tools or services, including AI assistants, that <Client> has not approved?",
    "guidance": "A good answer includes: any tools <Client> has approved.",
@@ -10380,7 +10428,7 @@
    "id": "GDP-01",
    "set": "Rulebook pack",
    "pack": "EU - GDPR",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Transfer mechanism",
    "question": "If personal data leaves the EEA, which transfer mechanism do you rely on?",
    "guidance": "Tick every mechanism you rely on.",
@@ -10430,7 +10478,7 @@
    "id": "GDP-02",
    "set": "Rulebook pack",
    "pack": "EU - GDPR",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "DPF certification",
    "question": "If you rely on the EU-US Data Privacy Framework, is your certification current on dataprivacyframework.gov?",
    "guidance": null,
@@ -10460,7 +10508,7 @@
    "id": "GDP-03",
    "set": "Rulebook pack",
    "pack": "EU - GDPR",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Transfer impact assessment",
    "question": "Have you completed a transfer impact assessment for each transfer that relies on SCCs?",
    "guidance": null,
@@ -10518,7 +10566,7 @@
    "id": "GDP-05",
    "set": "Rulebook pack",
    "pack": "EU - GDPR",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Unlawful instructions",
    "question": "Will you tell <Client> immediately if one of its instructions would breach data protection law?",
    "guidance": null,
@@ -11148,7 +11196,7 @@
    "id": "IND-06",
    "set": "Rulebook pack",
    "pack": "India baseline (CERT-In + DPDP)",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "DPDP processor contract",
    "question": "Will you sign a data processing agreement covering DPDP Act s.8 and Rule 6 reasonable security safeguards, including a clause requiring those safeguards?",
    "guidance": null,
@@ -11177,7 +11225,7 @@
    "id": "IND-07",
    "set": "Rulebook pack",
    "pack": "India baseline (CERT-In + DPDP)",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "DPDP log retention",
    "question": "For how long do you keep personal data, traffic data and processing logs, and will you then erase them on <Client>'s instruction?",
    "guidance": "A good answer includes: how long personal data is kept, how long traffic data is kept, how long processing logs are kept and whether you will then erase them on <Client>'s instruction.",
@@ -11229,7 +11277,7 @@
    "id": "IND-08",
    "set": "Rulebook pack",
    "pack": "India baseline (CERT-In + DPDP)",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Significant Data Fiduciary support",
    "question": "If <Client> is designated a Significant Data Fiduciary, will you support its annual DPIA and data audit, including audit access?",
    "guidance": "Answer Not applicable unless <Client> tells you it is an SDF.",
@@ -11995,7 +12043,7 @@
    "id": "KSP-01",
    "set": "Rulebook pack",
    "pack": "Saudi Arabia - PDPL",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Transfer safeguard",
    "question": "If personal data leaves Saudi Arabia, which safeguard applies, and is sensitive data transferred continuously or at large scale?",
    "guidance": "A good answer includes: the safeguard that applies, one of data stays in Saudi Arabia, SDAIA standard clauses, binding common rules or certification, and whether sensitive data is transferred continuously or at large scale. Continuous or large-scale sensitive transfers need a risk assessment.",
@@ -12295,7 +12343,7 @@
    "id": "SGP-01",
    "set": "Rulebook pack",
    "pack": "Singapore - PDPA",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Transfer basis",
    "question": "If personal data leaves Singapore, what makes the transfer lawful?",
    "guidance": "Answer: Contract clauses / Binding corporate rules / APEC or Global CBPR or PRP certification / No data leaves Singapore / None.",
@@ -12450,7 +12498,7 @@
    "id": "DIF-01",
    "set": "Rulebook pack",
    "pack": "UAE - DIFC / ADGM data protection",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Authority disclosure requests",
    "question": "Will you disclose <Client> data to an authority only on <Client>'s documented instructions, and tell <Client> unless the law forbids it?",
    "guidance": null,
@@ -12476,7 +12524,7 @@
    "id": "DIF-02",
    "set": "Rulebook pack",
    "pack": "UAE - DIFC / ADGM data protection",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Transfer mechanism",
    "question": "If personal data leaves the DIFC or ADGM, which mechanism do you rely on?",
    "guidance": "Tick every mechanism you rely on.",
@@ -12641,7 +12689,7 @@
    "id": "UKG-01",
    "set": "Rulebook pack",
    "pack": "UK - UK GDPR",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "UK transfer tool",
    "question": "If personal data leaves the UK, which transfer tool do you rely on, and have you completed a transfer risk assessment?",
    "guidance": "A good answer includes: the transfer tool you rely on, one of none leaves the UK, adequacy regulations, IDTA, Addendum to EU SCCs or UK Extension to the DPF, and whether you completed a transfer risk assessment.",
@@ -12961,7 +13009,7 @@
    "id": "SEC-02",
    "set": "Rulebook pack",
    "pack": "US - SEC Regulation S-P",
-   "domain": "Data Privacy",
+   "domain": "Privacy Programme",
    "theme": "Notices to individuals",
    "question": "Can you send breach notices to affected individuals on <Client>'s behalf under a written agreement?",
    "guidance": "A good answer includes: the number of days within which you send notices.",

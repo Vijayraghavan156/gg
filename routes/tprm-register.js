@@ -87,7 +87,7 @@ function registerRoutes(app, deps) {
       const saved = result.thirdParty;
       const added = result.service ? 'Third party and its first service added' : 'Third party added';
       const message = thirdParty
-        ? (result.unchanged ? 'No changes to save' : 'Third party updated')
+        ? (result.unchanged ? 'No changes to save' : result.cancelledAssessment ? 'Third party marked exited and its open assessment cancelled' : 'Third party updated')
         : (result.duplicates.length ? `${added}. Another third party has the same name; check it is not a duplicate` : added);
       return res.redirect(withToast(`${base(actor)}/third-parties/${saved.id}`, message,
         !thirdParty && result.duplicates.length ? 'warn' : undefined));
@@ -122,7 +122,7 @@ function registerRoutes(app, deps) {
       stage: (await require('../lib/tprm/pipeline').stagesForClient(db, actor.ws.id)).get(Number(thirdParty.id)) || null,
       tab: req.query && typeof req.query.tab === 'string' ? req.query.tab : null,
       ...extra,
-      peoplePanel: { list: await vendorPeople.list(db, actor.ws.id, thirdParty.id), labels: vendorPeople.ROLE_LABELS, errors: [], values: {}, editErrors: {}, ...(extra.peoplePanel || {}) },
+      peoplePanel: { list: await vendorPeople.list(db, actor.ws.id, thirdParty.id), openLinks: await vendorPeople.withOpenLinks(db, actor.ws.id, thirdParty.id), labels: vendorPeople.ROLE_LABELS, errors: [], values: {}, editErrors: {}, ...(extra.peoplePanel || {}) },
       teamPanel: { team: await team.forThirdParty(db, actor.ws.id, thirdParty.id), people: await team.candidates(db, actor.ws), reviewers: await team.reviewerCandidates(db, actor.ws), errors: [], ...(extra.teamPanel || {}) },
     }, status);
   }
@@ -169,20 +169,21 @@ function registerRoutes(app, deps) {
     if (!ids.length) return res.redirect(withToast(base(actor), 'Tick at least one third party first.', 'error'));
     let sent = 0;
     const why = [];
+    const went = [];
     for (const id of ids) {
       try {
         const tp = await register.getThirdParty(db, actor, id);
         const open = await openAssessmentOf(actor, tp.id);
         if (!open) { why.push(`${tp.name}: no review open`); continue; }
-        const r = await require('../lib/tprm/messages').manualReminder(db, { workspaceId: actor.ws.id, assessmentId: Number(open.id) });
-        if (r.sent) sent += 1; else why.push(`${tp.name}: ${r.reason}`);
+        const r = await require('../lib/tprm/messages').manualReminder(db, { workspaceId: actor.ws.id, assessmentId: Number(open.id), actorId: req.user.id, actorName: req.user.name });
+        if (r.sent) { sent += 1; went.push(`${tp.name} to ${r.recipient || 'the third party'}`); } else why.push(`${tp.name}: ${r.recipientEmail ? String(r.reason).split(r.recipientEmail).join(r.recipient || 'the recipient') : r.reason}`);
       } catch (err) {
         if (!(err instanceof TprmError)) throw err;
         why.push('one that was not found');
       }
     }
     if (sent) await logAction(req.user.id, actor.ws.id, 'tprm_bulk_reminders_sent', 'workspace', actor.ws.id, { sent, asked: ids.length }, auditCtx(req));
-    return res.redirect(withToast(base(actor), `${sent} reminder${sent === 1 ? '' : 's'} sent` + (why.length ? `. Not sent: ${why.join('; ')}` : ''), sent ? undefined : 'error'));
+    return res.redirect(withToast(base(actor), `${sent} reminder${sent === 1 ? '' : 's'} sent` + (went.length ? `: ${went.join('; ')}` : '') + (why.length ? `. Not sent: ${why.join('; ')}` : ''), sent ? undefined : 'error'));
   }, { permission: 'tp.manage' }));
 
   app.post('/tprm/clients/:wsId/third-parties/bulk-lead', requireAuth, handler(async (req, res, actor) => {
@@ -210,8 +211,8 @@ function registerRoutes(app, deps) {
 
   const clientRequests = require('../lib/tprm/client-requests');
   async function renderRequest(req, res, actor, extra = {}, status = 200) {
-    const request = await clientRequests.withAnswerLabels(db, actor.ws, await clientRequests.get(db, actor.ws.id, req.params.rid));
-    return renderPage(req, res, 'tprm_client_request', actor, { request, labels: clientRequests.FIRM_STATUS_LABELS,
+    const request = await clientRequests.withAnswerLabels(db, actor.ws, await clientRequests.getForFirm(db, actor, req.params.rid));
+    return renderPage(req, res, 'tprm_client_request', actor, { request, labels: request.kind === 'reassessment' ? clientRequests.REASSESS_FIRM_STATUS_LABELS : clientRequests.FIRM_STATUS_LABELS,
       errors: [], duplicates: [], canManage: access.can(actor.user, actor.perms, 'tp.manage'), ...extra }, status);
   }
 
@@ -221,7 +222,11 @@ function registerRoutes(app, deps) {
     try {
       const r = await clientRequests.accept(db, actor, req.params.rid, req.body);
       if (r.needsConfirmation) return renderRequest(req, res, actor, { duplicates: r.duplicates });
-      await logAction(req.user.id, actor.ws.id, 'tprm_client_request_accepted', 'tp_client_request', Number(req.params.rid) || 0, { third_party_id: r.thirdPartyId }, auditCtx(req));
+      await logAction(req.user.id, actor.ws.id, 'tprm_client_request_accepted', 'tp_client_request', Number(req.params.rid) || 0,
+        { third_party_id: r.thirdPartyId, ...(r.assessmentId ? { assessment_id: r.assessmentId, kind: r.kind } : {}) }, auditCtx(req));
+      if (r.kind === 'reassessment') {
+        return res.redirect(withToast(`${base(actor)}/third-parties/${r.thirdPartyId}/assessments/${r.assessmentId}`, `${r.typeLabel || 'Reassessment'} started from the client's request`));
+      }
       return res.redirect(withToast(`${base(actor)}/third-parties/${r.thirdPartyId}`, 'Added from the client\'s request. Start the assessment: the scoping starts from the client\'s answers.'));
     } catch (err) {
       if (err instanceof TprmError && (err.status === 400 || err.status === 409)) return renderRequest(req, res, actor, { errors: err.errors || [err.message] }, err.status);
@@ -264,7 +269,7 @@ function registerRoutes(app, deps) {
     const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
     try {
       const person = await vendorPeople.firmUpdate(db, actor, thirdParty.id, req.params.pid, req.body);
-      return res.redirect(withToast(peopleBack(actor, thirdParty), `${person.name} updated`));
+      return res.redirect(withToast(peopleBack(actor, thirdParty), `${person.name} updated${person.emailChanged ? '. Links sent to their old address no longer open.' : ''}`));
     } catch (err) {
       if (err instanceof TprmError && err.status === 400) {
         return renderThirdParty(req, res, actor, thirdParty, { tab: 'people', peoplePanel: { editErrors: { [String(req.params.pid)]: { errors: err.errors || [err.message], values: req.body } } } }, 400);
@@ -274,7 +279,7 @@ function registerRoutes(app, deps) {
     }
   }, { permission: 'tp.manage' }));
 
-  for (const [verb, fn, done] of [['remove', 'firmRemove', p => `${p.name} removed`], ['main', 'firmMakeMain', p => `${p.name} is now the main contact`]]) {
+  for (const [verb, fn, done] of [['remove', 'firmRemove', p => `${p.name} removed. Links sent to them no longer open, and they can no longer sign in.`], ['main', 'firmMakeMain', p => `${p.name} is now the main contact`]]) {
     app.post(`/tprm/clients/:wsId/third-parties/:tpId/people/:pid/${verb}`, requireAuth, handler(async (req, res, actor) => {
       const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
       try {

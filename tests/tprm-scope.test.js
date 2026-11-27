@@ -74,6 +74,10 @@ test('only mine: a scoped consultant never sees another third party, in any list
   assert.match((await c.get(`/tprm/clients/${ws}`)).text, new RegExp(OTHER), 'off by default: the consultant sees everything');
   assert.equal((await c.post('/tprm/settings/access', { consultants_own_only: '1' })).status, 403, 'only a manager changes it');
   assert.equal((await m.post('/tprm/settings/access', { consultants_own_only: '1' })).status, 302);
+  assert.equal((await m.post(`/tprm/clients/${ws}/third-parties/${other}/subprocessors`, { name: 'Hiddenvault Hosting', service: 'Hosting', countries: 'IN' })).status, 302);
+  const subs = require('../lib/tprm/subprocessors');
+  assert.ok((await subs.knownNames(db, ws, manager)).includes('Hiddenvault Hosting'), 'a manager is offered every name');
+  assert.ok(!(await subs.knownNames(db, ws, consultant)).includes('Hiddenvault Hosting'), 'a scoped consultant is not offered names from third parties they cannot open');
 
   const pages = ['/tprm', '/tprm?who=all', `/tprm/clients/${ws}`, `/tprm/clients/${ws}?view=due`, `/tprm/clients/${ws}?status=all`,
     '/tprm/due', '/tprm/conditions', '/tprm/questionnaires', '/tprm/review', `/tprm/clients/${ws}/concentration`,

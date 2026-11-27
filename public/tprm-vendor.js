@@ -119,6 +119,61 @@
     if (radios.length) sync();
   });
 
+  (function () {
+    var forms = Array.prototype.slice.call(document.querySelectorAll('form[data-vendor-answer-form]'));
+    if (!forms.length) return;
+    var dirty = forms.some(function (form) { return form.hasAttribute('data-vendor-unsaved'); });
+    var leaving = false;
+    forms.forEach(function (form) {
+      form.addEventListener('input', function () { dirty = true; });
+      form.addEventListener('change', function () { dirty = true; });
+      form.addEventListener('submit', function () { leaving = true; });
+    });
+    window.addEventListener('pageshow', function () { leaving = false; });
+    window.addEventListener('beforeunload', function (event) {
+      if (dirty && !leaving) { event.preventDefault(); event.returnValue = ''; }
+    });
+  })();
+
+  (function () {
+    var link = document.querySelector('a[data-vendor-next-unanswered]');
+    var form = document.querySelector('form[data-vendor-answer-form]');
+    if (!link || !form) return;
+    function isEmpty(box) {
+      var id = box.getAttribute('data-vendor-question');
+      var fields = Array.prototype.filter.call(form.elements, function (el) {
+        var n = el.name || '';
+        return n === 'r[' + id + ']' || n === 't[' + id + ']' || n.indexOf('f[' + id + ']') === 0;
+      });
+      if (!fields.length) return false;
+      return !fields.some(function (el) {
+        if (el.type === 'radio' || el.type === 'checkbox') return el.checked;
+        if (el.type === 'hidden') return false;
+        return String(el.value || '').trim() !== '';
+      });
+    }
+    link.addEventListener('click', function (event) {
+      var boxes = Array.prototype.filter.call(document.querySelectorAll('[data-vendor-question]'), function (b) { return !b.hidden && !b.querySelector('[data-vendor-optional]'); });
+      var open = boxes.filter(isEmpty);
+      var later = link.getAttribute('data-vendor-next-later');
+      if (!open.length) {
+        if (!later) return;
+        event.preventDefault();
+        var go = document.createElement('button');
+        go.type = 'submit'; go.name = 'go'; go.value = 'q:' + later; go.hidden = true; go.formNoValidate = true;
+        form.appendChild(go);
+        go.click();
+        return;
+      }
+      var after = open.filter(function (b) { return b.getBoundingClientRect().top > 24; })[0] || open[0];
+      event.preventDefault();
+      after.scrollIntoView({ block: 'start' });
+      var first = after.querySelector('input:not([type="hidden"]), textarea, select');
+      if (first) first.focus({ preventScroll: true });
+      if (history.replaceState) history.replaceState(null, '', '#' + after.id);
+    });
+  })();
+
   Array.prototype.forEach.call(document.querySelectorAll('[data-vendor-jump]'), function (box) {
     var select = box.querySelector('select');
     var go = box.querySelector('[data-vendor-jump-go]');

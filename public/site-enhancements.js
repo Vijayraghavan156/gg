@@ -324,6 +324,21 @@
     document.getElementById('backToTop')?.classList.toggle('is-visible', !!main && main.scrollTop > 480);
   }
 
+  function stampWithZone(date, zone) {
+    let timeZone = zone;
+    try { new Intl.DateTimeFormat('en-GB', { timeZone }); } catch (_) { timeZone = undefined; }
+    const day = new Intl.DateTimeFormat('en-GB', { timeZone, day: 'numeric', month: 'short', year: 'numeric' }).format(date);
+    const clock = new Intl.DateTimeFormat('en-GB', { timeZone, hour: 'numeric', minute: '2-digit', hour12: true }).format(date)
+      .replace(/\s+/g, ' ').replace(/\b(AM|PM)\b/, s => s.toLowerCase());
+    let name = '';
+    for (const locale of ['en-IN', 'en-US', 'en-GB']) {
+      const part = new Intl.DateTimeFormat(locale, { timeZone, timeZoneName: 'short' }).formatToParts(date).find(p => p.type === 'timeZoneName');
+      if (part && /^[A-Z]{2,5}$/.test(part.value)) { name = part.value; break; }
+      if (!name && part) name = part.value;
+    }
+    return `${day}, ${clock}${name ? ' ' + name : ''}`;
+  }
+
   function addLastRefreshed(root) {
     const container = root.querySelector('.main-inner');
     if (!container) return;
@@ -336,7 +351,7 @@
     const time = meta.querySelector('time');
     const now = new Date();
     time.dateTime = now.toISOString();
-    time.textContent = now.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+    time.textContent = stampWithZone(now, document.documentElement.getAttribute('data-time-zone') || undefined);
   }
 
   function installFloatingContact() {
@@ -347,6 +362,10 @@
       return;
     }
     const emailLink = document.querySelector('.main a[href^="mailto:"]');
+    if (!emailLink) {
+      button?.remove();
+      return;
+    }
     if (!button) {
       button = document.createElement('a');
       button.id = 'floatingContact';
@@ -354,18 +373,9 @@
       button.textContent = 'Contact team';
       document.body.appendChild(button);
     }
-    if (emailLink) {
-      button.href = emailLink.href;
-      button.removeAttribute('role');
-      button.onclick = null;
-    } else {
-      button.href = '#';
-      button.setAttribute('role', 'button');
-      button.onclick = event => {
-        event.preventDefault();
-        if (typeof window.openHelp === 'function') window.openHelp();
-      };
-    }
+    button.href = emailLink.href;
+    button.removeAttribute('role');
+    button.onclick = null;
   }
 
   function enhanceDialogs() {
@@ -424,12 +434,25 @@
   const themeObserver = new MutationObserver(syncThemeControls);
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
+  const appObserver = new MutationObserver(scheduleEnhancement);
+  let watchedApp = null;
+
+  function watchApp() {
+    const app = document.getElementById('app') || document.body;
+    if (app === watchedApp) return;
+    appObserver.disconnect();
+    appObserver.observe(app, { childList: true, subtree: true });
+    if (watchedApp) scheduleEnhancement();
+    watchedApp = app;
+  }
+
   function init() {
     installCookieBanner();
     installFormValidation();
     enhancePage();
-    const app = document.getElementById('app') || document.body;
-    new MutationObserver(scheduleEnhancement).observe(app, { childList: true, subtree: true });
+    watchApp();
+    const shell = (watchedApp && watchedApp.parentNode) || document.body;
+    if (shell !== watchedApp) new MutationObserver(watchApp).observe(shell, { childList: true });
     window.addEventListener('resize', updateScrollTools, { passive: true });
   }
 

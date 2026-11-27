@@ -27,14 +27,14 @@
         <% if (c.status === 'waived' && c.waive_until) { %> · Waived until <%= ctDay(c.waive_until) %><% } %>
         <% if (c.status === 'verified') { %> · Verified <%= ctDay(c.verified_at) %><% } %></div>
       <% if (c.owner !== 'client') { %>
-        <div class="meta text-xs tpu-mt-4">Your consultants collect the proof for this condition from the third party.</div>
+        <div class="meta text-xs tpu-mt-4">Your consultants collect the proof for this condition from the supplier.</div>
       <% } %>
       <% c.proofs.forEach(p => { %>
         <div class="tprm-portal-proof" data-tprm-portal-proof="<%= p.id %>">
           <div class="text-xs"><strong><%= p.submitted_by_name || 'Your organisation' %></strong> · <%= ctDay(p.submitted_at) %></div>
           <% if (p.note) { %><div class="tpu-pre tpu-mt-2"><%= p.note %></div><% } %>
           <% if (p.files.length) { %><div class="text-xs tpu-mt-2"><% p.files.forEach((f, i) => { %><%= i ? ' · ' : '' %><a href="<%= ctBase %>/files/<%= f.id %>/download" data-tprm-portal-proof-file="<%= f.id %>"><%= f.original_name %></a> <span class="meta">(<%= ctSize(f.size_bytes) %>)</span><% }) %></div><% } %>
-          <div class="meta text-xs tpu-mt-2" data-tprm-portal-proof-review="<%= p.review_status %>"><%= ctReview[p.review_status] %><% if (p.changes_comment) { %>: <span data-tprm-portal-changes-comment><%= p.changes_comment %></span><% } %></div>
+          <div class="meta text-xs tpu-mt-2" data-tprm-portal-proof-review="<%= p.review_status %>"><%= ctReview[p.review_status] %><% if (p.review_status !== 'pending' && p.reviewed_at) { %> <span data-tprm-portal-proof-reviewer>by <%= p.reviewed_by_name || 'your consultants' %>, <%= ctDay(p.reviewed_at) %></span><% } %><% if (p.changes_comment) { %>: <span data-tprm-portal-changes-comment><%= p.changes_comment %></span><% } %></div>
         </div>
       <% }) %>
       <% if (c.canSubmit) { %>

@@ -1,3 +1,4 @@
 <footer class="vq-footer" data-vendor-footer>
-  <p class="vq-foot"><% if (firm && firm.name) { %><span class="vq-footer-firm"><%= firm.name %></span>. <% } %>Private and confidential.<% if (note) { %> <%= note %><% } %><% if (expiresAt) { %> This link works until <%= expiresAt %>.<% } %></p>
+  <% const rb = locals.runBy || null; if (rb && rb.firm) { %><p class="vq-runby" data-vendor-run-by><% if (rb.logoOnDark && rb.logo) { %><span class="vq-logo-chip"><img src="<%= rb.logo %>" alt=""></span><% } %><span>Run by <%= rb.firm %><%= rb.client ? ' on behalf of ' + rb.client : '' %>.</span></p><% } %>
+  <p class="vq-foot"><% if (firm && firm.name && !(rb && rb.firm)) { %><span class="vq-footer-firm"><%= firm.name %></span>. <% } %>Private and confidential.<% if (note) { %> <%= note %><% } %><% if (expiresAt) { %> This link works until <%= expiresAt %>.<% } %></p>
 </footer>

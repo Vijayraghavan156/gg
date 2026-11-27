@@ -1,0 +1,16 @@
+<%- include('partials/header', { title: 'File a document · ' + thirdParty.name + ' · ' + tpClient.name, user, active }) %>
+<%
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const back = '/tprm/clients/' + tpClient.id + '/third-parties/' + thirdParty.id;
+%>
+<%- include('tprm_client_nav', { tpClient, section: 'register', canManage, canSettings }) %>
+
+<div class="tpu-mb-10"><a class="text-xs tpu-back" href="<%= back %>?tab=documents#documents">← Documents · <%= thirdParty.name %></a></div>
+
+<div class="panel tpu-narrow tpu-mb-14" data-tprm-party-document-form>
+  <div class="panel-head"><h2>File a document on <%= thirdParty.name %></h2></div>
+  <div class="panel-pad">
+    <%- include('partials/tprm_party_document_upload', { docBase: back + '/documents', csrf, kinds, kindLabels, values, errors }) %>
+  </div>
+</div>
+<%- include('partials/footer') %>

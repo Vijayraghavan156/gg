@@ -26,9 +26,9 @@
   <h2 class="fx-h4">Requests from the client <span><%= clientRequestsOpen.length %> new</span></h2>
   <div class="fx-todo">
   <% clientRequestsOpen.forEach(r => { %><div data-tprm-client-request="<%= r.id %>"><span class="fx-tag fx-t-new">New</span>
-    <div class="fx-todo-t"><b><%= r.name %></b><span><%= r.service_description %> · asked by <%= r.requested_by_name || 'the client' %> on <%= tpf.day(new Date(r.requested_at).toISOString().slice(0, 10)) %></span></div>
+    <div class="fx-todo-t" data-tprm-client-request-kind="<%= r.kind %>"><b><%= r.kind === 'reassessment' ? 'Reassess ' + r.name : r.name %></b><span><%= r.service_description %> · asked by <%= r.requested_by_name || 'the client' %> on <%= tpf.day(new Date(r.requested_at).toISOString().slice(0, 10)) %></span></div>
     <a class="btn btn-secondary btn-xs" href="/tprm/clients/<%= tpClient.id %>/requests/<%= r.id %>">Open</a>
-    <% if (canManage) { %><form method="POST" action="/tprm/clients/<%= tpClient.id %>/requests/<%= r.id %>/accept" class="tpu-m-0"><input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>"><input type="hidden" name="row_version" value="<%= r.row_version %>"><button class="btn btn-primary btn-xs" type="submit">Add as proposed</button></form><% } %>
+    <% if (canManage) { %><form method="POST" action="/tprm/clients/<%= tpClient.id %>/requests/<%= r.id %>/accept" class="tpu-m-0"><input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>"><input type="hidden" name="row_version" value="<%= r.row_version %>"><button class="btn btn-primary btn-xs" type="submit"><%= r.kind === 'reassessment' ? 'Start the reassessment' : 'Add as proposed' %></button></form><% } %>
   </div><% }) %>
   </div>
 </section>
@@ -48,7 +48,7 @@
     <section class="fx-card"><h3 class="fx-h4">Open findings <span>by severity</span></h3>
       <% rt.findings.forEach(x => { %><div class="fx-hbar"><span><%= ({ critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low' })[x.key] %></span><span class="bar"><b style="width:<%= Math.round(x.count / rt.findingsMax * 100) %>%"></b></span><em><%= x.count %></em></div><% }) %></section>
     <section class="fx-card"><h3 class="fx-h4">Due in the next 90 days</h3>
-      <div class="fx-mini3"><div><b><%= rt.due.reassessments %></b><span>Reassessments</span></div><div><b class="<%= rt.due.conditions ? 'fx-warn' : '' %>"><%= rt.due.conditions %></b><span>Conditions</span></div><div><b><%= rt.due.certificates %></b><span>Certificates expiring</span></div></div></section>
+      <div class="fx-mini3"><div><b><%= rt.due.reassessments %></b><span>Reassessments</span></div><div><b class="<%= rt.due.conditions ? 'fx-warn' : '' %>"><%= rt.due.conditions %></b><span>Conditions</span></div><div><b><%= rt.due.certificates %></b><span>Third parties with a document expiring</span></div></div></section>
   </div>
 </div>
 <% } %>
@@ -57,10 +57,11 @@
   <div class="panel-head">
     <h2><%= isDueView ? 'Due for reassessment' : 'Register' %></h2>
     <span class="meta" data-tp-list-count data-tp-total="<%= list.counts.total %>">Showing <%= list.rows.length %> of <%= list.counts.total %></span>
+    <a class="btn btn-secondary btn-xs" href="/tprm/clients/<%= tpClient.id %>/register.csv<%= qs({ status: f.status, tier: f.tier, due: f.due, q: f.q, sort: f.sort, dir: f.sort ? f.dir : '' }) %>" data-tprm-register-export>Export CSV</a>
   </div>
   <% if (isDueView) { %>
     <div class="panel-pad meta tprm-divide-b">Start a reassessment for each third party below, oldest first.
-      <details class="tprm-how"><summary>How this works</summary>Listed: third parties in use whose next due date is today (<%= tpf.day(list.today) %>) or earlier, or that have no due date yet.</details></div>
+      <details class="tprm-how"><summary>How this works</summary>Listed: third parties in use whose next due date is today (<%= tpf.day(list.today) %>) or earlier, or that have no due date yet, and that have no assessment open. One being assessed already is on the register with its current step.</details></div>
   <% } %>
   <form method="GET" action="/tprm/clients/<%= tpClient.id %>" class="panel-pad tprm-filters tprm-divide-b" data-tprm-filters data-tp-list-controls>
     <% if (isDueView) { %><input type="hidden" name="view" value="due"><% } %>
@@ -109,7 +110,7 @@
     <form method="POST" action="/tprm/clients/<%= tpClient.id %>/third-parties/bulk-start" id="tp-bulk" class="panel-pad tprm-divide-b fx-bulk" data-tprm-bulk>
       <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
       <span class="meta">For each ticked third party:</span>
-      <%- include('partials/tprm_confirm_fields', { title: 'Apply this to each ticked third party?', body: 'Starting assessments makes you the lead on each new one. Reminders go only where a questionnaire link is open, once a day at most. A new lead applies to each open review.', action: 'Go ahead' }) %>
+      <%- include('partials/tprm_confirm_fields', { title: 'Apply this to each ticked third party?', body: 'Starting assessments makes you the lead on each new one. A reminder goes to the person the questionnaire was sent to while their link opens, or to the main contact by sign-in when that link no longer opens, once a day at most for each review. A new lead applies to each open review.', action: 'Go ahead' }) %>
       <button class="btn btn-secondary btn-xs" type="submit" data-tprm-bulk-start>Start assessments</button>
       <button class="btn btn-secondary btn-xs" type="submit" formaction="/tprm/clients/<%= tpClient.id %>/third-parties/bulk-remind" data-tprm-bulk-remind>Send a reminder</button>
       <% if (typeof leads !== 'undefined' && leads.length) { %><label class="sr-only" for="bulk-lead">New lead</label><select class="select fx-select-s" id="bulk-lead" name="lead"><option value="">Choose a lead</option><% leads.forEach(l => { %><option value="<%= l.id %>"><%= l.name %></option><% }) %></select>

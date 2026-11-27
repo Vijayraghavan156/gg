@@ -404,17 +404,28 @@ test('findings: add, edit and remove, citing files of the same assessment only',
   });
   assert.equal((await edit({ row_version: String(finding.row_version + 1) })).status, 409, 'stale row_version');
   assert.equal((await edit({ row_version: String(finding.row_version), evidence: [String(elsewhereFile.id)] })).status, 400, 'cross-client link on edit');
-  assert.equal((await edit({ row_version: String(finding.row_version) })).status, 302);
+  const noReason = await edit({ row_version: String(finding.row_version) });
+  assert.equal(noReason.status, 400, 'closing a finding needs a reason');
+  assert.match(noReason.text, /Say why the finding is closed/);
+  assert.equal((await findingRow(finding.id)).status, 'open');
+  assert.equal((await edit({ row_version: String(finding.row_version), close_reason: 'Supplier now reviews access quarterly' })).status, 302);
   const edited = await findingRow(finding.id);
   assert.equal(edited.severity, 'critical');
   assert.equal(edited.status, 'closed');
+  assert.equal(edited.close_reason, 'Supplier now reviews access quarterly');
+  assert.ok(edited.closed_by && edited.closed_at, 'who closed it and when are kept');
+  const closedPage = await client.get(`${base}?step=evidence`);
+  assert.match(closedPage.text, /data-tprm-finding-closure>[\s\S]*?Closed by [^<]* on [^<]*:<\/span> <span class="tpu-pre">Supplier now reviews access quarterly/);
+  const historyPage = await client.get(`${base}?step=history`);
+  assert.match(historyPage.text, /closed the finding &#34;No supplier access review&#34;: Supplier now reviews access quarterly|closed the finding "No supplier access review": Supplier now reviews access quarterly/);
   assert.equal(edited.row_version, finding.row_version + 1);
   assert.deepEqual(await links(finding.id), [Number(policy.id)]);
   const update = await db.prepare(`SELECT before_state, after_state FROM tp_events WHERE chain_id=? AND action='finding.updated'`).get(target.a);
   assert.deepEqual(update.before_state, { finding_id: Number(finding.id), severity: 'high', description: 'Access is not reviewed quarterly.', status: 'open',
-    evidence_ids: [Number(policy.id), Number(log.id)] });
+    evidence_ids: [Number(policy.id), Number(log.id)], close_reason: null });
   assert.deepEqual(update.after_state, { finding_id: Number(finding.id), severity: 'critical', description: 'Access is never reviewed.', status: 'closed',
-    evidence_ids: [Number(policy.id)] });
+    evidence_ids: [Number(policy.id)], close_reason: 'Supplier now reviews access quarterly', closed_by_name: update.after_state.closed_by_name,
+    finding_title: 'No supplier access review' });
 
   assert.equal((await client.post(`${base}/evidence/${log.id}/delete`, { row_version: String(log.row_version) })).status, 302);
 
@@ -540,4 +551,36 @@ test('one confirmation: a confirmable form posted unconfirmed changes nothing an
   assert.equal(await db.prepare('SELECT 1 FROM tp_evidence WHERE id=?').get(row.id), undefined, 'deleted');
   const plain = await uploadOne(client, target, 'plain-delete.txt', `Plain ${unique('p')}`);
   assert.equal((await client.post(`${aBase(ws, target.tp, target.a)}/evidence/${plain.id}/delete`, { row_version: String(plain.row_version) })).status, 302);
+});
+
+test('an ISO certificate uploaded as evidence counts in the Assurance panel with its expiry; insurance with no answer says Not answered yet', async () => {
+  const ws = await tprmClient('Evidence Certificate Client');
+  const target = await assessmentFor(ws);
+  const tpUrl = `/tprm/clients/${ws}/third-parties/${target.tp}`;
+  let page = await client.get(tpUrl);
+  assert.match(page.text, /data-tprm-assurance-iso><dt>ISO 27001<\/dt><dd>Not provided</);
+  assert.match(page.text, /data-tprm-assurance-insurance="not_answered"><dt>Cyber insurance<\/dt><dd>Not answered yet</, 'no questionnaire yet: not answered, not "not asked"');
+  assert.doesNotMatch(page.text, /Not asked at this tier/);
+
+  const { todayFor } = require('../lib/dates');
+  const today = todayFor(await db.prepare('SELECT * FROM workspaces WHERE id=?').get(ws));
+  const expiry = require('../lib/tprm/placement').addMonths(today, 2);
+  const refused = await upload(client, target, [
+    { filename: 'iso-cert.pdf', content: `${PDF}% ${unique('c')}\n`, type: 'application/pdf' },
+    { filename: 'extra.pdf', content: `${PDF}% ${unique('d')}\n`, type: 'application/pdf' },
+  ], { fields: { document_kind: 'iso27001_certificate', expires_on: expiry } });
+  assert.equal(refused.status, 400, 'a certificate is uploaded on its own');
+  const res = await upload(client, target, [{ filename: 'iso-cert.pdf', content: `${PDF}% ${unique('c')}\n`, type: 'application/pdf' }],
+    { fields: { document_kind: 'iso27001_certificate', expires_on: expiry } });
+  assert.equal(res.status, 302, (res.text || '').slice(0, 300));
+  const stored = await db.prepare('SELECT document_kind, expires_on::text AS expires_on FROM tp_evidence WHERE assessment_id=?').get(target.a);
+  assert.deepEqual(stored, { document_kind: 'iso27001_certificate', expires_on: expiry });
+
+  page = await client.get(tpUrl);
+  assert.match(page.text, /data-tprm-assurance-iso><dt>ISO 27001<\/dt><dd>Valid to [^<]*, uploaded as evidence</);
+  assert.match(page.text, /data-tprm-party-next[\s\S]*?ISO 27001 certificate expires/);
+  const register = await client.get(`/tprm/clients/${ws}`);
+  assert.match(register.text, /<b>1<\/b><span>Third parties with a document expiring<\/span>/, (register.text.match(/.{0,200}document expiring/) || [''])[0]);
+  const evidence = await client.get(`${aBase(ws, target.tp, target.a)}?step=evidence`);
+  assert.match(evidence.text, /data-tprm-evidence-kind="iso27001_certificate">ISO 27001 certificate, expires /);
 });

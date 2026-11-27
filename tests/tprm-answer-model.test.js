@@ -235,7 +235,7 @@ async function submittedWithReports(name, { iso = false } = {}) {
   if (iso) assert.equal((await uploadReport(ctx.token, 'iso27001', { expires_on: '2099-01-31', scope: 'Hosting of the service in Mumbai' })).status, 303);
   await answerAll(ctx, { bare: SOC2_COVERED });
   const res = await submitLink(ctx.token);
-  assert.equal(res.status, 200, res.text.slice(0, 200));
+  assert.equal(res.status, 303, res.text.slice(0, 200));
   return ctx;
 }
 
@@ -582,10 +582,10 @@ test('reports: uploaded at the start, their coverage shown and counted, the cove
   const ctx = await linked('Reports Co');
   let start = await vget(ctx.token);
   assert.doesNotMatch(start.text, /data-vendor-reports/, 'no separate upload box: ASR-01 and ASR-03 are asked even at the low tier');
-  assert.match(start.text, /data-vendor-report-hint>If you hold a current ISO 27001 certificate or SOC 2 Type II report, answer ASR-01 and ASR-03 in <a href="[^"]+">Assurance &amp; Certification<\/a> first: it covers the documents for up to 3 other questions\.</);
+  assert.match(start.text, /data-vendor-report-hint>If you hold a current ISO 27001 certificate, answer ASR-01 with the certificate and your Statement of Applicability attached \(as a second file on ASR-01\): together they cover the documents for 2 other questions\. If you hold a current SOC 2 Type II report, answer ASR-03 with the report attached and its period end date: it covers the documents for 3 other questions\. Answer them first in <a href="[^"]+">Assurance &amp; Certification<\/a>\. Naming a document is not enough here: the files are needed\.</, 'each count is named for its own document, and the tip says what the certificate needs');
   const asr = (await vsection(ctx, 'ASR-01')).page.text;
-  assert.match(asr, /data-vendor-report-note="iso27001">Answer Yes with the certificate attached and it covers the documents for 2 other questions\.</);
-  assert.match(asr, /data-vendor-report-note="soc2_type2">Answer Yes with the report attached and it covers the documents for 3 other questions\.</);
+  assert.match(asr, /data-vendor-report-note="iso27001">Answer Yes with the certificate and the Statement of Applicability attached, as a second file here, and together they cover the documents for 2 other questions\. Naming the Statement of Applicability is not enough: the file is needed\.</);
+  assert.match(asr, /data-vendor-report-note="soc2_type2">Answer Yes with the report attached and its period end date, and it covers the documents for 3 other questions\.</);
   let res = await uploadReport(ctx.token, 'iso27001', { expires_on: '2020-01-01', scope: 'All' });
   assert.equal(res.status, 400);
   assert.match(res.text, /already expired/);
@@ -619,7 +619,7 @@ test('reports: uploaded at the start, their coverage shown and counted, the cove
   for (const id of SOC2_COVERED) assert.match(check.text, new RegExp(`data-vendor-problem="${id}" data-vendor-problem-kind="evidence"`));
   assert.equal((await submitLink(ctx.token)).status, 409);
   assert.equal((await uploadReport(ctx.token, 'soc2_type2', { period_end: '2026-06-30' })).status, 303);
-  assert.equal((await submitLink(ctx.token)).status, 200);
+  assert.equal((await submitLink(ctx.token)).status, 303);
   const locked = (await reportsOf(ctx.a))[0];
   await assert.rejects(db.prepare("UPDATE tp_assurance_reports SET period_end='2026-01-01' WHERE id=?").run(locked.id), /locked once the questionnaire is submitted/);
   await assert.rejects(db.prepare('DELETE FROM tp_assurance_reports WHERE id=?').run(locked.id), /removed only by the third party/);
@@ -653,7 +653,7 @@ test('the certificate and the report are given as answers to ASR-01 and ASR-03; 
   assert.equal(res.status, 303);
   assert.equal((await reportsOf(ctx.a)).length, 1, 'no certificate without the Statement of Applicability');
   page = (await vget(ctx.token, `?s=${index}`)).text;
-  assert.match(page, /data-vendor-report-note="iso27001">To use this certificate for \d+ other questions, attach the Statement of Applicability as a second file\.</);
+  assert.match(page, /data-vendor-report-note="iso27001">To use this certificate for \d+ other questions, attach the Statement of Applicability as a second file here(?: or on ASR-02)?: naming it is not enough\.</);
   res = await save(ctx.token, { 'ASR-01': isoAnswer }, { section: index, files: [{ field: 'file__ASR-01', filename: 'soa.pdf', content: PDF('soa'), type: 'application/pdf' }] });
   reports = await reportsOf(ctx.a);
   assert.deepEqual(reports.map(r => r.kind).sort(), ['iso27001', 'soc2_type2']);
@@ -863,7 +863,7 @@ test('a questionnaire on a bank without answer types keeps Partially; a reassess
   Object.assign(answers, { 'AIS-01': { r: 'no', d: 'None' }, 'ORG-02': { r: 'partial', d: 'Most signed', ref: 'NDA log' },
     'GOV-01': { r: 'partial', d: 'Approved, review overdue', ref: 'ISP v3' } });
   assert.equal((await save(ctx.token, answers)).status, 303);
-  assert.equal((await submitLink(ctx.token)).status, 200);
+  assert.equal((await submitLink(ctx.token)).status, 303);
   const review = await firmPage(ctx);
   assert.match(review.text, /data-tprm-answer-counts>\d+ Yes · 2 Partially/);
   const fresh = { ...BANK, version: 'v2-again-test' };

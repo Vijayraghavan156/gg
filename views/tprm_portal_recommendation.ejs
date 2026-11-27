@@ -8,17 +8,24 @@
   const dash = x => (x == null || x === '') ? '-' : x;
   const day = d => d ? tpf.day(d) : '-';
   const size = n => tpf.fileSize(Number(n) || 0);
-  const typeLabel = a.type === 'onboarding' ? 'Onboarding assessment' : 'Reassessment';
+  const typeLabel = p.typeLabel;
   const v = values || {};
   const chosen = v.outcome || '';
   const showDivergence = !!chosen && chosen !== D.MORE_INFORMATION && chosen !== r.outcome;
+  const showRisk = !!chosen && D.acceptsRisk(chosen, r.outcome);
+  const ap = p.approval;
+  const headText = !ap ? '' : p.waiting ? 'Waiting for your decision'
+    : ap.pending === D.INFORMATION_REQUESTED ? 'Waiting for your consultants\' answer'
+    : ap.pending ? ap.pendingLabel : ap.label;
+  const headTone = !ap ? null : p.waiting ? 'attention' : ap.pending ? ap.pendingTone : ap.tone;
+  const ownerWord = o => o === 'client' ? 'You' : o === 'vendor' ? 'Supplier' : '-';
 %>
 <div class="cv-top"><div class="cv-crumb"><a href="<%= base %>">Third parties</a> / <a href="<%= base %>/third-parties/<%= p.thirdParty.id %>"><%= p.thirdParty.name %></a> / <b>Recommendation</b></div></div>
 <div class="page-head cp-page-head" data-tprm-portal-recommendation="<%= r.id %>">
   <div>
     <div class="eyebrow"><%= typeLabel %> · version <%= r.version %></div>
     <h1><%= p.thirdParty.name %></h1>
-    <div class="page-subtitle"><%= tp.STATUS_LABELS[p.thirdParty.status] %> · <%- p.approval ? include('partials/tprm_status', { text: p.approval.state === 'awaiting_approval' && r.status === 'issued' ? 'Waiting for your decision' : p.approval.label, tone: p.approval.tone, attrs: 'data-tprm-approval="' + escapeHtml(p.approval.state) + '"' }) : '<span data-tprm-approval=""></span>' %></div>
+    <div class="page-subtitle"><%= tp.STATUS_LABELS[p.thirdParty.status] %> · <%- ap ? include('partials/tprm_status', { text: headText, tone: headTone, attrs: 'data-tprm-approval="' + escapeHtml(ap.state) + '"' + (ap.pending ? ' data-tprm-portal-pending="' + escapeHtml(ap.pending) + '"' : '') }) : '<span data-tprm-approval=""></span>' %></div>
   </div>
   <% if (r.status === 'issued') { %><%- include('partials/tprm_status', { text: 'Issued ' + day(r.issued_at) }) %>
   <% } else { %><%- include('partials/tprm_status', { text: 'Replaced by version ' + dash(r.superseded_by_version), attrs: 'data-tprm-portal-superseded' }) %><% } %>
@@ -58,15 +65,29 @@
     <ol class="tprm-brief-list">
       <% r.conditions.forEach((c, i) => { %>
         <li data-tprm-portal-condition><p class="tpa-pre"><%= c.description %></p>
-          <p class="tpa-meta" data-tprm-portal-condition-owner="<%= c.owner %>">Who: <%= c.owner === 'client' ? 'You (the client)' : (rec.CONDITION_OWNER_LABELS[c.owner] || '-') %> · by <%= day(c.due_date) %></p></li>
+          <p class="tpa-meta" data-tprm-portal-condition-owner="<%= c.owner %>">Who: <%= ownerWord(c.owner) %> · by <%= day(c.due_date) %></p></li>
       <% }) %>
     </ol>
   </div>
   <% } %>
+  <% if (!p.decision) { %>
   <div class="tprm-brief-block" data-tprm-portal-after>
     <h2 class="tpa-h">What happens after you decide</h2>
-    <p>Your decision is recorded with your name and the date, and it is final for version <%= r.version %>. If you agree with the recommendation, it takes effect as it stands<%= r.conditions.length ? ', and your consultants follow up each condition until it is met' : '' %>. If you choose another option, you accept the risk of going against the advice: give your reasons and the date that acceptance ends. If you ask for more information, your consultants answer it in a revised recommendation and you decide again.</p>
+    <p>Your decision is recorded with your name and the date, and it is final for version <%= r.version %>. If you agree with the recommendation, it takes effect as it stands<%= r.conditions.length ? ', and your consultants follow up each condition until it is met' : '' %>. If you choose something stricter, give your reasons. If you choose something less cautious than the advice, you accept the risk of going against it: give your reasons and the date that acceptance ends. If you ask for more information, your consultants answer it in a revised recommendation and you decide again.</p>
   </div>
+  <% } else { const d = p.decision; const later = p.otherVersions.find(x => x.status === 'issued' && x.version > r.version); const cs = p.conditionTracking && p.conditionTracking.summary; %>
+  <div class="tprm-brief-block" data-tprm-portal-next="<%= d.outcome %>">
+    <h2 class="tpa-h">What happens next</h2>
+    <% if (d.outcome === D.MORE_INFORMATION) { %>
+      <p><% if (later) { %>Your consultants answered in version <%= later.version %> of the recommendation: <a href="<%= base %>/recommendations/<%= later.id %>">open version <%= later.version %></a> and decide on it.<% } else if (r.status !== 'issued') { %>This version was replaced by a later one.<% } else { %>Your consultants answer your question in a revised recommendation, and you decide again on that version.<% } %></p>
+    <% } else if (d.outcome === 'reject') { %>
+      <p><%= a.type === 'onboarding' ? p.thirdParty.name + ' is not used for this service.' : p.thirdParty.name + ' is to be exited.' %> Nothing more is needed on this recommendation.</p>
+    <% } else { %>
+      <p><%= p.thirdParty.name %> <%= a.type === 'onboarding' ? 'can now be used' : 'stays in use' %> for this service<%= ap && ap.until ? ', with approval until ' + day(ap.until) : '' %>.<%= p.thirdParty.next_due_date ? ' The next review is due ' + day(p.thirdParty.next_due_date) + '.' : '' %></p>
+      <% if (d.outcome === 'approve_with_conditions' && cs) { %><p data-tprm-portal-next-conditions="<%= cs.state %>"><% if (cs.state === 'met') { %>All conditions are met.<% } else { %><%= cs.state === 'overdue' ? 'Conditions are overdue' : 'Conditions are open' %>: <%= cs.met %> of <%= cs.total %> met. Your consultants follow up each condition until it is met; send proof for the ones you own under Conditions below.<% } %></p><% } %>
+    <% } %>
+  </div>
+  <% } %>
 </section>
 
 <div class="panel tpu-mb-14" data-tprm-portal-evidence>
@@ -90,9 +111,9 @@
   <% if (p.decision) { const d = p.decision; %>
     <div class="panel-pad" data-tprm-portal-decided="<%= d.outcome %>">
       <div><strong><%= p.labels[d.outcome] %></strong> <span class="meta">· <%= dash(d.decided_by_name) %> · <%= day(d.decided_at) %></span></div>
-      <% if (d.diverges) { %><div class="tpu-mt-6"><%- include('partials/tprm_status', { text: 'Differs from the recommendation. Risk accepted until ' + day(d.risk_acceptance_until) + '.', tone: 'attention' }) %></div><% } %>
+      <% if (d.diverges && d.accepts_risk) { %><div class="tpu-mt-6" data-tprm-portal-risk-accepted><%- include('partials/tprm_status', { text: 'Less cautious than the recommendation. Risk accepted until ' + day(d.risk_acceptance_until) + '.', tone: 'attention' }) %></div>
+      <% } else if (d.diverges) { %><div class="tpu-mt-6" data-tprm-portal-stricter><%- include('partials/tprm_status', { text: 'Stricter than the recommendation (' + r.outcome_label + ').', tone: 'quiet' }) %></div><% } %>
       <% if (d.rationale) { %><div class="tpu-pre tpu-mt-6"><%= d.rationale %></div><% } %>
-      <% if (d.outcome === D.MORE_INFORMATION) { %><div class="meta tpu-mt-6">Your consultants will issue a revised recommendation for you to decide on.</div><% } %>
     </div>
   <% } else if (p.canDecide) { %>
     <form method="POST" action="<%= base %>/recommendations/<%= r.id %>/decision" class="panel-pad tpu-form" data-tprm-decision-form data-recommended="<%= r.outcome %>" data-more="<%= D.MORE_INFORMATION %>">
@@ -107,21 +128,22 @@
         <legend class="label tpu-p-0">Decision</legend>
         <% D.OUTCOMES.forEach(o => { %>
           <label class="tpu-row tpu-my-4">
-            <input type="radio" name="outcome" value="<%= o %>" <%= chosen === o ? 'checked' : '' %> required<%- o === D.MORE_INFORMATION ? ' data-more' : (o !== r.outcome ? ' data-diverges' : '') %>> <span><%= p.labels[o] %></span>
+            <input type="radio" name="outcome" value="<%= o %>" <%= chosen === o ? 'checked' : '' %> required data-label="<%= p.labels[o] %>"<%- o === D.MORE_INFORMATION ? ' data-more' : (o !== r.outcome ? ' data-diverges' : '') %><%- D.acceptsRisk(o, r.outcome) ? ' data-accepts-risk' : '' %>> <span><%= p.labels[o] %></span>
             <% if (o === r.outcome) { %><span class="meta text-xs">(recommended)</span><% } %>
           </label>
         <% }) %>
       </fieldset>
       <div class="callout tpu-attention-edge" role="alert" data-tprm-divergence-warning <%= showDivergence ? '' : 'hidden' %>>
         <div class="callout-title tpu-attention-text">Your decision differs from the recommendation (<%= r.outcome_label %>)</div>
-        <div>You are accepting the risk of going against your consultants' advice. Give your rationale and the date this risk acceptance expires: both are recorded with your decision.</div>
+        <div data-tprm-divergence-riskier<%- showDivergence && !showRisk ? ' hidden' : '' %>>Your decision is less cautious than your consultants' advice, so you are accepting the risk of going against it. Give your rationale and the date this risk acceptance expires: both are recorded with your decision.</div>
+        <div data-tprm-divergence-stricter<%- showRisk ? ' hidden' : '' %>>Your decision is stricter than your consultants' advice. No risk is accepted: give your rationale, which is recorded with your decision.</div>
       </div>
       <div data-tprm-decision-rationale><label class="label" for="decision-rationale">Rationale</label>
         <textarea class="input" id="decision-rationale" name="rationale" rows="4" maxlength="<%= D.LIMITS.rationale %>"><%= v.rationale || '' %></textarea>
         <div class="meta text-xs">Required if your decision differs from the recommendation, or to say what more information you need.</div></div>
       <div data-tprm-risk-acceptance><label class="label" for="decision-risk-until">Risk acceptance expires</label>
         <input class="input tprm-portal-date" id="decision-risk-until" type="date" name="risk_acceptance_until" value="<%= v.risk_acceptance_until || '' %>">
-        <div class="meta text-xs">Only when your decision differs from the recommendation.</div></div>
+        <div class="meta text-xs">Only when your decision is less cautious than the recommendation.</div></div>
       <div class="tprm-portal-decide-foot">
         <span class="meta">Your decision is final for version <%= r.version %>: it cannot be changed afterwards.</span>
         <button class="btn btn-primary" type="submit" data-tprm-decide>Record decision</button>
@@ -132,10 +154,22 @@
       var form = document.querySelector('[data-tprm-decision-form]');
       if (!form) return;
       var warn = form.querySelector('[data-tprm-divergence-warning]');
+      var riskier = form.querySelector('[data-tprm-divergence-riskier]');
+      var stricter = form.querySelector('[data-tprm-divergence-stricter]');
+      var rationale = form.querySelector('textarea[name="rationale"]');
+      var until = form.querySelector('input[name="risk_acceptance_until"]');
+      var title = form.querySelector('input[name="_tp_confirm_title"]');
+      var plain = title ? title.value : '';
       function update() {
         var picked = form.querySelector('input[name="outcome"]:checked');
-        var v = picked ? picked.value : '';
-        warn.hidden = !(v && v !== form.dataset.recommended && v !== form.dataset.more);
+        var differs = !!picked && picked.hasAttribute('data-diverges');
+        var risk = !!picked && picked.hasAttribute('data-accepts-risk');
+        warn.hidden = !differs;
+        riskier.hidden = !risk;
+        stricter.hidden = risk;
+        rationale.required = differs || (!!picked && picked.hasAttribute('data-more'));
+        until.required = risk;
+        if (title) title.value = picked ? 'Record "' + picked.getAttribute('data-label') + '" as your decision?' : plain;
       }
       form.addEventListener('change', update);
       update();

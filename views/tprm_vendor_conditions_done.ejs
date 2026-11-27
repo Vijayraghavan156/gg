@@ -1,0 +1,36 @@
+<%
+  const fmtDay = d => (d ? tpf.day(d) : '');
+%><!doctype html>
+<html lang="en" class="page-standalone" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <link rel="stylesheet" href="/app.css">
+<%- include('tprm_portal_head', { title: 'Conditions for ' + p.clientName, frame }) %>
+</head>
+<body class="vq-body">
+  <a class="vq-skip" href="#main">Skip to the content</a>
+  <%- include('partials/tprm_portal_top', { frame }) %>
+  <div class="vq-frame">
+    <%- include('partials/tprm_portal_side', { frame }) %>
+    <main class="vq-main" id="main" data-vendor-conditions-done>
+      <header class="vq-top">
+        <div class="vq-top-main">
+          <h1 class="vq-title">Conditions for <span data-vendor-client><%= p.clientName %></span></h1>
+          <% if (p.closedAt) { %><p class="vq-top-meta">Met on <%= fmtDay(p.closedAt) %>.</p><% } %>
+        </div>
+      </header>
+      <p class="vq-lead" data-vendor-conditions-met><%= p.anyVerified ? 'Your proof was accepted.' : 'The reviewers closed these conditions.' %> Every condition for you is met, so nothing more is needed. You can close this page.</p>
+      <% p.conditions.forEach(c => { %>
+        <section class="vq-item" data-vendor-condition="<%= c.id %>" data-vendor-condition-status="<%= c.status %>">
+          <h2 class="vq-h3 vq-item-head">Condition <%= c.position %></h2>
+          <p class="vq-item-ref">Status: <span data-vendor-condition-label><%= c.label %></span>.</p>
+          <p class="vq-item-text vq-pre"><%= c.description %></p>
+        </section>
+      <% }) %>
+      <%- include('partials/tprm_vendor_footer', { firm: p.firm, expiresAt: null, note: locals.signedIn ? '' : 'Do not share this link.' }) %>
+    </main>
+  </div>
+</body>
+</html>

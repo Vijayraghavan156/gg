@@ -14,6 +14,7 @@ const SWITCH_PERMISSION = tpSettings.SWITCH_PERMISSION;
 function notFound(req, res) {
   return res.status(404).render('error', {
     user: req.user,
+    ws: req.workspace || null,
     message: 'This third-party risk client does not exist, or it is not available to your account.',
   });
 }
@@ -38,12 +39,20 @@ function register(app, deps) {
       if (wsMatch) {
         zone = await db.prepare(`SELECT w.timezone, w.firm_id, f.timezone AS firm_timezone FROM workspaces w
           LEFT JOIN firms f ON f.id = w.firm_id WHERE w.id = ?`).get(Number(wsMatch[1]));
+        if (zone && req.user && access.isClientUser(req.user)
+          && !(await db.prepare('SELECT 1 FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(Number(wsMatch[1]), req.user.id))) zone = null;
+        if (zone && req.user && access.isFirmUser(req.user) && Number(zone.firm_id) !== Number(req.user.firm_id)) zone = null;
       }
+      if (!zone && req.user && access.isClientUser(req.user) && res.locals.clientHomeZone) zone = { timezone: res.locals.clientHomeZone, firm_id: null };
       if (!zone && req.user && req.user.firm_id) {
         zone = { timezone: null, firm_id: req.user.firm_id, firm_timezone: (await db.prepare('SELECT timezone FROM firms WHERE id = ?').get(req.user.firm_id) || {}).timezone };
       }
       res.locals.tpf = format.forZone(format.zoneOf(zone || {}, null), { ymdInZone });
+      if (wsMatch && zone && req.user && access.isFirmUser(req.user) && Number(zone.firm_id) === Number(req.user.firm_id)) {
+        res.locals.tpHelpClientTpOnly = !(await require('../lib/tprm/settings').hasIsoProgramme(db, Number(wsMatch[1])));
+      }
       res.locals.tpAccent = zone && zone.firm_id ? await require('../lib/tprm/letterhead').brandColour(db, zone.firm_id) : null;
+      res.locals.tpCurrency = zone && zone.firm_id ? await require('../lib/tprm/register').defaultCurrency(db, zone.firm_id) : null;
     } catch (_) {
       res.locals.tpf = format.forZone('UTC', { ymdInZone });
     }
@@ -58,6 +67,20 @@ function register(app, deps) {
     };
     next();
   });
+
+  const unconfirmed = req => req.body && typeof req.body._tp_confirm_title === 'string' && req.body._tp_confirmed !== '1';
+  app.post('/workspaces/:wsId/client-portal/third-party-risk/recommendations/:rid/decision', (req, res, next) => (unconfirmed(req) ? next() : next('route')),
+    requireAuth, requireWorkspace, async (req, res, next) => {
+      try {
+        if (!access.isClientUser(req.user) || res.locals.tpPortalEnabled !== true) return next();
+        const page = await decisions.portalRecommendation(db, req.workspace, req.params.rid, req.user);
+        if (!page || !page.canDecide) return next();
+        const { values, errors } = decisions.validate(req.body, { recommendation: page.recommendation, today: require('../lib/dates').todayFor(req.workspace) });
+        if (errors.length) return renderRecommendation(req, res, { errors, values: req.body, status: 400 });
+        req.body._tp_confirm_title = `Record "${page.labels[values.outcome]}" as your decision?`;
+        return next();
+      } catch (err) { return next(err); }
+    });
 
   const scope = require('../lib/tprm/scope');
   const hidden = res => res.status(404).render('error', { user: res.req.user, message: 'This third party does not exist, or it is not available to your account.' });
@@ -104,7 +127,11 @@ function register(app, deps) {
     const ref = String(req.get('Referer') || '');
     let back = req.originalUrl.replace(/\/[^/?#]+(?:\?.*)?$/, '') || '/tprm';
     try { const u = new URL(ref); if (u.host === req.get('host')) back = u.pathname + u.search; } catch (_) {}
-    return requireAuth(req, res, () => res.status(200).render('tprm_confirm', { user: req.user, confirm: { ...confirm, url: req.originalUrl, fields, back } }));
+    const show = ws => res.status(200).render('tprm_confirm', { user: req.user, ws, confirm: { ...confirm, url: req.originalUrl, fields, back } });
+    return requireAuth(req, res, () => {
+      if (!access.isClientUser(req.user) || !req.params.wsId) return show(null);
+      return Promise.resolve(getWorkspace(req.params.wsId, req.user)).then(ws => show(ws || null), next);
+    });
   });
 
   app.get('/tprm', requireAuth, async (req, res) => {
@@ -191,13 +218,33 @@ function register(app, deps) {
       approvals: regApprovals,
       stages: regStages,
       clientRulebooks: await require('../lib/tprm/rulebooks').currentForClient(db, loaded.ws.id),
-      clientRequestsOpen: await require('../lib/tprm/client-requests').list(db, loaded.ws.id, { open: true }),
+      clientRequestsOpen: await require('../lib/tprm/client-requests').visibleTo(db, req.user, await require('../lib/tprm/client-requests').list(db, loaded.ws.id, { open: true })),
       regExtras: await require('../lib/tprm/register-hub').extras(db, loaded.ws.id),
       leads: access.can(req.user, loaded.perms, 'tp.manage') ? await require('../lib/tprm/assessments').leadCandidates(db, loaded.ws) : [],
       wsLead: loaded.ws.lead_consultant_id ? ((await db.prepare('SELECT name FROM users WHERE id = ?').get(loaded.ws.lead_consultant_id)) || {}).name || null : null,
       canManage: access.can(req.user, loaded.perms, 'tp.manage'),
       canSettings: access.can(req.user, loaded.perms, 'tp.settings'),
     });
+  });
+
+  const registerExport = require('../lib/tprm/register-export');
+  const sendCsv = (res, name, table) => {
+    res.set('Content-Type', 'text/csv; charset=utf-8');
+    res.set('Content-Disposition', `attachment; filename="${name}"`);
+    res.set('Cache-Control', 'no-store');
+    res.set('X-Content-Type-Options', 'nosniff');
+    return res.send(registerExport.csv(table.header, table.rows));
+  };
+
+  app.get('/tprm/clients/:wsId/register.csv', requireAuth, async (req, res, next) => {
+    try {
+      const loaded = await access.loadFirmWorkspace(lookup, req.user, req.params.wsId);
+      if (!loaded) return notFound(req, res);
+      const actor = { user: req.user, perms: loaded.perms, ws: loaded.ws };
+      const table = await registerExport.firmRegister(db, actor, req.query || {});
+      await logAction(req.user.id, loaded.ws.id, 'tprm_register_exported', 'workspace', loaded.ws.id, { rows: table.rows.length }, auditCtx(req));
+      return sendCsv(res, registerExport.fileName('third-parties', loaded.ws.brand_display_name || loaded.ws.client_name, table.today), table);
+    } catch (err) { return next(err); }
   });
 
   const PORTAL = '/workspaces/:wsId/client-portal/third-party-risk';
@@ -221,12 +268,37 @@ function register(app, deps) {
     res.render('tprm_portal_home', {
       user: req.user,
       ws: req.workspace,
-      home: await clientView.home(db, req.workspace, req.query || {}, req.user),
+      home: await clientView.home(db, req.workspace, req.query || {}, req.user, { questionnaires: true }),
       canRequest: await clientView.canEditDetails(db, req.workspace, req.user),
       requestLabels: require('../lib/tprm/client-requests').STATUS_LABELS,
+      requestLabel: require('../lib/tprm/client-requests').statusLabel,
       cv: clientView,
       tp: tpPlacement,
     });
+  });
+
+  app.get(`${PORTAL}/register.csv`, requireAuth, requireWorkspace, async (req, res, next) => {
+    try {
+      if (!portalReady(req, res)) return notFound(req, res);
+      const table = await registerExport.clientRegister(db, req.workspace, req.query || {}, req.user);
+      await logAction(req.user.id, req.workspace.id, 'tprm_client_register_exported', 'workspace', req.workspace.id, { rows: table.rows.length }, auditCtx(req));
+      return sendCsv(res, registerExport.fileName('third-parties', req.workspace.brand_display_name || req.workspace.client_name, table.today), table);
+    } catch (err) { return next(err); }
+  });
+
+  app.get(`${PORTAL}/account`, requireAuth, requireWorkspace, async (req, res, next) => {
+    try {
+      if (!portalReady(req, res)) return notFound(req, res);
+      const clientTeam = require('../lib/client-team');
+      res.render('tprm_portal_account', {
+        user: req.user, ws: req.workspace,
+        team: await clientTeam.team(db, req.workspace),
+        isOwner: clientTeam.isOwner(req.user, req.workspace),
+        myRole: clientTeam.roleLabel(req.workspace.role),
+        inviteRoles: clientTeam.INVITE_ROLES.map(r => ({ value: r, label: clientTeam.roleLabel(r) })),
+        activity: await require('../lib/tprm/client-activity').recent(db, req.workspace, req.user),
+      });
+    } catch (err) { return next(err); }
   });
 
   app.post(`${PORTAL}/findings/:fid/comments`, requireAuth, requireWorkspace, async (req, res, next) => {
@@ -272,14 +344,35 @@ function register(app, deps) {
     } catch (err) { return next(err); }
   });
 
+  async function renderPortalParty(req, res, party, { tab = 'overview', reassessForm = null, status = 200 } = {}) {
+    const canEdit = await clientView.canEditDetails(db, req.workspace, req.user);
+    const reassess = await require('../lib/tprm/client-requests').reassessmentState(db, req.workspace, party.thirdParty);
+    return res.status(status).render('tprm_portal_party', { user: req.user, ws: req.workspace, party, tab, tp: tpPlacement, canEdit, reassess, reassessForm,
+      clientPeople: canEdit ? await tpRegister.clientPeople(db, req.workspace.id) : [], editing: req.query.edit === 'details' && canEdit });
+  }
+
   app.get(`${PORTAL}/third-parties/:tid`, requireAuth, requireWorkspace, async (req, res) => {
     if (!portalReady(req, res)) return notFound(req, res);
     const party = await clientView.thirdParty(db, req.workspace, req.params.tid);
     if (!party) return portalNotFound(req, res);
     const tab = ['overview', 'scoping', 'reviews', 'issues', 'conditions', 'documents', 'contracts'].includes(String(req.query.tab)) ? String(req.query.tab) : 'overview';
-    const canEdit = await clientView.canEditDetails(db, req.workspace, req.user);
-    res.render('tprm_portal_party', { user: req.user, ws: req.workspace, party, tab, tp: tpPlacement, canEdit,
-      clientPeople: canEdit ? await tpRegister.clientPeople(db, req.workspace.id) : [], editing: req.query.edit === 'details' && canEdit });
+    return renderPortalParty(req, res, party, { tab });
+  });
+
+  app.get(`${PORTAL}/third-parties/:tid/documents/:did/download`, requireAuth, requireWorkspace, async (req, res, next) => {
+    try {
+      if (!portalReady(req, res)) return notFound(req, res);
+      const party = await clientView.thirdPartyRef(db, req.workspace, req.params.tid);
+      if (!party) return portalNotFound(req, res);
+      const file = await require('../lib/tprm/party-documents').clientFile(db, req.workspace, party.id, req.params.did);
+      if (!file) return portalNotFound(req, res);
+      const target = await resolveUploadPath(file.stored_path, req.workspace.firm_id, req.workspace.id);
+      if (!target || !fs.existsSync(target)) return portalNotFound(req, res);
+      await logAction(req.user.id, req.workspace.id, 'tprm_client_download_party_document', 'tp_party_document', Number(file.id),
+        { third_party_id: Number(party.id) }, auditCtx(req));
+      res.set('X-Content-Type-Options', 'nosniff');
+      return res.download(target, file.original_name);
+    } catch (err) { return next(err); }
   });
 
   const clientRequests = require('../lib/tprm/client-requests');
@@ -287,7 +380,7 @@ function register(app, deps) {
     const model = await clientRequests.modelFor(db, req.workspace);
     return res.status(status).render('tprm_portal_request', {
       user: req.user, ws: req.workspace, values, errors,
-      questions: clientRequests.questionsOf(model), people: await tpRegister.clientPeople(db, req.workspace.id),
+      questions: clientRequests.questionsOf(model).map(require('../lib/tprm/client-wording').question), people: await tpRegister.clientPeople(db, req.workspace.id),
     });
   }
 
@@ -312,9 +405,57 @@ function register(app, deps) {
         await require('../lib/tprm/messages').clientRequested(db, { workspaceId: req.workspace.id, requestId: r.id });
         return res.redirect(withToast(back, `Request for ${r.name} sent to your consultants`));
       } catch (err) {
-        if (err instanceof TprmError && err.status === 400) return await renderRequestForm(req, res, { values: req.body || {}, errors: err.errors || [err.message], status: 400 });
+        if (err instanceof TprmError && (err.status === 400 || err.status === 409)) return await renderRequestForm(req, res, { values: req.body || {}, errors: err.errors || [err.message], status: err.status });
         throw err;
       }
+    } catch (err) { return next(err); }
+  });
+
+  app.post(`${PORTAL}/third-parties/:tid/reassessment-requests`, requireAuth, requireWorkspace, async (req, res, next) => {
+    try {
+      if (!portalReady(req, res)) return notFound(req, res);
+      const base = `/workspaces/${req.workspace.id}/client-portal/third-party-risk`;
+      const party = await clientView.thirdPartyRef(db, req.workspace, req.params.tid);
+      if (!party) return portalNotFound(req, res);
+      const back = `${base}/third-parties/${party.id}#reassess`;
+      if (!(await clientView.canEditDetails(db, req.workspace, req.user))) {
+        return res.status(403).render('error', { user: req.user, ws: req.workspace, message: 'Your role does not allow asking for a reassessment.' });
+      }
+      try {
+        const r = await clientRequests.requestReassessment(db, req.workspace, req.user, party.id, req.body || {});
+        await logAction(req.user.id, req.workspace.id, 'tprm_client_reassessment_requested', 'tp_client_request', r.id, { third_party_id: r.thirdPartyId }, auditCtx(req));
+        await require('../lib/tprm/messages').clientRequested(db, { workspaceId: req.workspace.id, requestId: r.id });
+        return res.redirect(withToast(`${base}/requests/${r.id}`, `Your consultants have been asked to ${r.firstAssessment ? 'assess' : 'reassess'} ${r.name}`));
+      } catch (err) {
+        if (err instanceof TprmError && err.status === 404) return portalNotFound(req, res);
+        if (err instanceof TprmError && err.status === 409 && err.requestId) return res.redirect(withToast(`${base}/requests/${err.requestId}`, err.message, 'error'));
+        if (err instanceof TprmError && err.status === 400) {
+          const full = await clientView.thirdParty(db, req.workspace, party.id);
+          if (!full) return portalNotFound(req, res);
+          const body = req.body || {};
+          const values = { reason: String(body.reason == null ? '' : body.reason).slice(0, 2000), preferred_date: String(body.preferred_date == null ? '' : body.preferred_date).slice(0, 10) };
+          return renderPortalParty(req, res, full, { reassessForm: { values, errors: err.errors || [err.message] }, status: 400 });
+        }
+        if (err instanceof TprmError && err.status === 409) return res.redirect(withToast(back, err.message, 'error'));
+        throw err;
+      }
+    } catch (err) { return next(err); }
+  });
+
+  app.get(`${PORTAL}/requests/:rid`, requireAuth, requireWorkspace, async (req, res, next) => {
+    try {
+      if (!portalReady(req, res)) return notFound(req, res);
+      let request;
+      try {
+        request = await clientRequests.forClient(db, req.workspace, req.params.rid);
+      } catch (err) {
+        if (err instanceof TprmError && err.status === 404) return portalNotFound(req, res);
+        throw err;
+      }
+      return res.render('tprm_portal_request_view', {
+        user: req.user, ws: req.workspace, request, requestLabels: clientRequests.STATUS_LABELS, requestLabel: clientRequests.statusLabel,
+        canWithdraw: request.status === 'submitted' && await clientView.canEditDetails(db, req.workspace, req.user),
+      });
     } catch (err) { return next(err); }
   });
 

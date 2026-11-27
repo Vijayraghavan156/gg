@@ -1,0 +1,32 @@
+<% const fr = locals.frame || null; const fm = fr && fr.firm && fr.firm.name ? fr.firm : null; const showLogo = !!(fm && fm.logo && fm.logoOnDark);
+   const b = locals.band || {}; const pr = b.progress || null; %>
+<header class="vq-topbar vq-brandbar" data-vendor-brandbar="<%= fm ? 'firm' : 'plain' %>">
+  <div class="vq-topbar-brand">
+    <% if (showLogo) { %><img class="vq-brand-logo" src="<%= fm.logo %>" alt="<%= fm.name %>"><% } %>
+    <% if (fm) { %><span class="vq-brand-name<%= showLogo ? ' sr-only' : '' %>" data-vendor-firm><%= fm.name %></span><% } %>
+    <span class="vq-brand-portal">Third-party portal</span>
+  </div>
+  <div class="vq-topbar-me">
+    <% if (b.savedHtml) { %><span class="vq-top-saved"><%- b.savedHtml %></span><% } %>
+    <% if (fr && fr.me) { %>
+      <span class="vq-me-name"><span data-vendor-person><%= fr.me.name %></span><% if (fr.orgName) { %><span class="vq-me-org"> · <span data-vendor-org><%= fr.orgName %></span></span><% } %></span>
+      <form method="POST" action="/vendor/p/sign-out" class="vq-inline" data-vendor-sign-out><input type="hidden" name="_aft" value="<%= fr.signOutAft %>"><button class="vq-linklike" type="submit">Sign out</button></form>
+    <% } %>
+  </div>
+</header>
+<div class="vq-band">
+  <div class="vq-band-in">
+    <div class="vq-band-main">
+      <% if (b.eyebrow) { %><p class="vq-eyebrow"><%= b.eyebrow %></p><% } %>
+      <h1 class="vq-title"<%- b.h1Attrs || '' %>><%- b.titleHtml %></h1>
+      <% if (b.metaHtml && b.metaHtml.length) { %><p class="vq-band-meta"><%- b.metaHtml.join('<span class="vq-band-gap" aria-hidden="true"></span>') %></p><% } %>
+    </div>
+    <% if (pr) { %>
+    <div class="vq-band-progress">
+      <p class="vq-band-count"><span class="vq-big" aria-hidden="true"><%= pr.answered %></span><span aria-hidden="true">of <%= pr.total %> answered</span><span class="vq-band-left" aria-hidden="true"><%= pr.total - pr.answered ? (pr.total - pr.answered) + ' to go' : 'All answered' %></span><span class="sr-only" data-vendor-questions-left="<%= pr.total - pr.answered %>" data-vendor-progress><%= pr.answered %> of <%= pr.total %> questions answered</span></p>
+      <progress class="vq-track" max="<%= pr.total || 1 %>" value="<%= pr.answered %>" aria-hidden="true"></progress>
+    </div>
+    <% } %>
+    <% if (b.actionsHtml) { %><div class="vq-band-actions" data-vendor-toolbar><%- b.actionsHtml %></div><% } %>
+  </div>
+</div>

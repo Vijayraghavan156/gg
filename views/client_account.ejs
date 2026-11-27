@@ -1,0 +1,73 @@
+<%- include('partials/header', { title: 'Account', user, ws, active, portalView }) %>
+<%
+  const teamBase = '/workspaces/' + ws.id + '/client-portal/account/team';
+  const day = d => { const t = d ? new Date(d) : null; return t && !Number.isNaN(t.getTime()) ? t.toISOString().slice(0, 10) : ''; };
+  const owners = team.clientPeople.filter(p => p.role === 'client_owner').length;
+  const clientName = ws.brand_display_name || ws.client_name;
+%>
+<div class="page-head"><div><h1>Account</h1></div></div>
+<% if (message) { %><div class="panel panel-pad" role="status" style="margin-bottom:18px;" data-client-account-message="<%= message.kind %>"><%= message.text %></div><% } %>
+
+<section class="panel" style="margin-bottom:18px;" data-client-account-me>
+  <div class="panel-head"><h2>You</h2></div>
+  <div class="panel-pad">
+    <p><strong><%= user.name %></strong></p>
+    <p class="meta"><%= user.email %></p>
+    <p class="meta">Role at <%= clientName %>: <%= myRole %></p>
+  </div>
+</section>
+
+<section class="panel" style="margin-bottom:18px;overflow:hidden;" data-client-team data-client-team-owner="<%= isOwner ? '1' : '0' %>">
+  <div class="panel-head"><h2>Your team</h2></div>
+  <% if (!isOwner) { %><div class="panel-pad meta" data-client-team-readonly>Only a client sponsor can invite or remove people. Ask one of them, or your consultants.</div><% } %>
+  <table class="t" style="margin:0;">
+    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead>
+    <tbody>
+    <% team.clientPeople.forEach(p => { const self = Number(p.id) === Number(user.id); const lastOwner = p.role === 'client_owner' && owners <= 1; %>
+      <tr data-client-team-person="<%= p.id %>">
+        <td><%= p.name %><%= self ? ' (you)' : '' %></td><td><%= p.email %></td><td><%= p.roleLabel %></td>
+        <td><% if (isOwner && !self && !lastOwner) { %><form method="POST" action="<%= teamBase %>/members/<%= p.id %>/remove" style="margin:0" data-client-team-remove="<%= p.id %>"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-ghost btn-xs" type="submit">Remove</button></form><% } %></td>
+      </tr>
+    <% }) %>
+    <% team.consultants.forEach(c => { %>
+      <tr data-client-team-consultant="<%= c.id %>"><td><%= c.name %></td><td><%= c.email %></td><td><%= c.is_lead ? 'Engagement lead' : 'Consultant' %></td><td></td></tr>
+    <% }) %>
+    </tbody>
+  </table>
+</section>
+
+<% if (isOwner) { %>
+<section class="panel" style="margin-bottom:18px;overflow:hidden;" data-client-team-invites>
+  <div class="panel-head"><h2>Invitations</h2></div>
+  <div class="panel-pad" style="border-bottom:1px solid var(--border);">
+    <form method="POST" action="<%= teamBase %>/invite" class="stack-grid" style="--cols:1fr 1fr 200px auto;gap:10px;align-items:end;" data-client-team-invite-form>
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div><label class="label" for="ca-email">Email</label><input class="input" id="ca-email" name="email" type="email" maxlength="254" required></div>
+      <div><label class="label" for="ca-name">Name (optional)</label><input class="input" id="ca-name" name="name" type="text" maxlength="200"></div>
+      <div><label class="label" for="ca-role">Role</label><select class="select" id="ca-role" name="role"><% inviteRoles.forEach(r => { %><option value="<%= r.value %>"><%= r.label %></option><% }) %></select></div>
+      <button class="btn btn-primary" type="submit">Send invitation</button>
+    </form>
+    <div class="meta text-xs" style="margin-top:8px;">They get an email with a link to set a password. The link works once and expires in 7 days.</div>
+  </div>
+  <% if (!team.invites.length) { %><div class="panel-pad meta">No invitations waiting.</div><% } else { %>
+  <table class="t" style="margin:0;">
+    <thead><tr><th>Email</th><th>Role</th><th>Sent</th><th>Link</th><th></th></tr></thead>
+    <tbody>
+    <% team.invites.forEach(i => { %><tr data-client-team-invite="<%= i.id %>">
+      <td><%= i.name ? i.name + ', ' : '' %><%= i.email %></td><td><%= i.roleLabel %></td><td><%= day(i.created_at) %></td>
+      <td><%= i.expired ? 'Expired ' + day(i.expires_at) : 'Expires ' + day(i.expires_at) %></td>
+      <td><% if (i.manageable) { %><div class="row" style="gap:6px">
+        <form method="POST" action="<%= teamBase %>/invites/<%= i.id %>/resend" style="margin:0" data-client-team-resend="<%= i.id %>"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-secondary btn-xs" type="submit">Resend</button></form>
+        <form method="POST" action="<%= teamBase %>/invites/<%= i.id %>/revoke" style="margin:0" data-client-team-revoke="<%= i.id %>"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-ghost btn-xs" type="submit">Withdraw</button></form>
+      </div><% } else { %><span class="meta text-xs" data-client-team-invite-theirs="<%= i.id %>">Sent by your consultants</span><% } %></td></tr><% }) %>
+    </tbody>
+  </table><% } %>
+</section>
+<% } %>
+
+<section class="panel" data-client-account-updates>
+  <div class="panel-head"><h2>Your notifications</h2><a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/client-portal/updates">All updates</a></div>
+  <% if (!updates.length) { %><div class="panel-pad meta">No notifications yet.</div><% } %>
+  <% updates.forEach(u => { %><div class="panel-pad" style="border-bottom:1px solid var(--border)" data-client-account-update="<%= u.id %>"><a href="<%= u.link %>"><%= u.title %></a><div class="meta text-xs"><%= day(u.created_at) %><%= u.actor_read_at ? '' : ' · Unread' %></div></div><% }) %>
+</section>
+<%- include('partials/footer') %>

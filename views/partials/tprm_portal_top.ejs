@@ -1,8 +1,8 @@
-<% const fr = locals.frame || null; const fm = fr && fr.firm && fr.firm.name ? fr.firm : null; %>
+<% const fr = locals.frame || null; const fm = fr && fr.firm && fr.firm.name ? fr.firm : null; const showLogo = !!(fm && fm.logo && !fm.logoOnDark); %>
 <header class="vq-topbar vq-brandbar" data-vendor-brandbar="<%= fm ? 'firm' : 'plain' %>">
   <div class="vq-topbar-brand">
-    <% if (fm && fm.logo) { %><img class="vq-brand-logo" src="<%= fm.logo %>" alt="<%= fm.name %>"><% } %>
-    <% if (fm) { %><span class="vq-brand-name<%= fm.logo ? ' sr-only' : '' %>" data-vendor-firm><%= fm.name %></span><% } %>
+    <% if (showLogo) { %><img class="vq-brand-logo" src="<%= fm.logo %>" alt="<%= fm.name %>"><% } %>
+    <% if (fm) { %><span class="vq-brand-name<%= showLogo ? ' sr-only' : '' %>" data-vendor-firm><%= fm.name %></span><% } %>
     <span class="vq-brand-portal">Third-party portal</span>
   </div>
   <div class="vq-topbar-me">

@@ -240,12 +240,16 @@ test('divergence has one definition: the outcome differs from the recommendation
   v = D.validate({ outcome: 'approve', risk_acceptance_until: '2031-01-01' }, { recommendation: onApprove, today: t });
   assert.equal(v.values.risk_acceptance_until, null, 'no risk acceptance on a decision that follows the advice');
   v = D.validate({ outcome: 'reject' }, { recommendation: onApprove, today: t });
-  assert.equal(v.errors.length, 2, 'a diverging decision needs a rationale and a risk-acceptance expiry');
-  v = D.validate({ outcome: 'reject', rationale: 'Budget', risk_acceptance_until: t }, { recommendation: onApprove, today: t });
+  assert.equal(v.errors.length, 1, 'a stricter decision needs a rationale only');
+  v = D.validate({ outcome: 'reject', rationale: 'Budget', risk_acceptance_until: '2031-01-01' }, { recommendation: onApprove, today: t });
+  assert.deepEqual([v.errors, v.values.diverges, v.values.risk_acceptance_until], [[], true, null], 'a stricter decision is never a risk acceptance');
+  v = D.validate({ outcome: 'approve' }, { recommendation: { outcome: 'reject' }, today: t });
+  assert.equal(v.errors.length, 2, 'a less cautious decision needs a rationale and a risk-acceptance expiry');
+  v = D.validate({ outcome: 'approve', rationale: 'Budget', risk_acceptance_until: t }, { recommendation: { outcome: 'reject' }, today: t });
   assert.match(v.errors.join(' '), /after today/);
   v = D.validate({ outcome: 'approve_with_conditions', rationale: 'We add our own', risk_acceptance_until: '2030-06-30' }, { recommendation: onApprove, today: t });
   assert.deepEqual(v.errors, []);
-  assert.equal(v.values.diverges, true);
+  assert.deepEqual([v.values.diverges, v.values.risk_acceptance_until], [true, null]);
   v = D.validate({ outcome: 'request_more_information' }, { recommendation: onApprove, today: t });
   assert.match(v.errors.join(' '), /what more information/);
   v = D.validate({ outcome: 'request_more_information', rationale: 'SOC 2 report please' }, { recommendation: onApprove, today: t });
@@ -514,14 +518,15 @@ test('the database holds one decision per version, the divergence rule and the r
   await assert.rejects(ins('approve', true, '2099-01-01', 'x'), /diverges must say/);
   await assert.rejects(ins('reject', true), /divergence_accepted/, 'rationale and expiry required when diverging');
   await assert.rejects(ins('request_more_information', true, '2099-01-01', 'x'), /never_diverges|diverges must say/);
-  await assert.rejects(ins('approve', false, '2099-01-01'), /risk_acceptance_only_when_diverging/);
+  await assert.rejects(ins('approve', false, '2099-01-01'), /risk_acceptance_only_when_diverging|less cautious/);
   assert.equal((await decisionsOf(ctx.a)).length, 0);
-  await ins('reject', true, '2099-01-01', 'Our own reasons');
+  await assert.rejects(ins('reject', true, '2099-01-01', 'Our own reasons'), /less cautious/, 'a stricter decision carries no risk acceptance');
+  await ins('reject', true, null, 'Our own reasons');
   assert.equal((await assessmentRow(ctx.a)).status, 'recommendation_issued');
   await assert.rejects(ins('approve', false), /one_per_version/, 'one decision per recommendation version');
 });
 
-test('a diverging decision shows a warning and needs a rationale and a risk-acceptance expiry; "Do not onboard" leaves it proposed', async () => {
+test('a stricter decision needs a rationale but no risk acceptance; "Do not onboard" leaves it proposed', async () => {
   const ctx = await confirmed(main, 'Diverge Co', { status: 'proposed' });
   const rid = await issued(ctx, 'approve');
   const ownerSession = await sessionFor(main.owner);
@@ -529,19 +534,18 @@ test('a diverging decision shows a warning and needs a rationale and a risk-acce
   assert.match(page.text, /data-tprm-divergence-warning hidden/, 'the warning is there, shown when a different outcome is picked');
   assert.match(page.text, /<span>Onboard<\/span>\s*<span class="meta text-xs">\(recommended\)<\/span>/);
   for (const label of ['Onboard with conditions', 'Do not onboard', 'Need more information']) assert.match(page.text, new RegExp(`<span>${label}</span>`));
+  assert.doesNotMatch(page.text, /value="reject"[^>]*data-accepts-risk/, 'refusing is not a risk acceptance');
 
   let res = await decide(ownerSession, ctx.ws, rid, { outcome: 'reject' });
   assert.equal(res.status, 400);
   assert.match(res.text, /give your rationale/);
-  assert.match(res.text, /risk acceptance expires/);
+  assert.doesNotMatch(res.text, /set the date your risk acceptance expires/);
   assert.match(res.text, /data-tprm-divergence-warning\s*>/, 'the warning is shown on the refused form');
-  res = await decide(ownerSession, ctx.ws, rid, { outcome: 'reject', rationale: 'We do not need it any more' });
-  assert.equal(res.status, 400);
   assert.equal((await decisionsOf(ctx.a)).length, 0, 'nothing recorded');
   res = await decide(ownerSession, ctx.ws, rid, { outcome: 'reject', rationale: 'We do not need it any more', risk_acceptance_until: '2099-03-31' });
   assert.equal(res.status, 302);
   const [d] = await decisionsOf(ctx.a);
-  assert.deepEqual([d.outcome, d.diverges, d.risk_acceptance_until], ['reject', true, '2099-03-31']);
+  assert.deepEqual([d.outcome, d.diverges, d.risk_acceptance_until], ['reject', true, null]);
   assert.equal((await assessmentRow(ctx.a)).status, 'completed');
   const t = await tpRow(ctx.tp);
   assert.equal(t.status, 'proposed', 'an onboarding reject leaves the third party proposed');
@@ -550,6 +554,11 @@ test('a diverging decision shows a warning and needs a rationale and a risk-acce
   assert.deepEqual([approval.state, approval.approved], ['not_approved', false]);
   const aPage = await allSteps(consultant.session, aBase(ctx.ws, ctx.tp, ctx.a));
   assert.match(aPage.text, /data-tprm-decision-diverges/);
+  assert.match(aPage.text, /Stricter than the recommendation/);
+  assert.doesNotMatch(aPage.text, /Risk accepted until/);
+  const after = await ownerSession.get(recPage(ctx.ws, rid));
+  assert.match(after.text, /data-tprm-portal-stricter/);
+  assert.doesNotMatch(after.text, /Risk accepted until/);
 });
 
 test('a diverging approval lasts until its risk acceptance expires', async () => {
@@ -575,6 +584,10 @@ test('reassessment: "Exit" exits the third party; "Continue" sets the next due d
   assert.equal((await D.currentApproval(db, await wsRow(exit.ws), exit.tp)).state, 'exited');
   const exitEvent = (await chain(exit.ws, 'third_party', exit.tp)).find(e => e.action === 'third_party.client_decision');
   assert.deepEqual([exitEvent.before_state.status, exitEvent.after_state.status], ['in_use', 'exited']);
+  const exitRow = await db.prepare('SELECT exit_date::text AS exit_date, exit_reason FROM tp_third_parties WHERE id = ?').get(exit.tp);
+  assert.equal(exitRow.exit_date, dates.todayFor(await wsRow(exit.ws)));
+  assert.match(exitRow.exit_reason, /Rejected by the client after a reassessment/);
+  assert.match(exitEvent.after_state.exit_reason || '', /Rejected by the client/);
 
   const cont = await confirmed(main, 'Continue Co', { status: 'in_use' });
   const rid2 = await issued(cont, 'approve');
@@ -677,7 +690,7 @@ test('the portal shows released files only, findings with their client-facing de
   assert.doesNotMatch(page.text, /INTERNAL-REVIEW-COMMENT/);
   assert.doesNotMatch(page.text, new RegExp(shared.stored_path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'no storage path');
   assert.match(page.text, /Enforce MFA for all admin accounts/, 'conditions with owner and due date');
-  assert.match(page.text, /Third party/);
+  assert.match(page.text, /Who: Supplier/);
   assert.match(page.text, /Low because/, 'the final tier and its reason');
 
   const unreleased = await db.prepare("SELECT id FROM tp_evidence WHERE assessment_id=? AND original_name='internal-workpaper.txt'").get(ctx.a);
@@ -868,9 +881,8 @@ test('issue comments: the client sees and joins the conversation; internal notes
   assert.equal((await owner.post(`${portal(c.id)}/issues/${iid}/comments`, { body: '   ', third_party_id: String(ctx.tp) })).status, 302);
 
   assert.equal((await decide(owner, ctx.ws, rid, { outcome: 'approve' })).status, 302);
-  const closed = await owner.post(`${portal(c.id)}/issues/${iid}/comments`, { body: 'Too late', third_party_id: String(ctx.tp) });
-  assert.match(toast(closed), /closed/);
-  assert.match((await owner.get(`${portal(c.id)}/third-parties/${ctx.tp}?tab=issues`)).text, /data-tprm-cv-thread-closed/);
+  const still = await owner.post(`${portal(c.id)}/issues/${iid}/comments`, { body: 'Still open after deciding', third_party_id: String(ctx.tp) });
+  assert.match(toast(still), /Comment added/, 'the decision does not close the conversation on an open finding');
 });
 
 test('client details: an owner at the client, business unit and volume, set by the firm or by the client', async () => {
@@ -893,7 +905,8 @@ test('client details: an owner at the client, business unit and volume, set by t
   const page = await owner.get(`${portal(c.id)}/third-parties/${tp}`);
   assert.match(page.text, /data-tprm-cv-owner>[^<]*dec-coord/);
   assert.match(page.text, /data-tprm-cv-edit-details/);
-  assert.match(page.text, /Not asked at this tier/);
+  assert.match(page.text, /data-tprm-cv-insurance><dt>Cyber insurance<\/dt><dd><span class="cv-muted">Not answered yet</);
+  assert.doesNotMatch(page.text, /Not asked at this tier/);
   const home = await owner.get(portal(c.id));
   assert.match(home.text, /dec-coord-client-view-details@test\.local<\/td>/);
   assert.doesNotMatch((await owner.get(`${portal(c.id)}?owner=me`)).text, new RegExp(`data-tprm-cv-party="${tp}"`), 'owned by someone else');
@@ -1039,6 +1052,8 @@ test('register: tiles, extra columns, and starting assessments for several ticke
   assert.match(page.text, /data-tprm-register-tiles/);
   assert.match(page.text, /data-tprm-bulk/);
   assert.match(page.text, new RegExp(`name="ids" value="${a1}" form="tp-bulk"`));
+  assert.match(page.text, /A reminder goes to the person the questionnaire was sent to while their link opens, or to the main contact by sign-in when that link no longer opens, once a day at most for each review\./);
+  assert.doesNotMatch(page.text, /Reminders go only where a questionnaire link is open/);
   const started = await consultant.session.post(`/tprm/clients/${c.id}/third-parties/bulk-start`, { ids: [String(a1), String(a2)], _tp_confirmed: '1' });
   assert.equal(started.status, 302);
   assert.match(toast(started), /2 assessments started/);
@@ -1095,7 +1110,7 @@ test('finding conversations: the client and the firm talk about a finding that w
   await os.get(portal(other.id));
   assert.equal((await os.post(`${portal(other.id)}/findings/${fid}/comments`, { body: 'Not mine' })).status, 404);
   assert.equal((await decide(owner, ctx.ws, rid, { outcome: 'approve' })).status, 302);
-  assert.match(toast(await owner.post(`${portal(c.id)}/findings/${fid}/comments`, { body: 'Late', third_party_id: String(ctx.tp) })), /closed/);
+  assert.match(toast(await owner.post(`${portal(c.id)}/findings/${fid}/comments`, { body: 'After deciding', third_party_id: String(ctx.tp) })), /Comment added/);
 });
 
 test('automatic reassessments: started before they are due, by the last lead or the client lead, once, and only where switched on', async () => {
@@ -1108,6 +1123,8 @@ test('automatic reassessments: started before they are due, by the last lead or 
   const plus = n => new Date(Date.parse(`${today}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
   await db.prepare('UPDATE tp_third_parties SET next_due_date = ? WHERE id = ?').run(plus(10), soon);
   await db.prepare('UPDATE tp_third_parties SET next_due_date = ? WHERE id = ?').run(plus(90), later);
+  const never = await addThirdParty(c.id, 'Never Assessed In Use Co', 'in_use');
+  await db.prepare('UPDATE tp_third_parties SET next_due_date = NULL, last_assessment_date = NULL WHERE id = ?').run(never);
   const permissionsFor = async u => new Set(rbac.rolePermissions(rbac.normalizeRole(u.firm_role)));
   const count = async tp => (await db.prepare('SELECT COUNT(*)::int n FROM tp_assessments WHERE workspace_id=? AND third_party_id=?').get(c.id, tp)).n;
   await auto.run(db, { permissionsFor });
@@ -1119,6 +1136,7 @@ test('automatic reassessments: started before they are due, by the last lead or 
   await auto.run(db, { permissionsFor });
   assert.equal(await count(soon), 1, 'started once');
   assert.equal(await count(later), 0, 'not yet within 30 days');
+  assert.equal(await count(never), 1, 'a supplier in use that was never assessed is started too');
   const a = await db.prepare('SELECT type, status, lead_consultant_id FROM tp_assessments WHERE workspace_id=? AND third_party_id=?').get(c.id, soon);
   assert.deepEqual([a.type, a.status, Number(a.lead_consultant_id)], ['reassessment', 'scoping', consultant.id]);
 });

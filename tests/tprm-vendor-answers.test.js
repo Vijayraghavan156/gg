@@ -224,7 +224,7 @@ async function submitted(name, opts) {
   const ctx = await linked(name, opts);
   await answerAll(ctx);
   const res = await submitLink(ctx.token);
-  assert.equal(res.status, 200, res.text.slice(0, 300));
+  assert.equal(res.status, 303, res.text.slice(0, 300));
   assert.equal((await qRow(ctx.a)).status, 'submitted');
   return ctx;
 }
@@ -388,7 +388,7 @@ test('saving: an explanation is required for No and Not applicable, Partially is
   assert.equal((await qRow(ctx.a)).status, 'in_progress');
   assert.ok((await linksOf(ctx.a))[0].last_opened_at, 'last_opened_at set by the first POST');
   const page = await request('GET', ok.location);
-  assert.match(page.text, /data-vendor-progress>2 of 36 questions answered/);
+  assert.match(page.text, /data-vendor-progress>1 of 36 questions answered/, 'GOV-02 still needs its document, so it is not yet answered');
   assert.match(page.text, /data-vendor-notice>Your answers are saved/);
   assert.equal((await linksOf(ctx.a)).length, 1);
   await assert.rejects(db.prepare("UPDATE tp_answers SET detail = NULL WHERE assessment_id=? AND question_id='GOV-01'").run(ctx.a), /tp_answers_detail/);
@@ -588,8 +588,9 @@ test('submission needs every question answered and evidence for evidence-require
   const ready = await save(ctx.token, {}, { intent: 'review' });
   assert.match(ready.text, /data-vendor-ready>All 36 questions are answered/);
   assert.match(ready.text, /data-vendor-submit-form/);
-  const done = await submitLink(ctx.token);
-  assert.equal(done.status, 200);
+  const sent = await submitLink(ctx.token);
+  assert.equal(sent.status, 303, 'the submission redirects to the thank-you page');
+  const done = await vget(ctx.token);
   assert.match(done.text, /data-vendor-submitted>Submitted on \d{1,2} [A-Z][a-z]{2} \d{4}, \d{1,2}:\d{2} [ap]m [A-Za-z0-9+:-]+\.</);
   assert.equal((done.text.match(/Thank you/g) || []).length, 1, 'one thank-you');
   const q = await qRow(ctx.a);
@@ -753,7 +754,7 @@ test('the firm reviews the answers: what needs judgement, in questionnaire order
   await answerAll(ctx, { 'GOV-02': { r: 'no', d: 'No named security officer.' }, 'GOV-03': { r: 'na', d: 'Drafted only.' } });
   await save(ctx.token, { 'GOV-02': { r: 'no', d: 'No named security officer.' } },
     { files: [{ field: 'file__GOV-02', filename: 'org-chart.txt', content: 'org chart' }] });
-  assert.equal((await submitLink(ctx.token)).status, 200);
+  assert.equal((await submitLink(ctx.token)).status, 303);
   let page = await firmPage(ctx);
   assert.match(page.text, /data-tprm-answers/);
   const shown = [...(await reviewPage(ctx)).text.matchAll(/data-tprm-answer-row="([A-Z]+-\d+)" data-tprm-answer-response="(\w+)"/g)].map(m => [m[1], m[2]]);
@@ -983,7 +984,7 @@ test('a reassessment is prefilled from the last submitted questionnaire; the thi
     all[r.question_id] = asPosted(r);
   }
   await save(token, all);
-  assert.equal((await submitLink(token)).status, 200);
+  assert.equal((await submitLink(token)).status, 303);
   assert.equal((await qRow(a)).status, 'submitted');
 });
 
@@ -1026,6 +1027,27 @@ test('the workbench: plain answers are hidden and counted; the list, the panes a
   assert.match(page.text, /data-tprm-answer-row="GOV-02"[\s\S]*?type="radio" name="conclusion" value="satisfactory" data-tprm-key="1"[\s\S]*?value="partially_satisfactory" data-tprm-key="2"[\s\S]*?value="unsatisfactory" data-tprm-key="3"[\s\S]*?data-tprm-save-conclusion/);
   const all = await reviewPage(ctx, 'all');
   assert.equal([...all.text.matchAll(/data-tprm-answer-pane=/g)].length, (await qRow(ctx.a)).vendor_question_count);
+});
+
+test('conclusion.json returns the counts the step menu and the filters show, so they can follow an in-place save', async () => {
+  const ctx = await submitted('Bench Counts Co');
+  const before = (await reviewPage(ctx, 'all')).text;
+  const noteOf = text => Number(((text.match(/data-tprm-unreviewed-note>(\d+) answers? without a conclusion</) || [])[1]));
+  const filterOf = (text, f) => Number(((text.match(new RegExp(`data-tprm-answer-filter(?:-current)?="${f}"[^>]*>[^<]*<span class="tpa-filter-n"> (\\d+)</span>`)) || [])[1]));
+  const startNote = noteOf(before);
+  assert.ok(startNote > 0, 'the step menu counts the answers without a conclusion in its own element');
+  const startOpen = filterOf(before, 'not_reviewed');
+  assert.ok(startOpen > 0);
+  const gov2 = await answerOf(ctx.a, 'GOV-02');
+  const body = JSON.parse((await jsonPost(consultant.session, `${qBase(ctx)}/answers/${gov2.id}/conclusion.json`,
+    { conclusion: 'satisfactory', row_version: String(gov2.row_version) })).text);
+  assert.equal(body.ok, true);
+  const after = (await reviewPage(ctx, 'all')).text;
+  assert.equal(body.blockers.unreviewed, noteOf(after), 'the step menu count after the save');
+  assert.equal(noteOf(after), startNote - 1);
+  assert.ok(body.filterCounts, 'the save returns the filter counts');
+  for (const f of ['all', 'unexpected', 'not_reviewed']) assert.equal(body.filterCounts[f], filterOf(after, f), `the ${f} filter count`);
+  assert.equal(body.filterCounts.not_reviewed, startOpen - 1);
 });
 
 test('conclusion.json: saves with the versions the page needs; stale, unsigned, outsiders and client users are refused', async () => {
@@ -1114,7 +1136,7 @@ test('accept-plain.json: accepts exactly the plain answers, one History event ea
 test('accept-plain as a form: confirmed once (without the script, a confirmation page); a section at a time', async () => {
   const ctx = await linked('Bench Form Co', { answers: { ...LOW, data_handled: 'internal' } });
   await answerAll(ctx);
-  assert.equal((await submitLink(ctx.token)).status, 200);
+  assert.equal((await submitLink(ctx.token)).status, 303);
   const page = await reviewPage(ctx);
   const section = (page.text.match(/data-tprm-accept-plain-form="(\d+)"/) || [])[1];
   assert.ok(section !== undefined, 'a section with plain answers has its own button');
@@ -1156,7 +1178,7 @@ test('the evidence of an answer previews in place: a PDF or image inline, a text
   const ctx = await linked('Bench Preview Co');
   await save(ctx.token, { 'GOV-02': good('GOV-02') }, { files: [{ field: 'file__GOV-02', filename: 'appointment.txt', content: 'Appointment of A. Rao as CISO, reporting to the CEO.' }] });
   await answerAll(ctx);
-  assert.equal((await submitLink(ctx.token)).status, 200);
+  assert.equal((await submitLink(ctx.token)).status, 303);
   const page = await reviewPage(ctx);
   const file = await db.prepare("SELECT id FROM tp_evidence WHERE assessment_id=? AND original_name='appointment.txt'").get(ctx.a);
   const textUrl = `${aBase(ctx.ws, ctx.tp, ctx.a)}/evidence/${file.id}/text`;
@@ -1236,7 +1258,7 @@ test('every change is an event in the assessment chain, the chain verifies, and 
   await save(ctx.token, { 'AIS-01': { r: 'yes' } });
   await answerAll(ctx, { 'AIS-01': { r: 'yes' }, ...Object.fromEntries(AI_IDS.map(id => [id, good(id, { ref: 'AI doc' })])) });
   await save(ctx.token, { 'GOV-01': { t: 'Yearly', ref: 'x' } }, { files: [{ field: 'file__GOV-01', filename: 'evt.txt', content: 'event file' }] });
-  assert.equal((await submitLink(ctx.token)).status, 200);
+  assert.equal((await submitLink(ctx.token)).status, 303);
   await consultant.session.post(`${qBase(ctx)}/clarifications`, { question_id: 'GOV-01', body: 'More please' });
   await consultant.session.post(`${qBase(ctx)}/clarifications/send`, {});
   const rows = (await chain(ctx.ws, ctx.a)).map(e => e.action);
@@ -1414,7 +1436,7 @@ test('follow-up questions: asked only after the chosen answer, cleared when the 
   f = await answerOf(ctx.a, F);
   assert.equal(f.response, null, 'the parent changed to Yes: the follow-up answer is cleared');
   const res = await submitLink(ctx.token);
-  assert.equal(res.status, 200, res.text.slice(0, 300));
+  assert.equal(res.status, 303, res.text.slice(0, 300));
   assert.equal((await qRow(ctx.a)).status, 'submitted');
 
   const review = (await firmPage(ctx)).text;
@@ -1434,7 +1456,122 @@ test('follow-up questions: asked only after the chosen answer, cleared when the 
   const form = multipart([['_aft', aftOf(vp.text)], ...followText, ['intent', 'save']], []);
   assert.equal((await request('POST', `/vendor/q/${asked.token}/save`, { body: form.body, headers: form.headers })).status, 303);
   stuck = await submitLink(asked.token);
-  assert.equal(stuck.status, 200);
+  assert.equal(stuck.status, 303);
   assert.equal((await qRow(asked.a)).status, 'submitted');
   assert.match((await firmPage(asked)).text, new RegExp(`data-tprm-answer-row="${F}"[\\s\\S]*?The risk committee decides`));
+});
+
+function pngOf(width, height, pixel) {
+  const zlib = require('node:zlib');
+  const table = [];
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; table[n] = c >>> 0; }
+  const crc = buf => { let x = 0xffffffff; for (const v of buf) x = table[(x ^ v) & 255] ^ (x >>> 8); return (x ^ 0xffffffff) >>> 0; };
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const sum = Buffer.alloc(4); sum.writeUInt32BE(crc(body));
+    return Buffer.concat([len, body, sum]);
+  };
+  const head = Buffer.alloc(13);
+  head.writeUInt32BE(width, 0); head.writeUInt32BE(height, 4); head[8] = 8; head[9] = 6;
+  const raw = Buffer.alloc((width * 4 + 1) * height);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) pixel(x, y).forEach((v, i) => { raw[y * (width * 4 + 1) + 1 + x * 4 + i] = v; });
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', head), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+
+test('the questionnaire frame: answer buttons over the same radios, Next unanswered, Submit only once everything is in, no section table on the overview', async () => {
+  const ctx = await linked('Frame Co');
+  const q = await qRow(ctx.a);
+  const start = (await vget(ctx.token)).text;
+  assert.doesNotMatch(start, /data-vendor-overview-sections/, 'the section list replaces the overview table');
+  assert.match(start, /data-vendor-start/);
+  assert.match(start, /<button class="vq-btn vq-btn--band-main" type="button" disabled[^>]*data-vendor-toolbar-submit>Submit<\/button>/, 'Submit waits for every required answer');
+  assert.doesNotMatch(start, /name="go"/);
+
+  const first = q.sections[0];
+  const page = (await request('GET', `/vendor/q/${ctx.token}?s=1`)).text;
+  assert.match(page, /<main class="vq-main vq-seg" id="main"/, 'one class decides the answer style');
+  const set = (page.match(/<fieldset class="vq-choices">[\s\S]*?<\/fieldset>/) || [''])[0];
+  const radios = [...set.matchAll(/<input class="vq-choice-input" type="radio" id="r-([A-Z]+-\d+)-([a-z]+)" name="r\[([A-Z]+-\d+)\]" value="([a-z]+)"/g)];
+  assert.ok(radios.length >= 3, 'the buttons are radio inputs');
+  for (const r of radios) assert.equal(r[3], r[1], 'posted as r[<question>]');
+  assert.deepEqual(radios.map(r => r[4]).filter(v => ['yes', 'no', 'na'].includes(v)), ['yes', 'no', 'na']);
+  assert.match(page, new RegExp(`<a class="vq-btn vq-btn--sm vq-next-open" href="#q-${first.ids[0]}" data-vendor-next-unanswered="${first.ids[0]}"`), 'the first open question here');
+
+  const here = {};
+  for (const id of first.ids) here[id] = good(id);
+  assert.equal((await save(ctx.token, here)).status, 303);
+  const done = (await request('GET', `/vendor/q/${ctx.token}?s=1`)).text;
+  const later = (done.match(/name="go" value="q:([A-Z]+-\d+)" formnovalidate data-vendor-next-unanswered/) || [])[1];
+  assert.ok(later && q.sections[1].ids.includes(later), 'then the first open question of the next section');
+  const form = multipart([['_aft', aftOf(done)], ['section', '1'], ['go', `q:${later}`]]);
+  const moved = await request('POST', `/vendor/q/${ctx.token}/save`, { body: form.body, headers: form.headers });
+  assert.equal(moved.status, 303);
+  assert.match(moved.location, new RegExp(`\\?s=2&notice=saved#q-${later}$`), 'saves, then lands on that question');
+  const plain = multipart([['_aft', aftOf(done)], ['section', '1'], ['go', q.sections[1].ids[0]]]);
+  assert.match((await request('POST', `/vendor/q/${ctx.token}/save`, { body: plain.body, headers: plain.headers })).location, /\?s=2&notice=saved$/, 'a plain question id still opens its section');
+
+  await answerAll(ctx);
+  const ready = (await vget(ctx.token)).text;
+  assert.match(ready, new RegExp(`<a class="vq-btn vq-btn--band-main" href="/vendor/q/${ctx.token}\\?view=review" data-vendor-toolbar-submit>Submit</a>`));
+  assert.match(ready, /data-vendor-questions-left="0" data-vendor-progress>/);
+});
+
+test('a reviewer question shows under the answer it is about, in its own box with a reply, and a line at the top names it', async () => {
+  const ctx = await submitted('Thread Co');
+  assert.equal((await consultant.session.post(`${qBase(ctx)}/clarifications`, { question_id: 'GOV-01', body: 'Please send the approval minutes.' })).status, 302);
+  await consultant.session.post(`${qBase(ctx)}/clarifications/send`, {});
+  const { token } = await createLink(ctx);
+  const page = (await vget(token)).text;
+  assert.match(page, /data-vendor-mode="clarifying"/);
+  assert.match(page, /data-vendor-asked-banner>va-consultant@test\.local asked about GOV-01\. Reply below\.</);
+  const item = (page.match(/<form[^>]*data-vendor-clarification="\d+">[\s\S]*?<\/form>/) || [''])[0];
+  const order = ['Question GOV-01', 'data-vendor-clarify-answer>Your answer: ', '<div class="vq-thread">', 'va-consultant@test.local', 'Awaiting your reply', 'Please send the approval minutes.', 'name="response"'];
+  let at = -1;
+  for (const bit of order) {
+    const next = item.indexOf(bit, at + 1);
+    assert.ok(next > at, `${bit} comes next`);
+    at = next;
+  }
+});
+
+test('the band shows the letterhead logo only when it reads on the dark band, otherwise the firm name; brand shades keep text contrast', async () => {
+  const shades = require('../lib/tprm/vendor-portal');
+  const orange = shades.brandShades('#f39118');
+  assert.ok(shades.contrast(orange.text, '#ffffff') >= 4.5, 'accent as text on white is darkened');
+  assert.equal(orange.ink, '#1d1d1b', 'dark text on a light accent');
+  const navy = shades.brandShades('#1f3a5f');
+  assert.ok(shades.contrast(navy.onDark, '#1d1d1b') >= 4.5, 'a dark accent is lightened on the band');
+  assert.equal(navy.ink, '#ffffff');
+
+  const ctx = await linked('Logo Co');
+  const before = await db.prepare('SELECT firm_id FROM tp_letterheads WHERE firm_id = ?').get(firmId);
+  const put = async png => {
+    const sha = crypto.createHash('sha256').update(png).digest('hex');
+    if (await db.prepare('SELECT firm_id FROM tp_letterheads WHERE firm_id = ?').get(firmId)) {
+      await db.prepare('UPDATE tp_letterheads SET logo = ?, logo_mime = ?, logo_sha256 = ?, logo_size = ?, logo_name = ? WHERE firm_id = ?').run(png, 'image/png', sha, png.length, 'logo.png', firmId);
+    } else {
+      await db.prepare('INSERT INTO tp_letterheads (firm_id, logo, logo_mime, logo_sha256, logo_size, logo_name) VALUES (?, ?, ?, ?, ?, ?)').run(firmId, png, 'image/png', sha, png.length, 'logo.png');
+    }
+  };
+  try {
+    let page = (await vget(ctx.token)).text;
+    if (!before) {
+      assert.doesNotMatch(page, /<img class="vq-brand-logo"/);
+      assert.match(page, /<span class="vq-brand-name" data-vendor-firm>[^<]+</, 'no logo: the firm name');
+    }
+    await put(pngOf(60, 20, (x, y) => (x % 4 < 2 && y > 5 && y < 15 ? [250, 250, 250, 255] : [0, 0, 0, 0])));
+    page = (await vget(ctx.token)).text;
+    assert.match(page, /<img class="vq-brand-logo" src="data:image\/png;base64,[^"]+" alt="[^"]+">/, 'a light logo sits on the dark band');
+    assert.match(page, /<span class="vq-brand-name sr-only" data-vendor-firm>/);
+    assert.match(page, /<span class="vq-logo-chip"><img src="data:image\/png/, 'and in the footer chip');
+    await put(pngOf(60, 20, (x, y) => (x % 4 < 2 && y > 5 && y < 15 ? [20, 30, 60, 255] : [0, 0, 0, 0])));
+    page = (await vget(ctx.token)).text;
+    assert.doesNotMatch(page, /<img class="vq-brand-logo"/, 'a dark logo made for white paper is not put on the band');
+    assert.match(page, /<span class="vq-brand-name" data-vendor-firm>[^<]+</);
+    assert.doesNotMatch(page, /vq-logo-chip/);
+  } finally {
+    if (before) await db.prepare('UPDATE tp_letterheads SET logo = NULL, logo_mime = NULL, logo_sha256 = NULL, logo_size = NULL, logo_name = NULL WHERE firm_id = ?').run(firmId);
+    else await db.prepare('DELETE FROM tp_letterheads WHERE firm_id = ?').run(firmId);
+  }
 });

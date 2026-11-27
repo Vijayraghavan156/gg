@@ -1,20 +1,30 @@
 <%- include('partials/header', { title: 'Team & access', user, ws, active: 'team' }) %>
+<% const teamTpOnly = typeof tpOnlyWorkspace !== 'undefined' && tpOnlyWorkspace === true;
+   const zoneOfWs = (() => { const z = (typeof ws !== 'undefined' && ws && (ws.timezone || ws.firm_timezone)) || 'UTC'; try { new Intl.DateTimeFormat('en-GB', { timeZone: z }); return z; } catch (_) { return 'UTC'; } })();
+   const asDate = v => { if (v == null || v === '') return null; const s = String(v); const d = v instanceof Date ? v : new Date(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(s) ? s.replace(' ', 'T') + 'Z' : s); return Number.isNaN(d.getTime()) ? null : d; };
+   const zoneLabel = d => { for (const loc of ['en-IN', 'en-US', 'en-GB']) { const n = (new Intl.DateTimeFormat(loc, { timeZone: zoneOfWs, timeZoneName: 'short' }).formatToParts(d).find(p => p.type === 'timeZoneName') || {}).value || ''; if (/^[A-Z]{2,5}$/.test(n)) return n; } return zoneOfWs; };
+   const dayIn = v => { const d = asDate(v); return d ? new Intl.DateTimeFormat('en-GB', { timeZone: zoneOfWs, day: 'numeric', month: 'short', year: 'numeric' }).format(d) : ''; };
+   const dayTimeIn = v => { const d = asDate(v); return d ? dayIn(d) + ', ' + new Intl.DateTimeFormat('en-GB', { timeZone: zoneOfWs, hour: 'numeric', minute: '2-digit', hour12: true }).format(d).replace(/\s+/g, ' ').replace(/\b(AM|PM)\b/, s => s.toLowerCase()) + ' ' + zoneLabel(d) : ''; }; %>
 
 <div class="page-head">
   <div>
-    <div class="text-eyebrow" style="color:var(--text-tertiary);margin-bottom:6px;letter-spacing:0.12em;text-transform:uppercase;">Setup &middot; Step 2 of 3</div>
+<% if (!teamTpOnly) { %>    <div class="text-eyebrow" style="color:var(--text-tertiary);margin-bottom:6px;letter-spacing:0.12em;text-transform:uppercase;">Setup &middot; Step 2 of 3</div><% } %>
     <h1 class="page-title">Project team &amp; access</h1>
     <div class="page-subtitle">Pick the firm consultants on this engagement and invite the client-side contacts they&rsquo;ll work with. You can revisit this page any time; it&rsquo;s in the sidebar under <strong>Setup</strong>.</div>
   </div>
   <div style="display:flex;gap:8px;">
+    <% if (teamTpOnly) { %>
+    <a href="/workspaces/<%= ws.id %>/setup" class="btn btn-secondary btn-xs">Back to client setup</a>
+    <% } else { %>
     <a href="/workspaces/<%= ws.id %>/intake" class="btn btn-secondary btn-xs">← Back to scoping</a>
     <a href="/workspaces/<%= ws.id %>/gap-assessment" class="btn btn-primary btn-xs">Start gap assessment →</a>
+    <% } %>
   </div>
 </div>
 
 <%- include('partials/team_tabs', { ws, active: 'team' }) %>
 
-<% if (!scopeConfirmed) { %>
+<% if (!scopeConfirmed && !teamTpOnly) { %>
   <div class="panel" style="padding:14px 18px;margin-bottom:18px;background:rgba(194,65,12,0.05);font-size:13px;line-height:1.55;display:flex;align-items:center;gap:14px;">
     <div style="flex:1;">Scope hasn&rsquo;t been confirmed yet. You can set up the team now, but the gap assessment won&rsquo;t open for production work until scope is locked in.</div>
     <a href="/workspaces/<%= ws.id %>/intake" class="btn btn-secondary btn-xs">Go to scoping</a>
@@ -166,7 +176,7 @@
             <td><%= m.name %></td>
             <td class="meta"><%= m.email %></td>
             <td><span class="tag tag-neutral"><%= rbac.ROLE_LABELS[m.role] || m.role.replace(/_/g, ' ') %></span></td>
-            <td class="meta"><%= m.last_active_at ? new Date(m.last_active_at).toLocaleDateString() : 'never signed in' %></td>
+            <td class="meta"><%= m.last_active_at ? dayTimeIn(m.last_active_at) : 'never signed in' %></td>
           </tr>
         <% }) %>
       </tbody>
@@ -190,7 +200,7 @@
             <tr>
               <td><%= inv.email %><% if (inv.name) { %> <span class="meta">(<%= inv.name %>)</span><% } %></td>
               <td><span class="tag tag-neutral"><%= rbac.ROLE_LABELS[inv.workspace_role] || inv.workspace_role %></span></td>
-              <td class="meta"><%= new Date(inv.expires_at).toLocaleDateString() %></td>
+              <td class="meta"><%= dayTimeIn(inv.expires_at) %></td>
               <td>
                 <form method="POST" action="/workspaces/<%= ws.id %>/team/revoke-invite/<%= inv.id %>" style="margin:0;" onsubmit="return confirm('Revoke this invitation? The recipient will no longer be able to use the link.')">
                   <input type="hidden" name="_csrf" value="<%= csrfToken %>">
@@ -211,6 +221,7 @@
   <% } %>
 </div>
 
+<% if (!teamTpOnly) { %>
 <div class="panel" style="padding:18px 22px;display:flex;align-items:center;gap:18px;background:var(--bg-subtle);">
   <div style="flex:1;">
     <div style="font-family:var(--font-display);font-size:16px;font-weight:500;color:var(--text);">Team set. Ready to start the gap assessment?</div>
@@ -218,5 +229,6 @@
   </div>
   <a href="/workspaces/<%= ws.id %>/gap-assessment" class="btn btn-primary">Start gap assessment →</a>
 </div>
+<% } %>
 
 <%- include('partials/footer') %>

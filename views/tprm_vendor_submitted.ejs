@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" class="page-standalone" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <link rel="stylesheet" href="/app.css">
+<%- include('tprm_portal_head', { title: 'Questionnaire submitted · ' + (frame.firm.name || 'Third-party portal'), frame, qframe: true }) %>
+</head>
+<body class="vq-body vq-c">
+  <a class="vq-skip" href="#main">Skip to the content</a>
+  <% const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&#34;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); %>
+  <%- include('partials/tprm_vq_top', { frame, band: {
+        eyebrow: frame.orgName || '',
+        titleHtml: 'Thank you',
+        metaHtml: ['<span>Questionnaire for <span data-vendor-client>' + esc(clientName) + '</span></span>', '<span>Submitted on <strong>' + esc(tpf.dayTime(submittedAt, { zone: true })) + '</strong></span>'],
+        actionsHtml: locals.sheetHref ? '<a class="vq-btn vq-btn--band" href="' + esc(sheetHref) + '">Excel</a>' : '',
+      } }) %>
+  <div class="vq-frame">
+    <%- include('partials/tprm_portal_side', { frame, pickerNow: 'Questionnaire submitted', cframe: true }) %>
+    <main class="vq-main" id="main" data-vendor-submitted-page>
+      <section class="vq-page vq-card" aria-labelledby="submitted-title">
+        <header class="vq-card-head">
+          <p class="vq-section-where">Finish</p>
+          <h2 class="vq-section-title" id="submitted-title">Questionnaire submitted</h2>
+        </header>
+        <div class="vq-card-body">
+          <p data-vendor-submitted>Submitted on <%= tpf.dayTime(submittedAt, { zone: true }) %>.</p>
+          <p>Your answers can no longer be changed. If the reviewers need more information, it will show here in the portal.</p>
+          <% if (locals.sheetHref) { %><p data-vendor-submitted-copy><a href="<%= sheetHref %>">Download your answers as submitted</a> (Excel) to keep a copy for your records.</p><% } %>
+          <% if (locals.issuesHref) { %><p data-vendor-issues-link>The reviewers have shared issues with you. <a href="<%= issuesHref %>">Open the issues</a> to respond.</p><% } %>
+          <p><a href="/vendor/p/home" data-vendor-submitted-home>Back to all reviews</a></p>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="vq-pagefoot">
+    <%- include('partials/tprm_vendor_footer', { firm: frame.firm, expiresAt: null, note: '', runBy: frame.firm && frame.firm.name ? { firm: frame.firm.name, client: clientName, logo: frame.firm.logo, logoOnDark: !!frame.firm.logoOnDark } : null }) %>
+  </div>
+</body>
+</html>

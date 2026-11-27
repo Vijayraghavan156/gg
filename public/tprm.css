@@ -595,6 +595,8 @@ table.t thead th.tprm-aw-th-right { text-align: right; }
 
 .tprm-module-form.tprm-q-revoke { justify-content: flex-end; }
 .tprm-module-form .input.tprm-q-revoke-reason { width: 160px; }
+table[data-tprm-link-list] .tprm-link-email { overflow-wrap: anywhere; }
+table[data-tprm-link-list] .tprm-q-revoke-reason { width: 100%; min-width: 120px; }
 
 .tprm-ai-callout { margin: 0 16px 12px; }
 .tprm-ai-override-input { width: 240px; }
@@ -773,8 +775,12 @@ th[aria-sort="descending"] .tprm-sort::after { content: " \2193"; }
 .tprm-brief-list { margin: var(--tp-space-1) 0 0; padding-left: 1.2em; display: grid; gap: var(--tp-space-3); }
 .tprm-brief-list p { margin: 0; }
 [data-tprm-decision-form] [data-tprm-risk-acceptance],
-[data-tprm-decision-form] [data-tprm-decision-rationale] { display: none; }
-[data-tprm-decision-form]:has(input[data-diverges]:checked) [data-tprm-risk-acceptance],
+[data-tprm-decision-form] [data-tprm-decision-rationale],
+[data-tprm-decision-form] [data-tprm-divergence-riskier],
+[data-tprm-decision-form] [data-tprm-divergence-stricter] { display: none; }
+[data-tprm-decision-form]:has(input[data-accepts-risk]:checked) [data-tprm-risk-acceptance],
+[data-tprm-decision-form]:has(input[data-accepts-risk]:checked) [data-tprm-divergence-riskier],
+[data-tprm-decision-form]:has(input[data-diverges]:not([data-accepts-risk]):checked) [data-tprm-divergence-stricter],
 [data-tprm-decision-form]:has(input[data-diverges]:checked, input[data-more]:checked) [data-tprm-decision-rationale],
 [data-tprm-decision-form]:has(input[data-diverges]:checked) [data-tprm-divergence-warning] { display: block; }
 
@@ -1048,3 +1054,11 @@ th[aria-sort="descending"] .tprm-sort::after { content: " \2193"; }
 .qb-left { justify-self: start; }
 .qb-gap { margin-top: 12px; }
 .qb-option { margin-top: 0; margin-bottom: 6px; flex-wrap: nowrap; }
+.main .table-scroll { max-width: 100%; min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; }
+.main .table-scroll > table.tprm-register-table { min-width: 1040px; }
+table.t.tprm-register-table th { white-space: nowrap; }
+.tprm-tabs { overflow-x: auto; overflow-y: hidden; flex-wrap: nowrap; scrollbar-width: thin; }
+.tprm-tabs .subtab { flex: 0 0 auto; white-space: nowrap; }
+.tprm-spend-row { display: flex; gap: 6px; align-items: stretch; }
+.tprm-spend-row .select { flex: 0 0 auto; width: auto; }
+.tprm-spend-row .input { flex: 1 1 auto; min-width: 0; }

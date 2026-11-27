@@ -10,6 +10,7 @@
   if (!(typeof clientPreview !== 'undefined' && clientPreview)) portalItems.push({key:'updates',label:'Updates',href:`/workspaces/${ws.id}/client-portal/updates`,icon:'<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/>'});
   // Third-party risk is its own service: listed only for client users of a client with TPRM switched on.
   if (typeof tpPortalEnabled !== 'undefined' && tpPortalEnabled === true && !(typeof clientPreview !== 'undefined' && clientPreview)) portalItems.push({key:'third-party-risk',label:'Third-party risk',href:`/workspaces/${ws.id}/client-portal/third-party-risk`,icon:'<path d="M12 3 4 6v6c0 5 3.4 8.2 8 9 4.6-.8 8-4 8-9V6l-8-3Z"/><path d="M8 12h8M12 8v8"/>'});
+  if (!(typeof clientPreview !== 'undefined' && clientPreview)) portalItems.push({key:'account',label:'Account',href:`/workspaces/${ws.id}/client-portal/account`,icon:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>'});
   const shownItems = typeof tpOnlyClient !== 'undefined' && tpOnlyClient === true ? portalItems.filter(item => item.key === 'third-party-risk') : portalItems;
 %>
 <div class="nav-group-label">Your engagement</div>
@@ -19,3 +20,14 @@
     <span class="nav-item-text"><%= item.label %></span>
   </a>
 <% }) %>
+<% if (typeof clientWorkspaces !== 'undefined' && Array.isArray(clientWorkspaces) && clientWorkspaces.length > 1 && !(typeof clientPreview !== 'undefined' && clientPreview)) { %>
+<nav aria-label="Your workspaces" data-client-workspace-switch>
+  <div class="meta text-xs nav-item-text" style="padding:14px 10px 6px;">Your workspaces</div>
+  <% clientWorkspaces.forEach(w => { %>
+    <a href="<%= w.href %>" class="nav-item <%= w.current ? 'active' : '' %>"<% if (w.current) { %> aria-current="true"<% } %> data-client-workspace="<%= w.id %>">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"/><path d="M16 9h2a2 2 0 0 1 2 2v10"/><path d="M8 7h4M8 11h4M8 15h4M3 21h18"/></svg>
+      <span class="nav-item-text"><%= w.name %></span>
+    </a>
+  <% }) %>
+</nav>
+<% } %>

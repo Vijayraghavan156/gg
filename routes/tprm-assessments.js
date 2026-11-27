@@ -59,7 +59,7 @@ function registerRoutes(app, deps) {
       await assessments.assessmentEvents(db, actor, assessment, 5000),
       await assessments.decisionOwnerCandidates(db, actor.ws.id),
     ];
-    const leads = await assessments.leadCandidates(db, actor.ws);
+    const leads = await assessments.leadCandidates(db, actor.ws, { include: [assessment.lead_consultant_id] });
     const activeModel = await criticality.getActiveModel(db, Number(actor.ws.firm_id));
     const values = form || {
       services: (assessment.services_in_scope || []).length ? assessment.services_in_scope.map(s => String(s.id))
@@ -80,10 +80,12 @@ function registerRoutes(app, deps) {
     const selfApproveTiers = (await require('../lib/tprm/two-person').settingsFor(db, actor.ws.firm_id)).selfApproveTiers;
     const isProposer = Number(assessment.proposed_by) === Number(req.user.id);
     const tpf = res.locals.tpf || require('../lib/tprm/format').forZone('UTC');
+    const tierConfirmers = assessment.status === 'tier_proposed' ? (await require('../lib/tprm/team').tierConfirmers(db, actor.ws, assessment)).map(u => u.name) : null;
     const statusLine = require('../lib/tprm/status-line').statusLine({
       assessment, thirdParty, qp: questionnairePanel, rd: recommendation, dp: decisionPanel,
       viewer: { canManage, canReview, isManager: access.isManager(req.user), isProposer, selfApproveTiers },
       base: aUrl(actor, assessment), tierLabel: k => (k ? placement.TIER_LABELS[k] : ''), day: d => tpf.day(d),
+      confirmers: tierConfirmers,
     });
     const historyView = require('../lib/tprm/history').entries(history, {
       tierLabel: k => placement.TIER_LABELS[k] || k, conclusionLabels: require('../lib/tprm/questionnaire-review').CONCLUSION_LABELS,
@@ -92,6 +94,7 @@ function registerRoutes(app, deps) {
     const typeLabel = await assessments.typeLabelFor(db, actor.ws.id, thirdParty, assessment);
     return res.status(status).render('tprm_assessment', {
       typeLabel,
+      tierConfirmers,
       statusLine,
       historyView,
       historyQuery: req.query && typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '',
@@ -116,6 +119,7 @@ function registerRoutes(app, deps) {
         list: await require('../lib/tprm/issues').forAssessment(db, actor.ws.id, assessment.id),
         labels: require('../lib/tprm/issues').STATUS_LABELS,
         canManage: canManage && !['cancelled', 'completed'].includes(assessment.status),
+        canReply: canManage && assessment.status !== 'cancelled',
       },
       recommendation,
       canCancel: canManage && await assessments.canCancel(db, actor, assessment),
@@ -131,7 +135,7 @@ function registerRoutes(app, deps) {
     const thirdParty = await register.getThirdParty(db, actor, req.params.tpId);
     try {
       const assessment = await assessments.start(db, actor, thirdParty.id);
-      return res.redirect(withToast(aUrl(actor, assessment), `${assessments.TYPE_LABELS[assessment.type]} started`));
+      return res.redirect(withToast(aUrl(actor, assessment), `${assessment.type_label || assessments.TYPE_LABELS[assessment.type]} started`));
     } catch (err) {
       if (err instanceof TprmError && err.status === 409) {
         const target = err.openAssessmentId ? `${tpUrl(actor, thirdParty.id)}/assessments/${err.openAssessmentId}` : tpUrl(actor, thirdParty.id);
@@ -234,17 +238,26 @@ function registerRoutes(app, deps) {
       });
     }
     const readOnly = !reviewer;
+    const queue = await assessments.reviewQueue(lookup, req.user, { readOnly });
+    const recommendationQueue = await recommendations.reviewQueue(lookup, req.user, { readOnly });
+    const informationQueue = readOnly ? undefined : await decisions.informationRequestQueue(lookup, req.user);
+    const questionnaireQueue = await require('../lib/tprm/questionnaire-review').reviewQueue(lookup, req.user);
+    const typeLabels = await assessments.typeLabelsFor(db, [
+      ...queue.map(r => ({ id: r.id, type: r.type })),
+      ...[recommendationQueue, informationQueue || [], questionnaireQueue].flat().map(r => ({ id: r.assessment_id, type: r.type })),
+    ]);
     res.render('tprm_review', {
       user: req.user,
       active: 'tprm-portfolio',
       tp: placement,
       at: assessments,
+      typeLabels,
       readOnly,
-      queue: await assessments.reviewQueue(lookup, req.user, { readOnly }),
+      queue,
       selfApproved: await assessments.selfApprovedRecently(lookup, req.user),
-      recommendationQueue: await recommendations.reviewQueue(lookup, req.user, { readOnly }),
-      informationQueue: readOnly ? undefined : await decisions.informationRequestQueue(lookup, req.user),
-      questionnaireQueue: await require('../lib/tprm/questionnaire-review').reviewQueue(lookup, req.user),
+      recommendationQueue,
+      informationQueue,
+      questionnaireQueue,
       qStatusLabels: questionnaires.STATUS_LABELS,
       rec: recommendations,
     });

@@ -8,17 +8,19 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const BANK = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'tprm-question-bank.json'), 'utf8'));
 const Q = id => BANK.questions.find(q => q.id === id);
+const V7 = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'tprm-question-bank-v7.json'), 'utf8'));
+const Q7 = id => V7.questions.find(q => q.id === id);
 const READ_BY_ID = ['AIS-01', 'FTP-01', 'FTP-02', 'FTP-03', 'FTP-04', 'FTP-05', 'FTP-06', 'FTP-07', 'PRM-06', 'GDP-04', 'FIN-03',
   'DOR-06', 'DOR-07', 'PFR-02', 'RBI-02', 'SEB-05', 'UAE-01', 'UAE-02', 'SAM-01'];
 
-test('bank version 7: every question once, the two answer types only, fields that fit their question', () => {
-  assert.match(BANK.version, /version 7/);
+test('bank version 8: every question once, the two answer types only, fields that fit their question', () => {
+  assert.match(BANK.version, /version 8/i);
   const ids = BANK.questions.map(q => q.id);
   assert.equal(new Set(ids).size, ids.length, 'every id once');
   for (const q of BANK.questions) {
     assert.ok(['yes_no_na', 'free_text'].includes(q.answer_type), `${q.id}: answer type`);
     if (q.fields) {
-      assert.ok(Array.isArray(q.fields) && q.fields.length >= 1 && q.fields.length <= 5, `${q.id}: one to five fields`);
+      assert.ok(Array.isArray(q.fields) && q.fields.length >= 1 && q.fields.length <= 6, `${q.id}: one to six fields`);
       assert.equal(new Set(q.fields.map(f => f.key)).size, q.fields.length, `${q.id}: field keys unique`);
       for (const f of q.fields) {
         assert.match(f.key, /^[a-z0-9_]{1,40}$/, `${q.id}: field key`);
@@ -50,7 +52,8 @@ test('bank version 6: the answers the app reads by id keep their shape', () => {
   for (const id of READ_BY_ID) {
     const q = Q(id);
     assert.ok(q, id);
-    assert.ok(!q.fields && !q.details_on_yes, `${id}: no fields`);
+    assert.ok(!q.fields, `${id}: no fields`);
+    if (!['FTP-03', 'FTP-05'].includes(id)) assert.ok(!q.details_on_yes, `${id}: no Details box`);
   }
   assert.equal(Q('RBI-02').answer_type, 'yes_no_na');
   assert.equal(Q('FTP-01').answer_type, 'free_text');
@@ -110,7 +113,7 @@ test('answer fields: an unknown key, fields on a question without them, a bad da
   assert.throws(() => parse({ f: { 'FTP-01': { list: 'x' } } }, ['FTP-01']), /does not belong/);
   assert.throws(() => parse({ r: { 'GOV-02': 'yes' }, y: { 'GOV-02': 'x' } }, ['GOV-02']), /does not belong/);
   assert.throws(() => parse({ f: { 'GOV-01': { last_review_date: '2026-02-31' } } }, ['GOV-01']), /Date of last review: give a real date/);
-  assert.throws(() => parse({ r: { 'END-01': 'yes' }, f: { 'END-01': { product: 'X', coverage: 'most' } } }, ['END-01']), /give a number/);
+  assert.throws(() => parse({ r: { 'END-01': 'yes' }, f: { 'END-01': { product: 'X', coverage: 'most' } } }, ['END-01']), /write a number only/);
 });
 
 test('answer fields: submission asks for every field; a reassessment copies fields and a Yes, not an earlier bank\'s text', () => {
@@ -146,16 +149,16 @@ test('answer fields: submission asks for every field; a reassessment copies fiel
 test('bank version 6: tick boxes where the question has a fixed set of choices; version 5 kept as a fixture', () => {
   const V5 = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'tprm-question-bank-v5.json'), 'utf8'));
   assert.match(V5.version, /version 5/);
-  assert.deepEqual(BANK.questions.map(q => q.id), V5.questions.map(q => q.id), 'same questions in the same order');
-  const ticks = id => (Q(id).fields || []).filter(f => f.kind === 'multi').map(f => f.key);
+  assert.deepEqual(V7.questions.map(q => q.id), V5.questions.map(q => q.id), 'same questions in the same order');
+  const ticks = id => (Q7(id).fields || []).filter(f => f.kind === 'multi').map(f => f.key);
   const expected = { 'PHY-02': ['controls'], 'END-04': ['channels'], 'SSP-03': ['events', 'forwarding_methods'], 'CLD-01': ['models'], 'IAM-03': ['factors'],
     'RBI-07': ['provided'], 'GDP-01': ['mechanisms'], 'UKG-01': ['tools'], 'DIF-02': ['mechanisms'], 'KSP-01': ['safeguards'], 'INC-02': ['channels'],
     'PRV-06': ['channels'], 'PRM-04': ['channels'], 'CHS-04': ['delivery'], 'NET-07': ['auth_methods'], 'AIM-13': ['logged'] };
   for (const [id, keys] of Object.entries(expected)) assert.deepEqual(ticks(id), keys, id);
-  const withTicks = BANK.questions.filter(q => (q.fields || []).some(f => f.kind === 'multi')).map(q => q.id).sort();
+  const withTicks = V7.questions.filter(q => (q.fields || []).some(f => f.kind === 'multi')).map(q => q.id).sort();
   assert.deepEqual(withTicks, Object.keys(expected).sort(), 'no other question changed shape');
   const V5_BY_ID = new Map(V5.questions.map(q => [q.id, q]));
-  for (const q of BANK.questions) {
+  for (const q of V7.questions) {
     if (expected[q.id]) {
       assert.equal(q.question, V5_BY_ID.get(q.id).question, `${q.id}: question wording kept`);
       const v5Keys = new Set((V5_BY_ID.get(q.id).fields || []).map(f => f.key));
@@ -170,20 +173,55 @@ test('bank version 6: tick boxes where the question has a fixed set of choices; 
     }
     assert.deepEqual(q, V5_BY_ID.get(q.id), `${q.id}: unchanged`);
   }
-  for (const id of ['NIS-02', 'UKF-02']) assert.ok(!Q(id).fields, `${id}: one answer only, left as text`);
+  for (const id of ['NIS-02', 'UKF-02']) assert.ok(!Q7(id).fields, `${id}: one answer only, left as text`);
   for (const id of ['GDP-01', 'UKG-01', 'DIF-02', 'KSP-01']) {
-    assert.ok(!Q(id).fields.find(f => f.kind === 'multi').options.includes('Other'), `${id}: the law's closed list, no Other`);
+    assert.ok(!Q7(id).fields.find(f => f.kind === 'multi').options.includes('Other'), `${id}: the law's closed list, no Other`);
   }
 });
 
 test('bank version 7: the cyber insurance question is asked of High-tier suppliers too; nothing else changed since version 6', () => {
   const V6 = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'tprm-question-bank-v6.json'), 'utf8'));
   assert.match(V6.version, /version 6/);
-  assert.equal(Q('GOV-07').min_tier, 'High');
+  assert.equal(Q7('GOV-07').min_tier, 'High');
   const V6_BY_ID = new Map(V6.questions.map(q => [q.id, q]));
-  for (const q of BANK.questions) {
+  for (const q of V7.questions) {
     if (q.id === 'GOV-07') continue;
     assert.deepEqual(q, V6_BY_ID.get(q.id), `${q.id}: unchanged since version 6`);
   }
-  assert.deepEqual(BANK.contract_checklist, V6.contract_checklist);
+  assert.deepEqual(V7.contract_checklist, V6.contract_checklist);
+});
+
+test('bank version 8: built from version 7 by migration 151; repeats marked, privacy renamed, honest none, detail boxes; nothing else changed', () => {
+  const m151 = require('../migrations/151_tprm_bank_v8_no_repeats');
+  assert.match(V7.version, /version 7/);
+  assert.deepEqual(m151.apply(V7), BANK, 'the shipped file is exactly what the migration makes of version 7');
+  assert.equal(m151.apply(BANK), null, 'applying it again changes nothing');
+  assert.deepEqual(BANK.questions.map(q => q.id), V7.questions.map(q => q.id), 'every question id kept, in order');
+  const strip = q => { const { status, change_note: cn, domain, same_as: sa, ...rest } = q; return rest; };
+  const edited = ['ASR-04', 'REG-07', 'FTP-03', 'FTP-05', 'RET-03', 'AIM-18'];
+  for (const q of BANK.questions) {
+    const old = Q7(q.id);
+    assert.equal(q.domain, old.domain === 'Data Privacy' ? 'Privacy Programme' : old.domain, `${q.id}: section`);
+    if (m151.SAME_AS[q.id]) assert.deepEqual(q.same_as, m151.SAME_AS[q.id], `${q.id}: repeats ${m151.SAME_AS[q.id]}`);
+    else assert.equal(q.same_as, undefined, `${q.id}: no twin`);
+    if (!edited.includes(q.id)) assert.deepEqual(strip(q), strip(old), `${q.id}: unchanged since version 7`);
+  }
+  for (const [id, twins] of Object.entries(m151.SAME_AS)) {
+    assert.equal(Q(id).set, 'Module', `${id} is a module question`);
+    for (const t of twins) assert.equal(Q(t).set, 'Base', `${t} is a base question`);
+  }
+  assert.ok(!BANK.questions.some(q => q.set === 'Base' && q.domain === 'Data Privacy'), 'no base section called Data Privacy next to Personal Data & Privacy');
+  assert.equal(Q('ASR-04').answer_type, 'yes_no_na');
+  assert.deepEqual(Q('ASR-04').explain_on, ['na'], 'No, we hold none, needs no explanation');
+  assert.equal(Q('ASR-04').evidence_on, 'yes', 'and no certificate');
+  assert.ok(Q('ASR-04').details_on_yes);
+  assert.match(Q('REG-07').question, /^Can you confirm that no director/);
+  assert.match(Q('REG-07').guidance, /^Answer Yes to confirm there is no such relationship\. Answer No if there is one/);
+  const { question: rq, guidance: rg, status: rs, change_note: rc, ...reg } = Q('REG-07');
+  const { question: oq, guidance: og, status: os, change_note: oc, ...reg7 } = Q7('REG-07');
+  assert.deepEqual(reg, reg7, 'REG-07 keeps what a Yes and a No mean, so an answer carried over from version 7 still means the same');
+  assert.equal(Q('AIM-18').evidence_mandatory, false, 'an AI certification status of None needs no certificate');
+  for (const id of ['FTP-03', 'FTP-05']) assert.ok(Q(id).details_on_yes && !Q(id).fields, `${id}: a details box, still read as one text by the subprocessor helper`);
+  assert.deepEqual(Q('RET-03').fields.map(f => f.key), [...Q7('RET-03').fields.map(f => f.key), 'retention']);
+  assert.deepEqual(BANK.contract_checklist, V7.contract_checklist);
 });

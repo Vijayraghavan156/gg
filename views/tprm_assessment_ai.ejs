@@ -9,9 +9,9 @@
   <div class="tpw-ailine-row">
     <p class="tpw-ailine-text" data-tprm-ai-summary>
       <b>Brevis</b>
-      <% if (!ap.configured) { %><span data-tprm-ai-not-configured><%= ap.notConfiguredMessage %> Runs are recorded as "Not set up" and nothing is sent anywhere.</span>
+      <% if (!ap.configured) { %><span data-tprm-ai-not-configured><%= String(ap.notConfiguredMessage).replace(/^Brevis\s+/, '') %> Runs are recorded as "Not set up" and nothing is sent anywhere.</span>
       <% } else if (ap.active) { %><span data-tprm-ai-active="<%= ap.active.status %>"><%= ap.statusLabels[ap.active.status] %>, requested <%= aiWhen(ap.active.created_at) %>. Reload the page in a minute to see its suggestions.</span>
-      <% } else if (!ap.latest) { %><span data-tprm-ai-suggestions-empty>Brevis has not finished a review of this assessment yet.</span>
+      <% } else if (!ap.latest) { %><span data-tprm-ai-suggestions-empty>has not reviewed this assessment yet.</span>
       <% } else { const toDecide = ap.pendingConclusions + ap.pendingFindings; %>finished <%= aiWhen(ap.latest.finished_at) %>.
         <span class="meta" data-tprm-ai-to-decide="<%= toDecide %>"><% if (!ap.pendingCount && !ap.groups.length) { %><span data-tprm-ai-suggestions-empty>The latest run made no suggestions.</span><% } else if (!toDecide) { %>Every suggestion on the answers is decided.<% } else { %><%= toDecide %> suggestion<%= toDecide === 1 ? '' : 's' %> to decide<%= ap.pendingConclusions && ap.pendingFindings ? ': ' + ap.pendingConclusions + ' conclusion' + (ap.pendingConclusions === 1 ? '' : 's') + ' and ' + ap.pendingFindings + ' finding' + (ap.pendingFindings === 1 ? '' : 's') : (ap.pendingFindings ? ', all findings' : ', all conclusions') %>. Each one is shown on its answer below.<% } %></span>
       <% } %>

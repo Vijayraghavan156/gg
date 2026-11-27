@@ -64,7 +64,10 @@
   if (qq && qq.not_returned) addStep('review', 'Review of answers', 'na', 'No answers to review');
   else if (!qSubmitted) addStep('review', 'Review of answers', (!tierConfirmed && st === 'cancelled') || (frozen && !qq) ? 'na' : 'todo', qq && rv && ['sent', 'in_progress'].includes(qq.status) ? 'After the third party submits' : 'After the answers come in');
   else if (qq.status === 'closed') addStep('review', 'Review of answers', 'done', 'Review closed' + aiNote);
-  else addStep('review', 'Review of answers', 'active', (rv && rv.blockers ? plural(rv.blockers.unreviewed, 'answer') + ' without a conclusion' : 'In progress') + aiNote);
+  else {
+    addStep('review', 'Review of answers', 'active', (rv && rv.blockers ? plural(rv.blockers.unreviewed, 'answer') + ' without a conclusion' : 'In progress') + aiNote);
+    if (rv && rv.blockers) Object.assign(steps[steps.length - 1], { liveCount: plural(rv.blockers.unreviewed, 'answer') + ' without a conclusion', liveRest: aiNote });
+  }
 
   const evNote = plural(ep.evidence.length, 'file') + ', ' + plural(ep.findings.length, 'finding');
   if (frozen) addStep('evidence', 'Evidence and findings', 'done', evNote);
@@ -171,7 +174,7 @@
       <a class="tprm-rail-item is-<%= s.state %><%= s.key === currentKey && s.state !== 'done' ? ' is-now' : '' %><%= s.key === selected ? ' is-selected' : '' %>" href="<%= stepHref(s.key) %>" data-tprm-step="<%= s.key %>" data-tprm-step-state="<%= s.state %>"<%- s.key === selected ? ' aria-current="step"' : '' %>>
         <span class="tprm-rail-mark" aria-hidden="true"><span><%= s.n %></span></span>
         <span class="tprm-rail-name"><%= s.label %></span>
-        <span class="tprm-rail-state"><span class="sr-only"><%= stateWords[s.state] %>: </span><%= s.note %></span>
+        <span class="tprm-rail-state"><span class="sr-only"><%= stateWords[s.state] %>: </span><% if (s.liveCount) { %><span data-tprm-unreviewed-note><%= s.liveCount %></span><%= s.liveRest %><% } else { %><%= s.note %><% } %></span>
       </a>
     <% }) %>
     </div>
@@ -262,7 +265,7 @@
     </div>
 
     <% if (a.type === 'reassessment' && clientSaysCritical) { %>
-      <div class="panel-pad tprm-divide"<%= preview.score && !preview.designationRequired ? ' hidden' : '' %> data-tprm-designation>
+      <div class="panel-pad tprm-divide"<%= preview.score && preview.designationRequired ? '' : ' hidden' %> data-tprm-designation>
         <div class="tprm-sub tpu-mb-4">The client designates this third party as Critical</div>
         <div class="meta tpu-mb-8">The answers score it lower. Choose which tier to propose; your choice is recorded.</div>
         <label class="tprm-check"><input type="radio" name="designation_choice" value="keep_client_designation" <%= v.designation_choice === 'keep_client_designation' ? 'checked' : '' %>> <span>Keep the client's designation (Critical)</span></label>
@@ -322,7 +325,7 @@
       tierEl.textContent = best.tier;
       whyEl.textContent = best.tier + ' because: ' + best.label;
     }
-    if (designation) designation.hidden = !!(!missing && best && best.tier === 'Critical');
+    if (designation) designation.hidden = !(!missing && best && best.tier !== 'Critical');
   }
   form.addEventListener('change', update);
   var button = form.querySelector('[data-tprm-designation-reason]');
@@ -366,10 +369,15 @@
         <textarea class="input" id="self-approval-reason" name="self_approval_reason" rows="2" maxlength="1000" required></textarea>
         <div class="tprm-actions"><button class="btn btn-primary" type="submit" data-tprm-self-confirm>Confirm my own tier</button></div>
       </form>
-    <% } else if (isProposer) { %>
-      <div class="panel-pad meta" data-tprm-waiting>You proposed this tier. A second person (a senior consultant or a manager) confirms it from the review queue.</div>
-    <% } else { %>
-      <div class="panel-pad meta" data-tprm-waiting>Waiting for a senior consultant or a manager to confirm the tier.</div>
+    <% } else { const tc = typeof tierConfirmers !== 'undefined' && Array.isArray(tierConfirmers) ? tierConfirmers : null;
+         const who = tc && tc.length ? (tc.length < 2 ? tc[0] : tc.slice(0, -1).join(', ') + ' or ' + tc[tc.length - 1]) : null; %>
+      <% if (tc && !tc.length) { %>
+      <div class="panel-pad meta" data-tprm-waiting data-tprm-no-confirmer><%= isProposer ? 'You proposed this tier, and no one' : 'No one' %> else on this client can confirm it yet. A manager, or another senior consultant added to this client, must confirm it: ask a manager at your firm.</div>
+      <% } else if (isProposer) { %>
+      <div class="panel-pad meta" data-tprm-waiting>You proposed this tier. <%= who ? who + ' can confirm it from the review queue.' : 'A second person (a senior consultant or a manager) confirms it from the review queue.' %></div>
+      <% } else { %>
+      <div class="panel-pad meta" data-tprm-waiting>Waiting for <%= who || 'a senior consultant or a manager' %> to confirm the tier.</div>
+      <% } %>
     <% } %>
   </div>
 <% } else if (a.status === 'tier_confirmed') { %>
@@ -515,7 +523,7 @@
     <% if (typeof leads !== 'undefined' && leads.length) { %><div><label class="label" for="lead-consultant">Lead consultant</label>
       <select class="select" id="lead-consultant" name="lead_consultant_id" data-tprm-lead-select>
         <% if (!a.lead_consultant_id) { %><option value="">Not set</option><% } %>
-        <% leads.forEach(l => { %><option value="<%= l.id %>" <%= Number(a.lead_consultant_id) === Number(l.id) ? 'selected' : '' %>><%= l.name %></option><% }) %>
+        <% leads.forEach(l => { %><option value="<%= l.id %>" <%= Number(a.lead_consultant_id) === Number(l.id) ? 'selected' : '' %>><%= l.name %><%= l.active === false ? ' (no longer active)' : '' %></option><% }) %>
       </select></div><% } %>
     <div><button class="btn btn-secondary" type="submit">Save details</button></div>
   </form>

@@ -6,12 +6,12 @@
   const status = (text, tone, attrs) => include('partials/tprm_status', { text, tone, attrs });
   const qs = (over = {}) => { const p = new URLSearchParams(); const all = { tab: f.tab, tier: f.tier, stage: f.stage, service: f.service, owner: f.owner, q: f.q, ...over };
     Object.entries(all).forEach(([k, v]) => { if (v && !(k === 'tab' && v === 'all') && !(k === 'page' && Number(v) === 1)) p.set(k, v); }); const s = p.toString(); return s ? '?' + s : ''; };
-  const tierTag = tier => tier ? '<span class="cv-tag cv-tier-' + tier + '">' + escapeHtml(tp.TIER_LABELS[tier]) + '</span>' : '<span class="cv-muted">Not set</span>';
+  const tierTag = (tier, provisional) => tier ? '<span class="cv-tag cv-tier-' + tier + '">' + escapeHtml(tp.TIER_LABELS[tier]) + (provisional ? ' (provisional)' : '') + '</span>' : '<span class="cv-muted">Not set</span>';
   const residualTag = r => r ? '<span class="cv-tag cv-res-' + r + '">' + escapeHtml(tp.TIER_LABELS[r]) + '</span>' : '<span class="cv-muted">Not yet</span>';
   const donut = (parts, total, label) => { const r = 34, C = 2 * Math.PI * r; let a = 0; let out = '<svg class="cv-donut" viewBox="0 0 92 92" aria-hidden="true"><circle cx="46" cy="46" r="' + r + '" class="cv-donut-track"/>';
     if (total > 0) parts.forEach(p => { if (!p.count) return; const l = C * p.count / total; out += '<circle cx="46" cy="46" r="' + r + '" class="cv-donut-seg cv-s-' + p.cls + '" stroke-dasharray="' + l.toFixed(2) + ' ' + (C - l).toFixed(2) + '" stroke-dashoffset="' + (-a).toFixed(2) + '" transform="rotate(-90 46 46)"/>'; a += l; });
     return out + '<text x="46" y="51" text-anchor="middle">' + escapeHtml(label) + '</text></svg>'; };
-  const STAGE_LABELS = { in_use: 'In use', review: 'Under review', decision: 'Your decision', proposed: 'Not started' };
+  const STAGE_LABELS = { in_use: 'In use, no review open', review: 'Under review', decision: 'Your decision', proposed: 'Not started' };
   const STAGE_CLS = { in_use: 'teal', review: 'amber', decision: 'blue', proposed: 'grey' };
   const RES_CLS = { critical: 'red', high: 'red2', medium: 'amber', low: 'green' };
   const cvNav = f.tab === 'waiting' ? 'decisions' : f.tab === 'renewals' ? 'renewals' : 'home';
@@ -38,7 +38,7 @@
       <h2 class="cv-h">Waiting for your decision (<%= h.decisionsNeeded.length %>)</h2>
       <p class="cv-muted cv-small">The decision owner named on each assessment reads the recommendation and records the decision.</p>
       <ul class="cv-need">
-        <% h.decisionsNeeded.forEach(r => { %><li><%- tierTag(r.current_tier) %><span class="cv-need-t"><a href="<%= base %>/recommendations/<%= r.recommendation.recommendation_id %>" data-tprm-portal-waiting-link="<%= r.id %>"><%= r.name %></a><span class="cv-muted cv-small">Recommendation version <%= r.recommendation.version %></span></span><a class="cv-btn cv-btn-p" href="<%= base %>/recommendations/<%= r.recommendation.recommendation_id %>">Review and decide</a></li><% }) %>
+        <% h.decisionsNeeded.forEach(r => { %><li><span class="cv-need-t"><a href="<%= base %>/recommendations/<%= r.recommendation.recommendation_id %>" data-tprm-portal-waiting-link="<%= r.id %>"><%= r.name %></a><span class="cv-muted cv-small" data-tprm-cv-need-tier><%= r.current_tier ? tp.TIER_LABELS[r.current_tier] + ' tier' : 'Tier not set' %> · Recommendation version <%= r.recommendation.version %></span></span><a class="cv-btn cv-btn-p" href="<%= base %>/recommendations/<%= r.recommendation.recommendation_id %>">Review and decide</a></li><% }) %>
       </ul>
     </div>
   <% } %>
@@ -47,10 +47,19 @@
       <h2 class="cv-h">Conditions you own (<%= h.ownConditions.length %>)</h2>
       <ul class="cv-need">
         <% h.ownConditions.forEach(c => { const late = c.due_date && c.due_date < h.today; %><li data-tprm-portal-own-condition="<%= c.id %>"><span class="cv-need-t"><a href="<%= base %>/recommendations/<%= c.recommendation_id %>#conditions"><%= c.third_party_name %>, condition <%= c.position %></a><span class="cv-small"><%= c.description %></span>
-          <span class="cv-muted cv-small"><% if (late) { %><%- status('Due ' + tpf.day(c.due_date) + ', overdue', 'problem') %><% } else { %>Due <%= c.due_date ? tpf.day(c.due_date) : 'date not set' %><% } %><%= c.status === 'proof_submitted' ? ' · proof sent, waiting for your consultants' : c.status === 'changes_requested' ? ' · your consultants asked for changes' : '' %></span></span><a class="cv-btn" href="<%= base %>/recommendations/<%= c.recommendation_id %>#conditions">Open</a></li><% }) %>
+          <span class="cv-muted cv-small"><% if (late) { %><%- status('Due ' + tpf.day(c.due_date) + ', overdue', 'problem') %><% } else { %>Due <%= c.due_date ? tpf.day(c.due_date) : 'date not set' %><% } %><%= c.status === 'changes_requested' ? ' · your consultants asked for changes' : '' %></span></span><a class="cv-btn" href="<%= base %>/recommendations/<%= c.recommendation_id %>#conditions"><%= canRequest ? 'Send proof' : 'Open' %></a></li><% }) %>
       </ul>
     </div>
   <% } %>
+</section>
+<% } %>
+<% if (!['ended', 'requests'].includes(f.tab) && h.proofPending.length) { %>
+<section class="cv-card cv-waiting" aria-label="Waiting for your consultants" data-tprm-portal-proof-pending>
+  <h2 class="cv-h">Proof sent, waiting for your consultants (<%= h.proofPending.length %>)</h2>
+  <p class="cv-muted cv-small">Nothing is needed from you on these until your consultants check the proof.</p>
+  <ul class="cv-need">
+    <% h.proofPending.forEach(c => { %><li data-tprm-portal-proof-pending-item="<%= c.id %>"><span class="cv-need-t"><a href="<%= base %>/recommendations/<%= c.recommendation_id %>#conditions"><%= c.third_party_name %>, condition <%= c.position %></a><span class="cv-small"><%= c.description %></span></span><a class="cv-btn" href="<%= base %>/recommendations/<%= c.recommendation_id %>#conditions">Open</a></li><% }) %>
+  </ul>
 </section>
 <% } %>
 
@@ -60,12 +69,13 @@
     <h3 class="cv-h4">Third parties <span>by stage</span></h3>
     <div class="cv-donut-row"><%- donut(t.stages.map(s => ({ count: s.count, cls: STAGE_CLS[s.key] })), t.total, String(t.total)) %>
       <ul class="cv-legend"><% t.stages.forEach(s => { %><li><i class="cv-s-<%= STAGE_CLS[s.key] %>"></i><%= STAGE_LABELS[s.key] %> <b><%= s.count %></b></li><% }) %></ul></div>
+    <div class="cv-foot"><div data-tprm-cv-in-use="<%= t.inUse %>">In use in total, reviews included<b><%= t.inUse %></b></div></div>
   </section>
   <section class="cv-card cv-tile" data-tprm-cv-tile="residual">
     <h3 class="cv-h4">Residual risk <span>after controls</span></h3>
     <div class="cv-donut-row"><%- donut(t.residual.map(s => ({ count: s.count, cls: RES_CLS[s.key] })), t.decided, t.decided ? String(t.decided) : '-') %>
       <ul class="cv-legend"><% t.residual.forEach(s => { if (s.key === 'critical' && !s.count) return; %><li><i class="cv-s-<%= RES_CLS[s.key] %>"></i><%= tp.TIER_LABELS[s.key] %> <b><%= s.count %></b></li><% }) %></ul></div>
-    <div class="cv-foot"><div>High or critical tier before controls<b><%= t.inherentHigh %></b></div><div>With a recommendation<b><%= t.decided %></b></div><div>Not assessed yet<b><%= t.total - t.decided %></b></div></div>
+    <div class="cv-foot"><div>High or critical tier before controls<b><%= t.inherentHigh %></b></div><div>With a recommendation<b><%= t.decided %></b></div><div data-tprm-cv-under-assessment>Being assessed<b><%= t.underReview %></b></div><div data-tprm-cv-not-assessed>Not assessed yet<b><%= t.notAssessed %></b></div><% if (t.assessedNoDecision) { %><div data-tprm-cv-assessed-no-decision>Assessed, no decision recorded<b><%= t.assessedNoDecision %></b></div><% } %></div>
   </section>
   <section class="cv-card cv-tile" data-tprm-cv-tile="added">
     <h3 class="cv-h4">Added <span>this quarter</span></h3>
@@ -84,7 +94,8 @@
       <div class="cv-months"><% t.due.months.forEach(m => { %><div><span class="cv-muted cv-small"><%= m.label %></span><b><%= m.total %></b>
         <span class="cv-sbar"><% if (m.total) { %><i class="cv-s-blue" style="width:<%= (m.reviews / m.total * 100).toFixed(1) %>%"></i><i class="cv-s-amber" style="width:<%= (m.conditions / m.total * 100).toFixed(1) %>%"></i><i class="cv-s-grey" style="width:<%= (m.approvals / m.total * 100).toFixed(1) %>%"></i><% } %></span></div><% }) %></div>
       <ul class="cv-legend cv-legend-row"><li><i class="cv-s-blue"></i>Reviews</li><li><i class="cv-s-amber"></i>Conditions</li><li><i class="cv-s-grey"></i>Approvals ending</li></ul>
-      <% if (t.due.overdue) { %><p class="cv-small cv-mt"><%- status(t.due.overdue + ' condition' + (t.due.overdue === 1 ? '' : 's') + ' overdue', 'problem') %></p><% } %>
+      <% if (t.due.overdueReviews) { %><p class="cv-small cv-mt" data-tprm-cv-overdue-reviews="<%= t.due.overdueReviews %>"><%- status(t.due.overdueReviews + ' review' + (t.due.overdueReviews === 1 ? '' : 's') + ' overdue', 'problem') %></p><% } %>
+      <% if (t.due.overdueConditions) { %><p class="cv-small cv-mt" data-tprm-cv-overdue-conditions="<%= t.due.overdueConditions %>"><%- status(t.due.overdueConditions + ' condition' + (t.due.overdueConditions === 1 ? '' : 's') + ' overdue', 'problem') %></p><% } %>
     </section>
   </div>
 </div>
@@ -96,11 +107,11 @@
   <% } else { %>
   <div class="cv-scroll"><table><thead><tr><th>Supplier</th><th>Service</th><th>Asked by</th><th>Sent</th><th>Status</th><th></th></tr></thead><tbody>
   <% h.requests.forEach(r => { %><tr data-tprm-cv-request="<%= r.id %>" data-tprm-cv-request-status="<%= r.status %>">
-    <td><b><%= r.name %></b><% if (r.owner_name) { %><span class="cv-muted cv-small cv-block">Owner: <%= r.owner_name %></span><% } %></td>
-    <td class="cv-wrap"><%= r.service_description %></td><td><%= r.requested_by_name || '-' %></td><td><%= tpf.day(new Date(r.requested_at).toISOString().slice(0, 10)) %></td>
-    <td><%- status(requestLabels[r.status], r.status === 'accepted' ? 'good' : r.status === 'declined' ? 'problem' : r.status === 'submitted' ? 'attention' : 'quiet') %><% if (r.status === 'declined' && r.decline_reason) { %><span class="cv-small cv-block"><%= r.decline_reason %></span><% } %></td>
-    <td class="cv-right"><% if (r.status === 'accepted' && r.third_party_id) { %><a class="cv-btn" href="<%= base %>/third-parties/<%= r.third_party_id %>">Open</a><% } else if (r.status === 'submitted' && canRequest) { %>
-      <form method="POST" action="<%= base %>/requests/<%= r.id %>/withdraw" class="cv-inline"><input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>"><input type="hidden" name="row_version" value="<%= r.row_version %>"><button class="cv-btn" type="submit">Withdraw</button></form><% } %></td></tr><% }) %>
+    <td><a class="cv-name" href="<%= base %>/requests/<%= r.id %>" data-tprm-cv-request-link="<%= r.id %>"><%= r.name %></a><% if (r.owner_name) { %><span class="cv-muted cv-small cv-block">Owner: <%= r.owner_name %></span><% } %></td>
+    <td class="cv-wrap" data-tprm-cv-request-kind="<%= r.kind %>"><%= r.kind === 'reassessment' ? 'Reassessment: ' + r.service_description : r.service_description %></td><td><%= r.requested_by_name || '-' %></td><td><%= tpf.day(new Date(r.requested_at).toISOString().slice(0, 10)) %></td>
+    <td><%- status(typeof requestLabel === 'function' ? requestLabel(r) : requestLabels[r.status], r.status === 'accepted' ? 'good' : r.status === 'declined' ? 'problem' : r.status === 'submitted' ? 'attention' : 'quiet') %><% if (r.status === 'declined' && r.decline_reason) { %><span class="cv-small cv-block"><%= r.decline_reason %></span><% } %></td>
+    <td class="cv-right"><% if ((r.status === 'accepted' || r.kind === 'reassessment') && r.third_party_id) { %><a class="cv-btn" href="<%= base %>/third-parties/<%= r.third_party_id %>">Open</a><% } %><% if (r.status === 'submitted' && canRequest) { %>
+      <form method="POST" action="<%= base %>/requests/<%= r.id %>/withdraw" class="cv-inline"><input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>"><input type="hidden" name="row_version" value="<%= r.row_version %>"><%- include('partials/tprm_confirm_fields', { title: 'Withdraw the request for ' + r.name + '?', body: 'Your consultants stop work on it. This cannot be undone: to ask again, send a new request.', action: 'Withdraw request', tone: 'problem' }) %><button class="cv-btn" type="submit">Withdraw</button></form><% } %></td></tr><% }) %>
   </tbody></table></div><% } %>
 </div>
 <% } else { %>
@@ -122,6 +133,7 @@
   <% if (f.q || f.tier || f.stage || f.service || f.owner) { %><a class="cv-link" href="<%= base %><%= qs({ q: '', tier: '', stage: '', service: '', owner: '', page: 1 }) %>">Clear</a><% } %>
   <span class="cv-sp"></span>
   <span class="cv-muted cv-small" data-tprm-cv-count><%= h.total %> third part<%= h.total === 1 ? 'y' : 'ies' %></span>
+  <a class="cv-btn" href="<%= base %>/register.csv<%= qs({ page: 1 }) %>" data-tprm-cv-export>Export CSV</a>
 </form>
 
 <div class="cv-card cv-table" data-tprm-portal-list>
@@ -139,12 +151,12 @@
          const due = r.status === 'in_use' ? tpLabels.due({ nextDueDate: r.next_due_date, lastAssessmentDate: r.last_assessment_date, inProgress: !!ap.openAssessment, today: h.today }) : null; %>
       <tr data-tprm-portal-row="<%= r.id %>" data-tprm-approval="<%= ap.state %>"<%- r.waitingOnClient ? ' class="is-waiting"' : '' %>>
         <td><a class="cv-name" href="<%= base %>/third-parties/<%= r.id %>" data-tprm-cv-party="<%= r.id %>"><%= r.name %></a><% if (r.category) { %><span class="cv-muted cv-small cv-block"><%= r.category %></span><% } %></td>
-        <td><%- tierTag(r.current_tier) %><% if (r.tier_source === 'provisional_from_client_label') { %> <span class="cv-muted cv-small">provisional</span><% } %></td>
-        <td data-tprm-cv-stage="<%= r.stage.key %>"><%= r.stage.label %></td>
+        <td><%- tierTag(r.current_tier, r.tier_source === 'provisional_from_client_label') %></td>
+        <td data-tprm-cv-stage="<%= r.stage.key %>"><%= r.stage.label %><% const qp = h.questionnaires && h.questionnaires.get(r.id); if (qp) { const qd = d => d ? tpf.day(new Date(d).toISOString().slice(0, 10)) : null; %><span class="cv-muted cv-small cv-block" data-tprm-cv-q-progress="<%= qp.status %>">Questionnaire: <%= qp.statusLabel.toLowerCase() %><%= qp.percent != null ? ', ' + qp.percent + '% answered' : '' %></span><% if (qp.sentAt) { %><span class="cv-muted cv-small cv-block" data-tprm-cv-q-dates>Sent <%= qd(qp.sentAt) %><%= qp.dueAt && !['submitted', 'closed'].includes(qp.status) ? ', due ' + qd(qp.dueAt) : '' %></span><% } %><% } %></td>
         <td>
           <% if (ap.pending) { %><%- status(ap.pendingLabel, ap.pendingTone, 'data-tprm-pending="' + escapeHtml(ap.pending) + '"') %>
           <% } else if (!(ap.conditions && ap.conditions.state === 'overdue')) { %><%- include('partials/tprm_status', { text: ap.label, tone: ap.tone, attrs: 'data-tprm-approval-label', as: 'div' }) %><% } %>
-          <% if (ap.conditions && !ap.pending && ap.conditions.state === 'overdue') { %><%- include('partials/tprm_status', { text: ap.conditions.label, tone: 'problem', attrs: 'data-tprm-portal-conditions-state="' + escapeHtml(ap.conditions.state) + '"', as: 'div' }) %><% } %>
+          <% if (ap.conditions && !ap.pending && ap.conditions.state !== 'met') { %><%- include('partials/tprm_status', { text: ap.conditions.label, tone: ap.conditions.state === 'overdue' ? 'problem' : 'attention', attrs: 'data-tprm-portal-conditions-state="' + escapeHtml(ap.conditions.state) + '"', as: 'div' }) %><% } %>
         </td>
         <td><%- residualTag(rec && rec.residual_rating) %></td>
         <td class="cv-num"><%- rec ? (rec.open_findings ? '<span class="cv-warn">' + rec.open_findings + ' open</span>' : '0') : '<span class="cv-muted">-</span>' %></td>

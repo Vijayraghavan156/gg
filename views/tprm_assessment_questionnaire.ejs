@@ -173,10 +173,10 @@
   <% if (!qp.links.length) { %>
     <div class="panel-pad meta" data-tprm-links-empty>No link has been created yet.</div>
   <% } else { %>
-    <% if (qp.canRevoke && qp.links.some(l => l.effective_status === 'active') && ['sent', 'in_progress'].includes(qp.questionnaire && qp.questionnaire.status)) { %>
+    <% if (qp.canRevoke && qp.remindTo && ['sent', 'in_progress'].includes(qp.questionnaire && qp.questionnaire.status)) { %>
     <form method="POST" action="<%= qBase %>/remind" class="panel-pad tprm-divide-b fx-bulk" data-tprm-remind-form>
       <input type="hidden" name="_csrf" value="<%= qCsrf %>">
-      <span class="meta">Reminders also go automatically 7 days and 1 day before the link stops working.</span>
+      <span class="meta" data-tprm-remind-to="<%= qp.remindTo.signIn ? 'main' : 'recipient' %>"><% if (qp.remindTo.signIn) { %>The link sent to <%= qp.remindTo.from %> no longer opens, so a reminder goes to <%= qp.remindTo.name %>, the main contact, at <%= qp.remindTo.email %>, with a button to sign in. Reminders also go automatically 7 days and 1 day before the questionnaire closes.<% } else { %>A reminder goes to <%= qp.remindTo.name %> at <%= qp.remindTo.email %>. Reminders also go automatically 7 days and 1 day before the link stops working.<% } %></span>
       <button class="btn btn-secondary btn-xs" type="submit" data-tprm-remind>Send a reminder now</button>
     </form>
     <div class="panel-pad tprm-divide-b fx-bulk" data-tprm-enter-for-supplier>
@@ -185,23 +185,26 @@
     </div>
     <% } %>
     <div class="table-scroll"><table class="t" data-tprm-link-list>
-      <thead><tr><th>Recipient</th><th>Created</th><th>Valid until</th><th>Status</th><th class="tprm-right">Actions</th></tr></thead>
+      <thead><tr><th>Recipient</th><th>Created</th><th>Status</th><th class="tprm-right">Actions</th></tr></thead>
       <tbody>
       <% qp.links.forEach(l => { %>
         <tr data-tprm-link-row="<%= l.id %>" data-tprm-link-status="<%= l.effective_status %>">
-          <td><%= l.recipient_name %><div class="meta text-xs"><%= l.recipient_email %><% if (l.emailed_at) { %> · emailed<% } %></div></td>
-          <td class="meta"><%= l.created_by_name || 'Unknown user' %><div class="text-xs"><%= qWhen(l.created_at) %></div></td>
-          <td class="meta tprm-nowrap"><%= qDay(l.expires_at) %></td>
-          <td><%- include('partials/tprm_status', { text: qp.Q.LINK_STATUS_LABELS[l.effective_status], tone: linkTone(l.effective_status) }) %>
-            <% if (l.status === 'revoked') { %><div class="meta text-xs"><%= l.revoked_by_name || 'Unknown user' %> · <%= qWhen(l.revoked_at) %>: <%= l.revoke_reason %></div><% } %></td>
-          <td class="tprm-right tprm-nowrap">
+          <td><%= l.recipient_name %><div class="meta text-xs tprm-link-email"><%= l.recipient_email %><% if (l.emailed_at) { %> · emailed<% } %></div>
+            <% if (l.status === 'revoked') { %><div class="meta text-xs" data-tprm-link-revoked><%= l.revoked_by_name || 'Unknown user' %> · <%= qWhen(l.revoked_at) %>: <%= l.revoke_reason %></div><% } %>
+            <% if (l.closed_note) { %><div class="meta text-xs" data-tprm-link-closed><%= l.closed_note %></div><% } %></td>
+          <td class="meta"><%= l.created_by_name || 'Unknown user' %><div class="text-xs"><%= qWhen(l.created_at) %></div><div class="text-xs" data-tprm-link-valid-until>Valid until <%= qDay(l.expires_at) %></div></td>
+          <td class="tprm-nowrap"><%- include('partials/tprm_status', { text: qp.Q.LINK_STATUS_LABELS[l.effective_status], tone: linkTone(l.effective_status) }) %></td>
+          <td class="tprm-right">
             <% if (qp.canRevoke && l.status === 'active') { %>
-              <form method="POST" action="<%= qBase %>/links/<%= l.id %>/revoke" class="tprm-module-form tprm-q-revoke" data-tprm-revoke-form>
-                <input type="hidden" name="_csrf" value="<%= qCsrf %>"><%- include('partials/tprm_confirm_fields', { title: 'Revoke this link?', body: 'The third party can no longer open the questionnaire with it. Answers already saved are kept.', action: 'Revoke link' }) %>
-                <input type="hidden" name="row_version" value="<%= l.row_version %>">
-                <input class="input tprm-q-revoke-reason" name="reason" placeholder="Reason (optional)" aria-label="Reason for revoking" maxlength="<%= qp.limits.reason %>">
-                <button class="btn btn-secondary btn-xs" type="submit" data-tprm-revoke>Revoke</button>
-              </form>
+              <details class="tpu-inline" data-tprm-revoke-panel="<%= l.id %>">
+                <summary class="btn btn-secondary btn-xs">Revoke</summary>
+                <form method="POST" action="<%= qBase %>/links/<%= l.id %>/revoke" class="tprm-form-stack tprm-mt" data-tprm-revoke-form>
+                  <input type="hidden" name="_csrf" value="<%= qCsrf %>"><%- include('partials/tprm_confirm_fields', { title: 'Revoke this link?', body: 'The third party can no longer open the questionnaire with it. Answers already saved are kept.', action: 'Revoke link' }) %>
+                  <input type="hidden" name="row_version" value="<%= l.row_version %>">
+                  <input class="input tprm-q-revoke-reason" name="reason" placeholder="Reason (optional)" aria-label="Reason for revoking" maxlength="<%= qp.limits.reason %>">
+                  <button class="btn btn-secondary btn-xs" type="submit" data-tprm-revoke>Revoke link</button>
+                </form>
+              </details>
             <% } %>
           </td>
         </tr>
@@ -213,8 +216,8 @@
     <form method="POST" action="<%= qBase %>/links" class="panel-pad tprm-divide tprm-form-grid" data-tprm-link-form>
       <input type="hidden" name="_csrf" value="<%= qCsrf %>">
       <input type="hidden" name="row_version" value="<%= qq.row_version %>">
-      <div><label class="label" for="link-name">Recipient at the third party</label><input class="input" id="link-name" name="recipient_name" maxlength="<%= qp.limits.name %>" required></div>
-      <div><label class="label" for="link-email">Their email</label><input class="input" id="link-email" type="email" name="recipient_email" maxlength="<%= qp.limits.email %>" required></div>
+      <div><label class="label" for="link-name">Recipient at the third party</label><input class="input" id="link-name" name="recipient_name" maxlength="<%= qp.limits.name %>" value="<%= qp.mainContact ? qp.mainContact.name : '' %>" required></div>
+      <div><label class="label" for="link-email">Their email</label><input class="input" id="link-email" type="email" name="recipient_email" maxlength="<%= qp.limits.email %>" value="<%= qp.mainContact ? qp.mainContact.email : '' %>" required></div>
       <div><label class="label" for="link-days">Valid for (days)</label><input class="input" id="link-days" type="number" name="expires_in_days" min="<%= qp.limits.expiryDaysMin %>" max="<%= qp.limits.expiryDaysMax %>" value="<%= qp.defaultExpiryDays %>" required></div>
       <div><label class="tprm-check"><input type="checkbox" name="send_email" value="1"> <span>Email the link to them</span></label></div>
       <div class="tprm-full tprm-actions-split">

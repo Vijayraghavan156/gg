@@ -224,7 +224,7 @@ async function submitted(name, opts) {
   const ctx = await linked(name, opts);
   await answerAll(ctx);
   const res = await submitLink(ctx.token);
-  assert.equal(res.status, 200, res.text.slice(0, 300));
+  assert.equal(res.status, 303, res.text.slice(0, 300));
   assert.equal((await qRow(ctx.a)).status, 'submitted');
   return ctx;
 }
@@ -313,4 +313,19 @@ test('the main contact is filled in from the third party contact, or else from i
   assert.deepEqual(await peopleOf(ws, emptyTp), []);
   await db.exec(backfill);
   assert.equal((await peopleOf(ws, withLink.tp)).length, 1, 'running it again adds no one');
+});
+
+test('the contact typed when a third party is added becomes its main contact on the People tab', async () => {
+  const ws = await tprmClient('Contact On Add Client');
+  const res = await client.post(`/tprm/clients/${ws}/third-parties`, { name: 'PayNimbus Ltd', status: 'in_use',
+    primary_contact_name: 'Gareth Owens', primary_contact_email: 'Gareth.Owens@PayNimbus.example' });
+  assert.equal(res.status, 302);
+  const tp = Number((String(res.location).match(/third-parties\/(\d+)/) || [])[1]);
+  assert.deepEqual((await peopleOf(ws, tp)).map(p => [p.email, p.name, p.role]), [['gareth.owens@paynimbus.example', 'Gareth Owens', 'main']]);
+  const people = await client.get(`/tprm/clients/${ws}/third-parties/${tp}?tab=people`);
+  assert.match(people.text, /Gareth Owens/);
+  assert.doesNotMatch(people.text, /No one yet/);
+  const noEmail = await client.post(`/tprm/clients/${ws}/third-parties`, { name: 'No Email Co', status: 'in_use', primary_contact_name: 'Sam Nomail' });
+  const tp2 = Number((String(noEmail.location).match(/third-parties\/(\d+)/) || [])[1]);
+  assert.deepEqual(await peopleOf(ws, tp2), [], 'without an email no person is made');
 });

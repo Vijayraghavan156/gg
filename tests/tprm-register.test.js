@@ -108,7 +108,7 @@ test('add, view and edit a third party; every change writes an event in its chai
   assert.equal(stored.name, 'Acme Cloud', 'the name is trimmed');
   assert.equal(stored.status, 'in_use');
   assert.equal(stored.current_tier, null, 'an unmapped label leaves the tier to be set');
-  assert.equal(stored.next_due_date, await today(ws), 'in use with no assessment date is due today');
+  assert.equal(stored.next_due_date, null, 'in use and never assessed: no due date is invented, it is not assessed yet');
   assert.equal(stored.row_version, 1);
 
   const detail = await client.get(`/tprm/clients/${ws}/third-parties/${id}`);
@@ -183,7 +183,7 @@ test('the name is not an identity key: a duplicate is warned about, then allowed
 test('a stale row_version is refused with 409 and changes nothing', async () => {
   const ws = await tprmClient('Register Conflict Client');
   const id = await addThirdParty(ws, { name: 'Versioned Co' });
-  const body = { name: 'Versioned Co', status: 'exited', row_version: '1' };
+  const body = { name: 'Versioned Co', status: 'exited', row_version: '1', exit_date: '2026-01-31', exit_reason: 'Contract ended' };
   assert.equal((await client.post(`/tprm/clients/${ws}/third-parties/${id}`, body)).status, 302);
   const stale = await client.post(`/tprm/clients/${ws}/third-parties/${id}`, { ...body, name: 'Overwritten Co' });
   assert.equal(stale.status, 409);
@@ -226,6 +226,7 @@ test('services: add, edit and remove, each recorded in the third party\'s chain;
   const service = await db.prepare(`SELECT *, contract_start::text cs FROM tp_services WHERE workspace_id=? AND third_party_id=?`).get(ws, id);
   assert.equal(service.description, 'Monthly payroll processing');
   assert.equal(service.annual_spend, 120000.5);
+  assert.equal(service.spend_currency, 'INR', 'no currency chosen and none used before: INR');
   assert.equal(service.sole_source, true);
   assert.equal(service.cs, '2025-04-01');
 
@@ -260,7 +261,7 @@ test('services: add, edit and remove, each recorded in the third party\'s chain;
   assert.deepEqual(history.map(e => e.action), ['third_party.created', 'service.added', 'service.updated', 'service.removed']);
   assert.equal(history[1].after_state.service_id, service.id);
   assert.deepEqual(history[2].after_state, { service_id: service.id, description: 'Monthly payroll and reimbursements', data_access: null,
-    hosting_countries: null, contract_start: null, contract_end: null, notice_period_days: 60, annual_spend: null, sole_source: false });
+    hosting_countries: null, contract_start: null, contract_end: null, notice_period_days: 60, annual_spend: null, spend_currency: null, sole_source: false });
   assert.equal(history[3].before_state.description, 'Monthly payroll and reimbursements');
   assert.deepEqual(await events.verifyChains(db, ws), []);
 });
@@ -362,12 +363,12 @@ test('placement: label mapping, interval overrides and due-date rules', () => {
   assert.deepEqual(place({ clientLabel: 'Tier 3', lastAssessmentDate: '2025-01-10' }),
     { tier: 'low', tierSource: 'provisional_from_client_label', nextDueDate: '2028-01-10', tierNeeded: false, labelUnmapped: false });
   assert.equal(place({ clientLabel: 'Important', lastAssessmentDate: '2026-08-01' }).nextDueDate, '2027-02-01', 'the client override (6 months) applies');
-  assert.equal(place({ clientLabel: 'Tier 1', lastAssessmentDate: '2025-06-30' }).nextDueDate, today, 'overdue -> due today');
+  assert.equal(place({ clientLabel: 'Tier 1', lastAssessmentDate: '2025-06-30' }).nextDueDate, '2026-06-30', 'a lapsed review keeps its real due date');
   assert.equal(place({ clientLabel: 'Tier 1', lastAssessmentDate: '2025-11-21' }).nextDueDate, today, 'due exactly today');
-  assert.equal(place({ clientLabel: 'Tier 1' }).nextDueDate, today, 'no date -> due today');
+  assert.equal(place({ clientLabel: 'Tier 1' }).nextDueDate, null, 'never assessed -> no date, not assessed yet');
   const unmapped = place({ clientLabel: 'Gold', lastAssessmentDate: '2026-10-01' });
-  assert.deepEqual([unmapped.tier, unmapped.tierNeeded, unmapped.labelUnmapped, unmapped.nextDueDate], [null, true, true, today],
-    'an unmapped label -> tier needed and due today');
+  assert.deepEqual([unmapped.tier, unmapped.tierNeeded, unmapped.labelUnmapped, unmapped.nextDueDate], [null, true, true, null],
+    'an unmapped label -> tier needed and no date until the tier is set');
   assert.equal(place({ clientLabel: 'Tier 3', designatedCritical: true, lastAssessmentDate: '2026-10-01' }).tier, 'critical',
     'the client designation raises the provisional tier to Critical');
   assert.equal(place({ status: 'proposed', clientLabel: 'Tier 1' }).nextDueDate, null, 'a proposed third party has no reassessment due date');
@@ -557,7 +558,7 @@ test('CSV import: template, preview with mapped tiers and due dates, one commit,
   assert.match(preview.text, /Ignored columns: Notes/);
   assert.match(preview.text, /Tier needed: the label &#34;Gold&#34; is not mapped|Tier needed: the label "Gold" is not mapped/);
   assert.match(preview.text, /A third party with this name is already in the register/);
-  assert.match(preview.text, /data-tprm-import-row="2"(?:(?!<\/tr>)[^])*data-tprm-import-due="due_today">Due today</, 'overdue (Core Banking Co) is shown as due today');
+  assert.match(preview.text, /data-tprm-import-row="2"(?:(?!<\/tr>)[^])*data-tprm-import-due="overdue">Due 1 Mar 2025, \d+ days overdue</, 'a lapsed review (Core Banking Co) shows its real due date as overdue');
   assert.match(preview.text, /data-tprm-import-row="5"(?:(?!<\/tr>)[^])*data-tprm-import-due="not_assessed">Not assessed yet</, 'in use, never assessed');
   assert.equal(await count('SELECT COUNT(*) c FROM tp_third_parties WHERE workspace_id=?', ws), 1, 'the preview saves no third party');
   const fields = commitFields(preview.text);
@@ -569,10 +570,10 @@ test('CSV import: template, preview with mapped tiers and due dates, one commit,
       last_assessment_date::text AS last, next_due_date::text AS due, import_batch_id FROM tp_third_parties
     WHERE workspace_id=? AND import_batch_id IS NOT NULL ORDER BY id`).all(ws);
   assert.deepEqual(rows.map(r => [r.name, r.status, r.current_tier, r.due]), [
-    ['Core Banking Co', 'in_use', 'critical', now],
+    ['Core Banking Co', 'in_use', 'critical', '2025-03-01'],
     ['Office Snacks', 'in_use', 'low', placement.addMonths(recent, 36)],
     ['New Analytics', 'proposed', 'critical', null],
-    ['Comma, Quote "Ltd"', 'in_use', null, now],
+    ['Comma, Quote "Ltd"', 'in_use', null, null],
     ['Already Here Ltd', 'exited', null, null],
   ]);
   assert.equal(rows[0].tier_source, 'provisional_from_client_label');
@@ -729,4 +730,114 @@ test('a client with third-party risk and no ISO programme: the client menus open
   assert.match(register.text, new RegExp(`href="/workspaces/${ws}"[^>]*data-tprm-client-setup`));
   assert.equal((await client.get(`/workspaces/${ws}`)).status, 200, 'Client setup opens the services page, where ISO can be switched on');
   assert.doesNotMatch((await client.get(`/tprm/clients/${iso}`)).text, /data-tprm-client-setup/);
+});
+
+test('a lapsed supplier keeps its real due date and counts as overdue; a never-assessed one has no invented date', async () => {
+  const ws = await tprmClient('Register True Due Client');
+  await client.post(`/tprm/clients/${ws}/settings`, { label: ['Tier 1'], tier: ['critical'], row_version: '1' });
+  const now = await today(ws);
+  const lastAssessed = placement.addMonths(now, -22);
+  const lapsed = await addThirdParty(ws, { name: 'Lapsed Payments', client_label: 'Tier 1', last_assessment_date: lastAssessed });
+  const fresh = await addThirdParty(ws, { name: 'Never Assessed Co', client_label: 'Tier 1' });
+  assert.equal((await row(lapsed)).next_due_date, placement.addMonths(lastAssessed, 12), 'last assessed plus the Critical interval, in the past');
+  assert.equal((await row(fresh)).next_due_date, null);
+
+  const register = await client.get(`/tprm/clients/${ws}`);
+  assert.match(register.text, /Reassessments overdue<b class="fx-bad">1</, 'the lapsed supplier is counted overdue; the never-assessed one is not');
+  const party = await client.get(`/tprm/clients/${ws}/third-parties/${lapsed}`);
+  assert.match(party.text, /data-tprm-due-state="overdue">Due [^<]*, \d+ days overdue</);
+  assert.doesNotMatch(party.text, /Due today/);
+  assert.match(party.text, /data-tprm-party-next[\s\S]*?Reassessment due/, 'next steps prompt the reassessment');
+  const never = await client.get(`/tprm/clients/${ws}/third-parties/${fresh}`);
+  assert.match(never.text, /data-tprm-due-state="not_assessed">Not assessed yet</);
+  assert.match(never.text, /data-tprm-party-next[\s\S]*?Assess this third party/);
+
+  const due = await client.get(`/tprm/due?client=${ws}`);
+  assert.match(due.text, new RegExp(`data-tprm-due-bucket="overdue"(?:(?!data-tprm-due-bucket=)[^])*data-tprm-due-row="${lapsed}"`));
+  assert.match(due.text, new RegExp(`data-tprm-due-bucket="no_date"(?:(?!data-tprm-due-bucket=)[^])*data-tprm-due-row="${fresh}"(?:(?!</tr>)[^])*Not assessed yet(?:(?!</tr>)[^])*Start assessment<`));
+});
+
+test('the data fix gives rows stamped "due today" on entry their real due date, and records why', async () => {
+  const ws = await tprmClient('Register Stamped Due Client');
+  await client.post(`/tprm/clients/${ws}/settings`, { label: ['Tier 1'], tier: ['critical'], row_version: '1' });
+  const lapsed = await addThirdParty(ws, { name: 'Stamped Lapsed', client_label: 'Tier 1', last_assessment_date: '2024-01-15' });
+  const never = await addThirdParty(ws, { name: 'Stamped Never', client_label: 'Tier 1' });
+  const triggered = await addThirdParty(ws, { name: 'Stamped Triggered', client_label: 'Tier 1' });
+  for (const id of [lapsed, never, triggered]) await db.prepare("UPDATE tp_third_parties SET next_due_date = '2026-11-26' WHERE id = ?").run(id);
+  await db.prepare(`INSERT INTO tp_trigger_events (workspace_id, third_party_id, reason, previous_due_date, new_due_date, recorded_by)
+    VALUES (?, ?, 'breach', NULL, '2026-11-26', ?)`).run(ws, triggered, managerId);
+  const sql = require('fs').readFileSync(require('path').join(__dirname, '..', 'migrations', '159_tprm_true_due_dates.sql'), 'utf8');
+  await db.exec(sql);
+  assert.equal((await row(lapsed)).next_due_date, '2025-01-15');
+  assert.equal((await row(never)).next_due_date, null);
+  assert.equal((await row(triggered)).next_due_date, '2026-11-26', 'a date set by an early reassessment trigger is kept');
+  const last = (await chain(ws, lapsed)).pop();
+  assert.equal(last.action, 'third_party.due_date_corrected');
+  assert.deepEqual(last.before_state, { next_due_date: '2026-11-26' });
+  assert.deepEqual(await require('../lib/tprm/events').verifyChains(db, ws), []);
+  const page = await client.get(`/tprm/clients/${ws}/third-parties/${lapsed}?tab=history`);
+  assert.match(page.text, /Next review date corrected to the last assessment date plus the review interval/);
+  assert.doesNotMatch(page.text, /recalculated after a client settings change/);
+});
+
+test('marking a supplier Exited asks for the exit date and reason and cancels its open assessment with a history entry', async () => {
+  const ws = await tprmClient('Register Exit Client');
+  const id = await addThirdParty(ws, { name: 'Swift Parcels' });
+  const started = await client.post(`/tprm/clients/${ws}/third-parties/${id}/assessments`, {});
+  assert.equal(started.status, 302);
+  const open = await db.prepare("SELECT id FROM tp_assessments WHERE workspace_id=? AND third_party_id=? AND status NOT IN ('completed','cancelled')").get(ws, id);
+  assert.ok(open);
+  const form = await client.get(`/tprm/clients/${ws}/third-parties/${id}/edit`);
+  assert.match(form.text, /data-tprm-exit-fields[\s\S]*name="exit_date"[\s\S]*name="exit_reason"/);
+  const rv = String((await row(id)).row_version);
+  const missing = await client.post(`/tprm/clients/${ws}/third-parties/${id}`, { name: 'Swift Parcels', status: 'exited', row_version: rv });
+  assert.equal(missing.status, 400);
+  assert.match(missing.text, /Give the exit date/);
+  assert.match(missing.text, /Say why the client is leaving/);
+  assert.equal((await row(id)).status, 'in_use', 'nothing is saved');
+  const saved = await client.post(`/tprm/clients/${ws}/third-parties/${id}`, { name: 'Swift Parcels', status: 'exited', row_version: rv,
+    exit_date: await today(ws), exit_reason: 'Moved couriers to a national carrier' });
+  assert.equal(saved.status, 302);
+  assert.match(decodeURIComponent(saved.location), /marked exited and its open assessment cancelled/);
+  const stored = await row(id);
+  assert.deepEqual([stored.status, stored.exit_reason], ['exited', 'Moved couriers to a national carrier']);
+  const a = await db.prepare('SELECT status, cancel_reason FROM tp_assessments WHERE id=?').get(open.id);
+  assert.equal(a.status, 'cancelled');
+  assert.match(a.cancel_reason, /The third party exited: Moved couriers/);
+  const history = await client.get(`/tprm/clients/${ws}/third-parties/${id}/assessments/${open.id}?step=history`);
+  assert.match(history.text, /cancelled the assessment: The third party exited: Moved couriers to a national carrier/);
+  const page = await client.get(`/tprm/clients/${ws}/third-parties/${id}`);
+  assert.match(page.text, /data-tprm-position>Exited on [^<]*: Moved couriers to a national carrier\./);
+  assert.doesNotMatch(page.text, /data-tprm-open-assessment/);
+});
+
+test('annual spend has a currency, defaulting to the one the firm last used or INR, with grouping that suits the currency', async () => {
+  const fmt = require('../lib/tprm/format');
+  assert.equal(fmt.money(1200000, 'INR'), '₹12,00,000');
+  assert.equal(fmt.money(1200000, 'GBP'), '£1,200,000');
+  assert.match(fmt.money(48000.5, 'USD'), /\$48,000\.5$/);
+  const ws = await tprmClient('Register Currency Client');
+  const id = await addThirdParty(ws, { name: 'Harbour Cleaning' });
+  const svcOf = async desc => db.prepare('SELECT annual_spend, spend_currency FROM tp_services WHERE workspace_id=? AND third_party_id=? AND description=?').get(ws, id, desc);
+  const firmDefault = await require('../lib/tprm/register').defaultCurrency(db, firmId);
+  assert.equal((await client.post(`/tprm/clients/${ws}/third-parties/${id}/services`, { description: 'Office cleaning', annual_spend: '£48,000' })).status, 302);
+  assert.deepEqual(await svcOf('Office cleaning'), { annual_spend: 48000, spend_currency: 'GBP' }, 'a pound sign is understood, not refused');
+  assert.equal((await client.post(`/tprm/clients/${ws}/third-parties/${id}/services`, { description: 'Window cleaning', annual_spend: '1,200,000', spend_currency: 'GBP' })).status, 302);
+  assert.equal((await client.post(`/tprm/clients/${ws}/third-parties/${id}/services`, { description: 'Deep cleaning', annual_spend: '12,00,000' })).status, 302);
+  assert.deepEqual(await svcOf('Deep cleaning'), { annual_spend: 1200000, spend_currency: 'GBP' }, 'no currency given: the one the firm last used');
+  assert.notEqual(firmDefault, undefined);
+  const page = await client.get(`/tprm/clients/${ws}/third-parties/${id}?tab=services`);
+  assert.match(page.text, /£1,200,000/);
+  assert.doesNotMatch(page.text, /12,00,000/, 'no Indian grouping for pounds');
+  const form = await client.get(`/tprm/clients/${ws}/third-parties/new`);
+  assert.match(form.text, /<option value="GBP" selected>GBP<\/option>/, 'the new-service form starts on the firm currency');
+  await db.prepare("UPDATE tp_services SET spend_currency = NULL, annual_spend = 4321000 WHERE workspace_id=? AND description='Deep cleaning'").run(ws);
+  const legacy = await client.get(`/tprm/clients/${ws}/third-parties/${id}?tab=services`);
+  assert.match(legacy.text, />43,21,000</, 'an amount saved before currencies keeps its plain number, with no symbol nobody chose');
+  const old = await db.prepare("SELECT id, row_version FROM tp_services WHERE workspace_id=? AND description='Deep cleaning'").get(ws);
+  assert.equal((await client.post(`/tprm/clients/${ws}/third-parties/${id}/services/${old.id}`, {
+    description: 'Deep cleaning, quarterly', annual_spend: '43,21,000', spend_currency: 'GBP', row_version: String(old.row_version) })).status, 302);
+  assert.deepEqual(await svcOf('Deep cleaning, quarterly'), { annual_spend: 4321000, spend_currency: null }, 'editing another field does not stamp a currency on old spend');
+  const bad = await client.post(`/tprm/clients/${ws}/third-parties/${id}/services`, { description: 'Bad', annual_spend: '10', spend_currency: 'XYZ' });
+  assert.equal(bad.status, 400);
 });

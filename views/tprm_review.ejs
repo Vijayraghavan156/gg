@@ -38,7 +38,7 @@
         <tr <%- L.row(r, txt) %> data-tprm-review-item="<%= r.id %>">
           <td><a href="/tprm/clients/<%= r.workspace_id %>/third-parties/<%= r.third_party_id %>/assessments/<%= r.id %>"><strong><%= r.third_party_name %></strong></a></td>
           <td><%= r.client_name %></td>
-          <td><%= at.TYPE_LABELS[r.type] %></td>
+          <td><%= typeLabels.get(Number(r.id)) || at.TYPE_LABELS[r.type] %></td>
           <td><%= tp.TIER_LABELS[r.final_tier] %><% if (r.override_direction !== 'none') { %> <span class="meta text-xs">(<%= r.override_direction === 'raise' ? 'raised' : 'lowered' %> from <%= tp.TIER_LABELS[r.scored_tier] %>)</span><% } %></td>
           <td><%= r.proposed_by_name || '-' %> <span class="meta text-xs"><%= tpf.day(r.proposed_at) %></span><% if (r.own && !(typeof readOnly !== 'undefined' && readOnly)) { %> <span class="meta text-xs" data-tprm-review-own>Yours: you may confirm it with a reason</span><% } %></td>
           <td><%= tpf.day(r.due_date) || '-' %></td>
@@ -84,7 +84,7 @@
         <tr <%- L.row(r, txt) %> data-tprm-review-recommendation="<%= r.id %>">
           <td><a href="/tprm/clients/<%= r.workspace_id %>/third-parties/<%= r.third_party_id %>/assessments/<%= r.assessment_id %>?step=recommendation#recommendation"><strong><%= r.third_party_name %></strong></a></td>
           <td><%= r.client_name %></td>
-          <td><%= at.TYPE_LABELS[r.type] %> <span class="meta text-xs">version <%= r.version %></span></td>
+          <td><%= typeLabels.get(Number(r.assessment_id)) || at.TYPE_LABELS[r.type] %> <span class="meta text-xs">version <%= r.version %></span></td>
           <td><%= r.outcome_label %></td>
           <td><%= rec.RESIDUAL_LABELS[r.residual_rating] %></td>
           <td><%= r.author_name || '-' %> <span class="meta text-xs"><%= tpf.day(r.submitted_at) %></span><% if (r.own && !(typeof readOnly !== 'undefined' && readOnly)) { %> <span class="meta text-xs" data-tprm-review-own-recommendation>Yours: you may issue it with a reason</span><% } %></td>
@@ -112,7 +112,7 @@
         <tr <%- L.row(r, txt) %> data-tprm-review-information-row="<%= r.assessment_id %>">
           <td><a href="/tprm/clients/<%= r.workspace_id %>/third-parties/<%= r.third_party_id %>/assessments/<%= r.assessment_id %>#client-decision"><strong><%= r.third_party_name %></strong></a></td>
           <td><%= r.client_name %></td>
-          <td><%= at.TYPE_LABELS[r.type] %> <span class="meta text-xs">version <%= r.version %></span></td>
+          <td><%= typeLabels.get(Number(r.assessment_id)) || at.TYPE_LABELS[r.type] %> <span class="meta text-xs">version <%= r.version %></span></td>
           <td class="tpu-pre"><%= r.rationale %></td>
           <td><%= r.decided_by_name || '-' %> <span class="meta text-xs"><%= tpf.day(r.decided_at) %></span></td>
         </tr>
@@ -138,7 +138,7 @@
         <tr <%- L.row(r, txt) %> data-tprm-review-questionnaire="<%= r.id %>">
           <td><a href="/tprm/clients/<%= r.workspace_id %>/third-parties/<%= r.third_party_id %>/assessments/<%= r.assessment_id %>?step=review#questionnaire-answers"><strong><%= r.third_party_name %></strong></a></td>
           <td><%= r.client_name %></td>
-          <td><%= at.TYPE_LABELS[r.type] %><% if (r.final_tier) { %> <span class="meta text-xs"><%= tp.TIER_LABELS[r.final_tier] %></span><% } %></td>
+          <td><%= typeLabels.get(Number(r.assessment_id)) || at.TYPE_LABELS[r.type] %><% if (r.final_tier) { %> <span class="meta text-xs"><%= tp.TIER_LABELS[r.final_tier] %></span><% } %></td>
           <td><%- include('partials/tprm_status', { text: qStatusLabels[r.status] }) %></td>
           <td data-tprm-review-questionnaire-unreviewed><%= r.unreviewed %> of <%= r.vendor_question_count %></td>
           <td data-tprm-review-questionnaire-clarifications><%= r.open_clarifications %></td>

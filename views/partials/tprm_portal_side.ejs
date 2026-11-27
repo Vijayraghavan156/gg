@@ -6,15 +6,18 @@
      : '<a href="' + esc(it.href) + '" class="vq-menu-item' + (it.current ? ' is-current' : '') + '" data-vendor-menu="' + esc(it.key) + '"' + (it.current ? ' aria-current="page"' : '') + '>')
      + '<span>' + esc(it.label) + '</span>' + (it.count ? '<span class="vq-menu-count">' + esc(it.count) + '<span class="sr-only"> waiting</span></span>' : '') + (fid ? '</button>' : it.post ? '</button></form>' : '</a>');
    const subItems = fr.items.filter(it => it.sub);
-   const menu = fr.items.filter(it => !it.sub).map(item).join('')
-     + (subItems.length ? '<p class="vq-menu-group">' + esc(fr.group) + '</p><div class="vq-menu-sub">' + subItems.map(item).join('') + '</div>' : '')
-     + (locals.extraHtml || ''); %>
+   const cframe = !!locals.cframe;
+   const mainItems = fr.items.filter(it => !it.sub).map(item).join('');
+   const subHtml = subItems.length ? '<p class="vq-menu-group">' + esc(fr.group) + '</p><div class="vq-menu-sub">' + subItems.map(item).join('') + '</div>' : '';
+   const menu = cframe && locals.extraHtml
+     ? locals.extraHtml + subHtml + (mainItems ? '<p class="vq-menu-group">Your portal</p><div class="vq-menu-sub vq-menu-portal">' + mainItems + '</div>' : '')
+     : mainItems + subHtml + (locals.extraHtml || ''); %>
 <aside class="vq-side" aria-label="Portal menu">
-  <% if (fr.orgName) { %><p class="vq-side-org" data-vendor-org><%= fr.orgName %></p><% } %>
+  <% if (fr.orgName && !cframe) { %><p class="vq-side-org" data-vendor-org><%= fr.orgName %></p><% } %>
   <nav class="vq-menu"><%- menu %></nav>
-  <% if (fr.reviewer) { %><p class="vq-side-reviewer" data-vendor-reviewer>Reviewer<span><%= fr.reviewer.name || fr.reviewer.email %></span><a href="mailto:<%= fr.reviewer.email %>"><%= fr.reviewer.email %></a></p><% } %>
+  <% if (fr.reviewer && !cframe) { %><p class="vq-side-reviewer" data-vendor-reviewer>Reviewer<span><%= fr.reviewer.name || fr.reviewer.email %></span><a href="mailto:<%= fr.reviewer.email %>"><%= fr.reviewer.email %></a></p><% } %>
 </aside>
 <details class="vq-picker">
-  <summary class="vq-picker-summary"><span class="vq-picker-now"><%= locals.pickerNow || (fr.items.find(i => i.current) || {}).label || 'Menu' %></span><span class="vq-picker-hint">Menu</span></summary>
+  <summary class="vq-picker-summary"><span class="vq-picker-now"><% if (locals.pickerHtml) { %><%- pickerHtml %><% } else { %><%= locals.pickerNow || (fr.items.find(i => i.current) || {}).label || 'Menu' %><% } %></span><span class="vq-picker-hint">Menu</span></summary>
   <nav class="vq-menu" aria-label="Portal menu"><%- menu %></nav>
 </details>

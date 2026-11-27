@@ -32,6 +32,13 @@
       <input class="input" id="evidence-files" type="file" name="files" multiple required></div>
     <div><label class="label" for="evidence-description">Description <span class="meta text-xs">(optional, for every file in this upload)</span></label>
       <input class="input" id="evidence-description" name="description" maxlength="<%= ep.limits.description %>"></div>
+    <div data-tprm-upload-kind><label class="label" for="evidence-kind">Is it a certificate or report? <span class="meta text-xs">(optional, one file at a time)</span></label>
+      <select class="select" id="evidence-kind" name="document_kind">
+        <option value="">No, ordinary evidence</option>
+        <% ep.documentKinds.forEach(k => { %><option value="<%= k %>"><%= ep.documentKindLabels[k] %></option><% }) %>
+      </select></div>
+    <div><label class="label" for="evidence-expires">Expires on <span class="meta text-xs">(for a certificate or report)</span></label>
+      <input class="input" id="evidence-expires" type="date" name="expires_on"></div>
     <div><button class="btn btn-primary" type="submit" data-tprm-upload>Upload</button></div>
   </form>
   <% } %>
@@ -46,7 +53,8 @@
       <tr data-tprm-evidence-row="<%= e.id %>">
         <td><a href="<%= evBase %>/evidence/<%= e.id %>/download" data-tprm-download><%= e.original_name %></a>
           <% if (/\.(pdf|png|jpe?g|gif|webp)$/i.test(e.original_name || '')) { %> <a class="tprm-preview-link" href="<%= evBase %>/evidence/<%= e.id %>/download?inline=1" data-tp-preview="<%= evBase %>/evidence/<%= e.id %>/download?inline=1"<%- /\.pdf$/i.test(e.original_name) ? '' : ' data-tp-preview-kind="image"' %> aria-expanded="false" data-tprm-preview>Preview</a><% } %>
-          <div class="meta text-xs"><%= evSize(e.size_bytes) %> · SHA-256 <span title="<%= e.sha256 %>"><%= e.sha256.slice(0, 12) %>…</span><% if (e.description) { %> · <%= e.description %><% } %></div></td>
+          <div class="meta text-xs"><%= evSize(e.size_bytes) %> · SHA-256 <span title="<%= e.sha256 %>"><%= e.sha256.slice(0, 12) %>…</span><% if (e.description) { %> · <%= e.description %><% } %></div>
+          <% if (e.document_kind) { %><div class="meta text-xs" data-tprm-evidence-kind="<%= e.document_kind %>"><%= ep.documentKindLabels[e.document_kind] %><%= e.expires_on ? ', expires ' + tpf.day(e.expires_on) : ', no expiry date given' %></div><% } %></td>
         <td class="meta"<% if (e.source === 'vendor') { %> data-tprm-vendor-file<% } %>><%= e.source === 'vendor' ? 'The third party' : (e.uploaded_by_name || 'Unknown user') %><div class="text-xs"><%= evWhen(e.uploaded_at) %></div></td>
         <td><% if (e.released_to_client) { %><%- include('partials/tprm_status', { text: 'Released', tone: 'good', attrs: 'data-tprm-released' }) %><div class="meta text-xs"><%= e.released_by_name || 'Unknown user' %> · <%= evWhen(e.released_at) %></div><% } else { %><%- include('partials/tprm_status', { text: 'Internal', attrs: 'data-tprm-internal' }) %><% } %></td>
         <td class="tprm-right tprm-nowrap">
@@ -95,6 +103,18 @@
         </div>
         <% if (f.description) { %><div class="tpu-pre tpu-mt-6"><%= f.description %></div><% } %>
         <% if (f.impact) { %><div class="tpu-mt-6" data-tprm-finding-impact-text><span class="meta text-xs">Why it matters:</span> <span class="tpu-pre"><%= f.impact %></span></div><% } %>
+        <% if (f.status === 'open' && ip.canReply && assessment.status === 'completed') { %>
+          <details class="tpu-mt-6" data-tprm-finding-close-after="<%= f.id %>">
+            <summary class="text-xs">Close this finding</summary>
+            <form method="POST" action="<%= evBase %>/findings/<%= f.id %>/close" class="tprm-issue-reply" data-tprm-finding-close-form>
+              <input type="hidden" name="_csrf" value="<%= evCsrf %>"><input type="hidden" name="row_version" value="<%= f.row_version %>">
+              <label class="label" for="close-reason-<%= f.id %>">Why it is closed</label>
+              <textarea class="input" id="close-reason-<%= f.id %>" name="close_reason" rows="2" maxlength="1000" required placeholder="What was fixed, accepted or found not to apply"></textarea>
+              <button class="btn btn-secondary btn-xs" type="submit">Close finding</button>
+            </form>
+          </details>
+        <% } %>
+        <% if (f.status === 'closed' && (f.closed_at || f.close_reason)) { %><div class="tpu-mt-6" data-tprm-finding-closure><span class="meta text-xs">Closed<%= f.closed_by_name ? ' by ' + f.closed_by_name : '' %><%= f.closed_at ? ' on ' + evWhen(f.closed_at) : '' %><%= f.close_reason ? ':' : '' %></span> <span class="tpu-pre"><%= f.close_reason || '' %></span></div><% } %>
         <div class="meta text-xs tpu-mt-6">
           <% if (f.evidence.length) { %>Evidence: <% f.evidence.forEach((e, i) => { %><%= i ? ', ' : '' %><a href="<%= evBase %>/evidence/<%= e.id %>/download"><%= e.original_name %></a><% }) %><% } else { %>No evidence linked<% } %>
           · Added by <%= f.created_by_name || 'Unknown user' %> · <%= evWhen(f.created_at) %><% if (f.source === 'ai_accepted') { %> · <span data-tprm-finding-source="ai_accepted">accepted from a Brevis suggestion</span><% } %>
@@ -104,7 +124,7 @@
           <div class="fx-guide tpu-mt-6" id="finding-<%= f.id %>" data-tprm-finding-notes="<%= f.id %>">
             <p class="fx-guide-h">Conversation with the client <span>the third party does not see it</span></p>
             <ol class="tprm-issue-thread"><% notes.forEach(n => { %><li data-tprm-finding-note="<%= n.author_kind %>"><span class="meta text-xs"><%= n.author_kind === 'client' ? 'Client' + (n.author_name ? ', ' + n.author_name : '') : (n.author_name || 'Your team') %> · <%= evWhen(n.created_at) %></span><div class="tpu-pre"><%= n.body %></div></li><% }) %></ol>
-            <% if (ip.canManage) { %><form method="POST" action="<%= evBase %>/findings/<%= f.id %>/client-reply" class="tprm-issue-reply" data-tprm-finding-reply>
+            <% if (ip.canReply && f.status === 'open') { %><form method="POST" action="<%= evBase %>/findings/<%= f.id %>/client-reply" class="tprm-issue-reply" data-tprm-finding-reply>
               <input type="hidden" name="_csrf" value="<%= evCsrf %>">
               <label class="sr-only" for="fnote-<%= f.id %>">Reply to the client on <%= f.title %></label>
               <textarea class="input" id="fnote-<%= f.id %>" name="body" rows="2" maxlength="4000" placeholder="Reply to the client"></textarea>
@@ -114,7 +134,7 @@
         <% } %>
         <% const shared = issueOf(f.id); %>
         <div class="text-xs tpu-mt-6" data-tprm-finding-share="<%= shared ? shared.status : 'none' %>">
-          <% if (shared) { %>Shared with the third party: <a href="#issue-<%= shared.id %>"><%= ip.labels[shared.status] %></a>
+          <% if (shared) { %>Shared with the third party: <a href="#issue-<%= shared.id %>"><%= f.status === 'closed' ? 'Closed' : ip.labels[shared.status] %></a>
           <% } else if (ip.canManage) { %><a href="<%= evBase %>/findings/<%= f.id %>/share" data-tprm-share-finding>Share with the third party</a><% } %>
         </div>
       </div>
@@ -125,14 +145,14 @@
 <% if (ip.list.length) { %>
 <div class="panel tpu-mt-14" id="issues" data-tprm-issues>
   <div class="panel-head"><h2>Issues shared with the third party</h2><span class="meta"><%= ip.list.filter(i => i.status !== 'withdrawn').length %></span></div>
-  <% ip.list.forEach(i => { const proposal = i.latestProposal; %>
+  <% ip.list.forEach(i => { const proposal = i.latestProposal; const issueFindingClosed = ep.findings.some(x => Number(x.id) === Number(i.finding_id) && x.status === 'closed'); %>
     <div class="panel-pad tprm-divide" id="issue-<%= i.id %>" data-tprm-issue="<%= i.id %>" data-tprm-issue-status="<%= i.status %>">
       <div class="tprm-aw-between-top">
-        <div><strong><%= i.title %></strong> <%- include('partials/tprm_status', { text: ip.labels[i.status], tone: i.status === 'agreed' ? 'good' : i.status === 'proposed' ? 'attention' : 'quiet' }) %></div>
+        <div><strong><%= i.title %></strong> <%- include('partials/tprm_status', { text: issueFindingClosed && i.status !== 'withdrawn' ? 'Closed: the finding is closed' : ip.labels[i.status], tone: issueFindingClosed ? 'quiet' : i.status === 'agreed' ? 'good' : i.status === 'proposed' ? 'attention' : 'quiet' }) %></div>
         <span class="meta text-xs">Shared by <%= i.shared_by_name || 'a consultant' %> · <%= evWhen(i.shared_at) %></span>
       </div>
       <div class="tpu-pre tpu-mt-6"><%= i.body %></div>
-      <% if (i.status === 'agreed') { %><p class="tpu-mt-6" data-tprm-issue-agreed>Agreed fix: <%= i.agreed_fix %><%= i.agreed_date ? ', by ' + tpf.day(i.agreed_date) : '' %>.</p><% } %>
+      <% if (i.status === 'agreed') { %><p class="tpu-mt-6" data-tprm-issue-agreed>Agreed fix: <%= i.agreed_date ? String(i.agreed_fix || '').replace(/[.\s]+$/, '') + ' (by ' + tpf.day(i.agreed_date) + ')' : i.agreed_fix %></p><% } %>
       <% if (i.messages.length) { %>
         <ol class="tprm-issue-thread" data-tprm-issue-thread>
           <% i.messages.forEach(m => { %>
@@ -144,27 +164,28 @@
           <% }) %>
         </ol>
       <% } %>
-      <% if (ip.canManage && i.status !== 'withdrawn') { %>
+      <% const findingOpen = ep.findings.some(x => Number(x.id) === Number(i.finding_id) && x.status === 'open'); %>
+      <% if ((ip.canManage || (ip.canReply && findingOpen)) && i.status !== 'withdrawn') { %>
         <div class="tprm-issue-actions">
-          <% if (i.status === 'proposed' && proposal) { %>
+          <% if (ip.canManage && i.status === 'proposed' && proposal) { %>
             <form method="POST" action="<%= evBase %>/issues/<%= i.id %>/agree" class="tpu-m-0" data-tprm-issue-agree>
               <input type="hidden" name="_csrf" value="<%= evCsrf %>"><input type="hidden" name="row_version" value="<%= i.row_version %>">
               <%- include('partials/tprm_confirm_fields', { title: 'Agree this fix?', body: 'The third party sees the fix as agreed. If a recommendation is being drafted, the fix is added to it as a condition owned by the third party.', action: 'Agree fix' }) %>
               <button class="btn btn-primary btn-xs" type="submit">Agree the proposed fix</button>
             </form>
           <% } %>
-          <form method="POST" action="<%= evBase %>/issues/<%= i.id %>/reply" class="tprm-issue-reply" data-tprm-issue-reply>
+          <% if (ip.canReply && findingOpen) { %><form method="POST" action="<%= evBase %>/issues/<%= i.id %>/reply" class="tprm-issue-reply" data-tprm-issue-reply>
             <input type="hidden" name="_csrf" value="<%= evCsrf %>">
             <label class="sr-only" for="issue-reply-<%= i.id %>">Comment on <%= i.title %></label>
             <textarea class="input" id="issue-reply-<%= i.id %>" name="body" rows="2" maxlength="4000" placeholder="Write a comment. The third party and, once the recommendation is issued, the client see it."></textarea>
             <label class="tprm-internal-switch"><input type="checkbox" name="internal" value="1" data-tprm-issue-internal-switch> Internal: only your firm sees it</label>
             <button class="btn btn-secondary btn-xs" type="submit">Post</button>
-          </form>
-          <form method="POST" action="<%= evBase %>/issues/<%= i.id %>/withdraw" class="tpu-m-0" data-tprm-issue-withdraw>
+          </form><% } %>
+          <% if (ip.canManage) { %><form method="POST" action="<%= evBase %>/issues/<%= i.id %>/withdraw" class="tpu-m-0" data-tprm-issue-withdraw>
             <input type="hidden" name="_csrf" value="<%= evCsrf %>"><input type="hidden" name="row_version" value="<%= i.row_version %>">
             <%- include('partials/tprm_confirm_fields', { title: 'Withdraw this issue?', body: 'The third party no longer sees it. The finding stays as it is.', action: 'Withdraw' }) %>
             <button class="btn btn-ghost btn-xs" type="submit">Withdraw</button>
-          </form>
+          </form><% } %>
         </div>
       <% } %>
     </div>

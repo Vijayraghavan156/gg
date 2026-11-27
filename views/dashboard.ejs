@@ -196,13 +196,14 @@
     <header class="dashboard-dialog-header" style="padding:20px 24px 12px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
       <div>
         <h2 style="margin:0;font-size:20px;font-weight: 500;letter-spacing:-0.01em;">New client</h2>
-        <div class="meta text-sm" style="margin-top:2px;">Just the basics here: scope, stakeholders, and the rest of the 25 scoping questions come on the next page.</div>
+        <div class="meta text-sm" style="margin-top:2px;">Name the client and choose its services. The scoping for each service comes on the next page.</div>
       </div>
       <button type="button" onclick="document.getElementById('newWs').close()" aria-label="Close" style="background:transparent;border:0;color:var(--text-tertiary);cursor:pointer;padding:4px;font-size:18px;line-height:1;">×</button>
     </header>
     <div class="grid-2 dashboard-dialog-grid" style="padding:18px 24px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
       <div><label class="label">Client name <span class="meta">required</span></label><input class="input" name="client_name" required autofocus placeholder="e.g. Northwind Financial Services"></div>
       <div><label class="label">Industry</label><input class="input" name="industry" placeholder="SaaS, Fintech, Healthcare…"></div>
+      <div class="col-full"><label class="label" for="dashboard-scope">Initial engagement scope <span class="meta">can be edited later</span></label><textarea class="textarea" id="dashboard-scope" name="scope" rows="3" placeholder="What is in scope, and what is explicitly excluded?"></textarea></div>
       <div class="col-full" id="dashboard-certification-target-field" hidden><label class="label">Target certification date</label><input class="input" id="dashboard-target-cert-date" name="target_cert_date" type="date" disabled style="max-width:240px;"><div class="meta text-xs" id="dashboard-target-cert-help" style="margin-top:4px;">Choose the service path first.</div></div>
       <fieldset id="dashboard-iso27001-outcome-fieldset" class="col-full" hidden style="border:1px solid var(--border);border-radius:7px;padding:11px;margin:0;">
         <legend class="label" style="padding:0 4px;">Contracted ISO 27001 outcome <span class="meta">required</span></legend>
@@ -223,6 +224,7 @@
           <% }) %>
           <label style="display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--border);border-radius:7px;cursor:pointer;background:var(--bg);"><input id="dashboard-tp-service" type="checkbox" name="tp_enabled" value="1" style="margin-top:2px;"><span class="text-sm"><strong style="display:block;">Third-party risk</strong><span class="meta">Assess the client's third parties and recommend; the client decides</span></span></label>
         </div>
+        <div id="dashboard-service-error" class="text-sm" role="alert" hidden style="margin-top:8px;color:var(--danger,#b91c1c);">Choose at least one service for this client: an ISO programme or third-party risk.</div>
       </div>
     </div>
     <footer class="dashboard-dialog-footer" style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--bg-subtle);">
@@ -259,6 +261,16 @@
   outcomeChoices.forEach(choice => choice.addEventListener('change', refreshCertificationTarget));
   isoProgramme.addEventListener('change', refreshCertificationTarget);
   refreshCertificationTarget();
+  const serviceError = document.getElementById('dashboard-service-error');
+  const services = () => Array.from(dlg.querySelectorAll('input[name="frameworks"], input[name="tp_enabled"]'));
+  services().forEach(box => box.addEventListener('change', () => { if (box.checked) serviceError.hidden = true; }));
+  dlg.querySelector('form').addEventListener('submit', e => {
+    if (services().some(box => box.checked)) return;
+    e.preventDefault();
+    serviceError.hidden = false;
+    const first = services()[0];
+    if (first) first.focus();
+  });
   dlg.addEventListener('click', e => {
     const r = dlg.getBoundingClientRect();
     const outside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
@@ -321,9 +333,9 @@
           </td>
           <td data-label="Progress">
             <div style="font-weight:500;font-size:12.5px;"><%= w.service.position %></div>
-            <div class="dash-progress" title="<%= w.progress.assessed %> of <%= w.progress.total %> assessed">
+            <% if (!w.tprmOnly) { %><div class="dash-progress" title="<%= w.progress.assessed %> of <%= w.progress.total %> assessed">
               <span style="width:<%= w.progress.percent %>%"></span>
-            </div>
+            </div><% } %>
             <div class="meta text-xs num"><%= w.service.metric %></div>
           </td>
           <td class="text-sm" data-label="Next milestone">
@@ -332,7 +344,7 @@
           </td>
           <td data-label="Attention" onclick="event.stopPropagation()" style="cursor:default;">
             <% if (att.primary) { %>
-              <a class="dash-reason dash-reason-<%= att.severity %>" href="<%= reasonLink(att.primary, w.id) %>"><%= att.primary %></a>
+              <a class="dash-reason dash-reason-<%= att.severity %>" href="<%= w.tprmOnly ? w.homeUrl : reasonLink(att.primary, w.id) %>"><%= att.primary %></a>
               <% if (att.more) { %>
                 <span class="meta text-xs" title="<%= att.rest.join(' · ') %>">+ <%= att.more %> more</span>
               <% } %>
@@ -444,10 +456,11 @@
     const error = document.getElementById('dcmError');
     let currentName = '';
 
+    const readableName = name => String(name || '').replace(/\u2014/g, '-');
     function open(wsId, clientName) {
-      currentName = clientName;
-      title.textContent = clientName;
-      expected.textContent = clientName;
+      currentName = readableName(clientName);
+      title.textContent = currentName;
+      expected.textContent = currentName;
       input.value = '';
       copyName.textContent = 'Copy name';
       copyName.classList.remove('is-copied');

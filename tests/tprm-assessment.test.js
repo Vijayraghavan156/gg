@@ -821,3 +821,34 @@ test('the assessment page shows one step at a time (?step=) and the third-party 
   assert.match(services.text, /data-tprm-tab-panel="overview" hidden/);
   assert.deepEqual(shownTabs((await client.get(`${tpPage}?tab=nonsense`)).text), ['overview']);
 });
+
+test('the first assessment of a supplier in use is an Assessment, not a Reassessment; one after an earlier assessment is a Reassessment', async () => {
+  const at = require('../lib/tprm/assessments');
+  assert.equal(at.typeLabel('reassessment', { previous: false }), 'Assessment');
+  assert.equal(at.typeLabel('reassessment', { previous: true }), 'Reassessment');
+  assert.equal(at.typeLabel('onboarding'), 'Onboarding assessment');
+  const ws = await tprmClient('First Assessment Client');
+  const fresh = await addThirdParty(ws, { name: 'Northgate IT', client_designated_critical: '1' });
+  const started = await client.post(`/tprm/clients/${ws}/third-parties/${fresh}/assessments`, {});
+  assert.match(decodeURIComponent(started.location), /toast=Assessment started/);
+  const a = idIn(started.location, /assessments\/(\d+)/);
+  const party = await client.get(`/tprm/clients/${ws}/third-parties/${fresh}`);
+  assert.match(party.text, /data-tprm-open-assessment>Continue assessment</);
+  assert.doesNotMatch(party.text, /Reassessment in progress|Continue reassessment/);
+  const scope = await client.get(`${aBase(ws, fresh, a)}?step=scope`);
+  assert.match(scope.text, /hidden data-tprm-designation>/, 'no "the answers score it lower" before any answer');
+  assert.equal(await at.isReassessment(db, await assessmentRow(a)), false);
+  assert.equal((await at.typeLabelsFor(db, [{ id: a, type: 'reassessment' }])).get(a), 'Assessment');
+  const hist = await client.get(`${aBase(ws, fresh, a)}?step=history`);
+  assert.match(hist.text, /started the assessment/);
+  assert.doesNotMatch(hist.text, /started the reassessment/);
+
+  const lapsed = await addThirdParty(ws, { name: 'PayNimbus', last_assessment_date: '2024-01-15' });
+  const b = await start(ws, lapsed);
+  assert.equal(await at.isReassessment(db, await assessmentRow(b)), true, 'assessed before the app: a reassessment');
+  const lapsedPage = await client.get(`/tprm/clients/${ws}/third-parties/${lapsed}`);
+  assert.match(lapsedPage.text, /data-tprm-open-assessment>Continue reassessment</);
+  const supplierLabel = await require('../lib/tprm/vendor-portal').reviewLabels(db, [{ id: a, type: 'reassessment' }, { id: b, type: 'reassessment' }]);
+  assert.equal(supplierLabel({ id: a, type: 'reassessment' }), 'First review', 'the supplier sees a first review, not a periodic one');
+  assert.equal(supplierLabel({ id: b, type: 'reassessment' }), 'Periodic review');
+});
